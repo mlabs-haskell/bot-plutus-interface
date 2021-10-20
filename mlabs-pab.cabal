@@ -1,0 +1,177 @@
+cabal-version:      3.0
+name:               mlabs-pab
+version:            0.1.0.0
+synopsis:           Unofficial PAB implementation
+description:
+  Unofficial PAB imlementation, using the cardano-cli in the background to submit transactions
+
+homepage:           https://github.com/mlabs-haskell/mlabs-pab
+bug-reports:        https://github.com/mlabs-haskell/mlabs-pab
+license:
+license-file:
+author:             MLabs
+maintainer:         gergely@mlabs.city
+copyright:          TODO
+build-type:         Simple
+tested-with:        GHC ==8.10.4
+extra-source-files: README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/mlabs-haskell/mlabs-pab
+
+-- Common sections
+
+common common-lang
+  ghc-options:
+    -Wall -Wcompat -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wredundant-constraints -Werror
+    -fobject-code -fno-ignore-interface-pragmas
+    -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
+
+  build-depends:
+    , base                     ^>=4.14
+    , record-dot-preprocessor
+    , record-hasfield
+
+  default-extensions:
+    NoImplicitPrelude
+    BangPatterns
+    BinaryLiterals
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DuplicateRecordFields
+    EmptyCase
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    HexFloatLiterals
+    ImportQualifiedPost
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    NumericUnderscores
+    OverloadedStrings
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
+
+  default-language:   Haskell2010
+
+-- Libraries
+
+
+library
+  import:          common-lang
+  exposed-modules: MLabsPAB
+  other-modules:
+    MLabsPAB.CardanoCLI
+    MLabsPAB.Contract
+    MLabsPAB.Files
+    MLabsPAB.PreBalance
+    MLabsPAB.Server
+    MLabsPAB.Types
+    MLabsPAB.UtxoParser
+
+  build-depends:
+    , aeson               ^>=1.5.0.0
+    , aeson-casing
+    , ansi-terminal
+    , attoparsec          >=0.13.2.2
+    , bytestring          ^>=0.10.12.0
+    , cardano-api
+    , cardano-crypto
+    , cardano-prelude
+    , containers
+    , cryptonite
+    , data-default
+    , data-default-class
+    , directory
+    , either
+    , freer-extras
+    , freer-simple
+    , http-client
+    , http-types
+    , lens
+    , memory
+    , plutus-chain-index
+    , plutus-contract
+    , plutus-core
+    , plutus-ledger
+    , plutus-ledger-api
+    , plutus-pab
+    , plutus-tx
+    , plutus-tx-plugin
+    , prettyprinter
+    , process
+    , row-types
+    , serialise
+    , servant
+    , servant-client
+    , servant-server
+    , servant-websockets
+    , split
+    , stm
+    , text                ^>=1.2.4.0
+    , uuid
+    , vector              ^>=0.12.1.2
+    , wai
+    , warp
+    , websockets
+
+  hs-source-dirs:  src
+
+test-suite mlabs-pab-test
+  import:         common-lang
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
+  build-depends:
+    , aeson                 ^>=1.5.0.0
+    , attoparsec
+    , base
+    , base-compat
+    , bytestring            ^>=0.10.12.0
+    , cardano-prelude
+    , containers
+    , data-default-class
+    , either
+    , freer-extras
+    , freer-simple
+    , generic-arbitrary
+    , lens
+    , mlabs-pab
+    , playground-common
+    , plutus-contract
+    , plutus-core
+    , plutus-ledger
+    , plutus-ledger-api
+    , plutus-pab
+    , plutus-tx
+    , plutus-tx-plugin
+    , prettyprinter
+    , QuickCheck
+    , quickcheck-instances
+    , row-types
+    , serialise
+    , servant
+    , servant-server
+    , tasty
+    , tasty-quickcheck
+    , text                  ^>=1.2.4.0
+    , vector                ^>=0.12.1.2
+    , wai
+    , warp
+
+  hs-source-dirs: test

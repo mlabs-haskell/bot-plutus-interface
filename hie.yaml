@@ -1,0 +1,7 @@
+cradle:
+  cabal:
+    - path: "./src"
+      component: "lib:mlabs-pab"
+
+    - path: "./test"
+      component: "test:mlabs-pab-test"
