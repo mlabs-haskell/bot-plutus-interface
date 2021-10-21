@@ -74,14 +74,16 @@ common common-lang
 
 library
   import:          common-lang
-  exposed-modules: MLabsPAB
+  exposed-modules:
+    MLabsPAB
+    MLabsPAB.Types
+
   other-modules:
     MLabsPAB.CardanoCLI
     MLabsPAB.Contract
     MLabsPAB.Files
     MLabsPAB.PreBalance
     MLabsPAB.Server
-    MLabsPAB.Types
     MLabsPAB.UtxoParser
 
   build-depends:
@@ -105,6 +107,7 @@ library
     , http-types
     , lens
     , memory
+    , playground-common
     , plutus-chain-index
     , plutus-contract
     , plutus-core
