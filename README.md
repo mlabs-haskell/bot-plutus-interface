@@ -26,9 +26,9 @@ Wiring up your own contract is pretty much the same as with the official PAB:
 1. Define your endpoints for the PAB
 
 ```haskell
-data LiquidityBridgeContracts
-  = PaymentConfirmationLP PCLParams
-  | PaymentConfirmationERC PCEParams
+data MyContracts
+  = Send SendParams
+  | Collect CollectParams
   deriving stock
     (Show, Generic)
   deriving anyclass
@@ -38,23 +38,23 @@ data LiquidityBridgeContracts
 2. Define a HasDefinitions instance for the endpoints
 
 ```haskell
-instance HasDefinitions LiquidityBridgeContracts where
-  getDefinitions :: [LiquidityBridgeContracts]
+instance HasDefinitions MyContracts where
+  getDefinitions :: [MyContract]
   getDefinitions = []
 
-  getSchema :: LiquidityBridgeContracts -> [FunctionSchema FormSchema]
+  getSchema :: MyContracts -> [FunctionSchema FormSchema]
   getSchema = \case
-    PaymentConfirmationLP _ -> endpointsToSchemas @LiquidityBridgeSchema
-    PaymentConfirmationERC _ -> endpointsToSchemas @LiquidityBridgeSchema
+    Send _ -> endpointsToSchemas @MyContractSchema
+    Collect _ -> endpointsToSchemas @MyContractSchema
 
-  getContract :: (LiquidityBridgeContracts -> SomeBuiltin)
+  getContract :: (MyContracts -> SomeBuiltin)
   getContract = \case
-    PaymentConfirmationLP params ->
+    Send params ->
       SomeBuiltin $
-        paymentConfirmationLPFromPubKey Config.serverPubKeyHash params
-    PaymentConfirmationERC params ->
+        MyContract.contract params
+    Collect params ->
       SomeBuiltin $
-        paymentConfirmationERCFromPubKey Config.serverPubKeyHash params
+        MyContract.contract params
 ```
 
 3. Write your main entrypoint for the application, with the preferred configurations
@@ -76,7 +76,7 @@ main = do
           , -- Protocol params file location relative to the cardano-cli working directory (needed for the cli)
             pcProtocolParamsFile = "./protocol.json"
           }
-  MLabsPAB.runPAB pabConf (Proxy :: Proxy LiquidityBridgeContracts)
+  MLabsPAB.runPAB pabConf (Proxy :: Proxy MyContracts)
 ```
 
 To run the fake PAB, you need to prepare a few more things:
