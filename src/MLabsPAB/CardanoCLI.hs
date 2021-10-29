@@ -79,9 +79,15 @@ callCommand PABConfig {pcCliLocation} ShellCommand {cmdName, cmdArgs, cmdOutPars
           ""
 
 -- | Upload script files via ssh
-uploadFiles :: Text -> Text -> IO ()
-uploadFiles serverIP scriptFileDir = do
-  readProcess "scp" ["-r", Text.unpack scriptFileDir, Text.unpack $ serverIP <> ":$HOME"] "" >> pure ()
+uploadFiles :: PABConfig -> Text -> IO ()
+uploadFiles pabConf serverIP =
+  mapM_
+    uploadDir
+    [ pabConf.pcScriptFileDir
+    , pabConf.pcSigningKeyFileDir
+    ]
+  where
+    uploadDir dir = readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ serverIP <> ":$HOME"] ""
 
 -- | Getting all available UTXOs at an address (all utxos are assumed to be PublicKeyChainIndexTxOut)
 utxosAt :: PABConfig -> Address -> IO (Map TxOutRef ChainIndexTxOut)

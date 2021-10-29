@@ -22,7 +22,7 @@ import Ledger.Tx qualified as Tx
 import MLabsPAB.CardanoCLI qualified as CardanoCLI
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.PreBalance qualified as PreBalance
-import MLabsPAB.Types (ContractEnvironment (..))
+import MLabsPAB.Types (CLILocation (..), ContractEnvironment (..))
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types (Status (..))
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
@@ -203,6 +203,11 @@ writeBalancedTx contractEnv tx = do
             "Failed to write script file(s): " <> Text.pack (show err)
     Right _ -> do
       let requiredSigners = Map.keys $ tx ^. Tx.signatures
+
+      case contractEnv.cePABConfig.pcCliLocation of
+        Remote serverIP -> CardanoCLI.uploadFiles contractEnv.cePABConfig serverIP
+        Local -> pure ()
+
       CardanoCLI.buildTx contractEnv.cePABConfig contractEnv.ceOwnPubKey tx
       CardanoCLI.signTx contractEnv.cePABConfig requiredSigners
 
