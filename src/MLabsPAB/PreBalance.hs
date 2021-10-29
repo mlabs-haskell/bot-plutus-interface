@@ -2,6 +2,7 @@ module MLabsPAB.PreBalance (
   preBalanceTx,
 ) where
 
+import Control.Monad (foldM)
 import Data.Either.Combinators (rightToMaybe)
 import Data.List (partition)
 import Data.Map (Map)
@@ -13,6 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
+import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Tx (
   Tx (..),
   TxIn (..),
@@ -38,13 +40,16 @@ preBalanceTx ::
   Integer ->
   Map TxOutRef TxOut ->
   Address ->
+  Map PubKeyHash PrivateKey ->
+  [PubKeyHash] ->
   Tx ->
   Either Text Tx
-preBalanceTx minLovelaces fees utxos changeAddr tx =
+preBalanceTx minLovelaces fees utxos changeAddr privKeys requiredSignatories tx =
   addTxCollaterals utxos tx
     >>= balanceTxIns utxos minLovelaces fees
     >>= Right . addLovelaces minLovelaces
     >>= balanceNonAdaOuts changeAddr utxos
+    >>= addSignatories privKeys requiredSignatories
 
 -- | Getting the necessary utxos to cover the fees for the transaction
 collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
@@ -152,6 +157,20 @@ balanceNonAdaOuts changeAddr utxos tx =
           (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
             txOut {txOutValue = v <> nonAdaChange} : (txOuts <> txOuts')
    in Right $ tx {txOutputs = outputs}
+
+{- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
+ and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
+-}
+addSignatories :: Map PubKeyHash PrivateKey -> [PubKeyHash] -> Tx -> Either Text Tx
+addSignatories privKeys pkhs tx =
+  foldM
+    ( \tx' pkh ->
+        case Map.lookup pkh privKeys of
+          Just privKey -> Right $ Tx.addSignature privKey tx'
+          Nothing -> Left "Signing key not found."
+    )
+    tx
+    pkhs
 
 showText :: Show a => a -> Text
 showText = Text.pack . show

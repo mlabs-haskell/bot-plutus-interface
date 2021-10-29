@@ -3,12 +3,14 @@
 
 module MLabsPAB.Contract (runContract) where
 
+import Control.Lens ((^.))
 import Control.Monad.Freer (Eff, LastMember, interpretM, runM, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (runWriter)
 import Data.Aeson (Value)
+import Data.Either.Combinators (fromRight)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
@@ -139,7 +141,7 @@ handlePABReq contractEnv req = do
 
 -- | This is not identical to the real balancing, we only do a pre-balance at this stage
 balanceTx :: ContractEnvironment -> UnbalancedTx -> IO BalanceTxResponse
-balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex} = do
+balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBalancedTxRequiredSignatories} = do
   -- TODO: getting own address from pub key
   let ownAddress = Ledger.pubKeyHashAddress $ Ledger.pubKeyHash contractEnv.ceOwnPubKey
   -- TODO: Handle paging
@@ -153,6 +155,9 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex} = do
   --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
 
   utxos <- CardanoCLI.utxosAt contractEnv.cePABConfig ownAddress
+  privKeys <-
+    fromRight (error "Reading signing key files failed")
+      <$> Files.readPrivateKeys contractEnv.cePABConfig
 
   let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex
   print utxoIndex
@@ -162,6 +167,8 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex} = do
           contractEnv.ceFees
           utxoIndex
           ownAddress
+          privKeys
+          (Map.keys unBalancedTxRequiredSignatories)
           unBalancedTxTx
 
   case eitherPreBalancedTx of
@@ -188,9 +195,6 @@ writeBalancedTx contractEnv tx = do
       allDatums
       allRedeemers
 
-  -- TODO: get this from the tx body
-  let signingKeyFile = "./addresses/server.skey"
-      ownAddress = Ledger.pubKeyHashAddress $ Ledger.pubKeyHash contractEnv.ceOwnPubKey
   case fileWriteRes of
     Left err ->
       pure $
@@ -198,8 +202,9 @@ writeBalancedTx contractEnv tx = do
           OtherError $
             "Failed to write script file(s): " <> Text.pack (show err)
     Right _ -> do
-      CardanoCLI.buildTx contractEnv.cePABConfig ownAddress signingKeyFile tx
-      CardanoCLI.signTx contractEnv.cePABConfig signingKeyFile
+      let requiredSigners = Map.keys $ tx ^. Tx.signatures
+      CardanoCLI.buildTx contractEnv.cePABConfig contractEnv.ceOwnPubKey tx
+      CardanoCLI.signTx contractEnv.cePABConfig requiredSigners
 
       result <-
         if contractEnv.cePABConfig.pcDryRun

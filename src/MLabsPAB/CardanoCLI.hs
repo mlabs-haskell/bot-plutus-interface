@@ -27,6 +27,7 @@ import Data.Text.Encoding (decodeUtf8)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
+import Ledger.Crypto (PubKey)
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   ChainIndexTxOut,
@@ -46,6 +47,7 @@ import MLabsPAB.Files (
   datumJsonFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
+  signingKeyFilePath,
   validatorScriptFilePath,
  )
 import MLabsPAB.Types (
@@ -57,13 +59,6 @@ import Plutus.Contract.CardanoAPI (toCardanoAddress)
 import Plutus.V1.Ledger.Api (CurrencySymbol (..), TokenName (..))
 import PlutusTx.Builtins (fromBuiltin)
 import System.Process (readProcess)
-
--- import Cardano.Crypto.Wallet (unXPub)
--- import Crypto.Hash (Blake2b_160, hash)
--- import Data.ByteArray.Encoding (Base (Base16), convertToBase)
--- import Data.ByteString (ByteString)
--- import Wallet.Emulator (Wallet (..))
--- import Wallet.Emulator.Wallet (walletXPub)
 import Prelude
 
 data ShellCommand a = ShellCommand
@@ -109,10 +104,15 @@ utxosAt pabConf address = do
     toUtxo line = parseOnly (UtxoParser.utxoMapParser address) line
 
 -- | Build a tx body and write it to disk
-buildTx :: PABConfig -> Address -> Text -> Tx -> IO ()
-buildTx pabConf ownAddr signingKeyFile tx =
+buildTx :: PABConfig -> PubKey -> Tx -> IO ()
+buildTx pabConf ownPubKey tx =
   callCommand pabConf $ ShellCommand "cardano-cli" opts (const ())
   where
+    ownAddr = Ledger.pubKeyHashAddress $ Ledger.pubKeyHash ownPubKey
+    requiredSigners =
+      concatMap
+        (\pubKey -> ["--required-signer", signingKeyFilePath pabConf (Ledger.pubKeyHash pubKey)])
+        (ownPubKey : Map.keys (Ledger.txSignatures tx))
     opts =
       mconcat
         [ ["transaction", "build", "--alonzo-era"]
@@ -122,7 +122,7 @@ buildTx pabConf ownAddr signingKeyFile tx =
         , mintOpts pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
         , mconcat
             [ ["--change-address", unsafeSerialiseAddress pabConf ownAddr]
-            , ["--required-signer", signingKeyFile]
+            , requiredSigners
             , networkOpt pabConf
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             , ["--out-file", "tx.raw"]
@@ -130,19 +130,24 @@ buildTx pabConf ownAddr signingKeyFile tx =
         ]
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
-signTx :: PABConfig -> Text -> IO ()
-signTx pabConf signingKeyFile =
+signTx :: PABConfig -> [PubKey] -> IO ()
+signTx pabConf pubKeys =
   callCommand pabConf $
     ShellCommand
       "cardano-cli"
       ( mconcat
           [ ["transaction", "sign"]
           , ["--tx-body-file", "tx.raw"]
-          , ["--signing-key-file", signingKeyFile]
+          , signingKeyFiles
           , ["--out-file", "tx.signed"]
           ]
       )
       (const ())
+  where
+    signingKeyFiles =
+      concatMap
+        (\pubKey -> ["--signing-key-file", signingKeyFilePath pabConf (Ledger.pubKeyHash pubKey)])
+        pubKeys
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
 submitTx :: PABConfig -> IO (Maybe Text)
