@@ -87,6 +87,15 @@ To run the fake PAB, you need to prepare a few more things:
 cardano-cli query protocol-parameters --testnet-magic 42 --out-file protocol.json
 ```
 
+5. Create a `signing-keys` folder under your projects root with the necessary signig key file(s).
+   The files should be named in the following format: `signing-key-PUBKEYHASH.skey`
+
+Use the cardano-cli to find out the pub key hash for your key:
+
+```bash
+cardano-cli address key-hash --verification-key-file VERIFICATION_KEY.vkey
+```
+
 ## How does this work and how it is structured?
 
 The fake PAB consists of the following modules:
