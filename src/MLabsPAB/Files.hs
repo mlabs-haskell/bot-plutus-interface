@@ -123,7 +123,9 @@ writeAll pabConf policyScripts validatorScripts datums redeemers =
 readPrivateKeys :: PABConfig -> IO (Either Text (Map PubKeyHash PrivateKey))
 readPrivateKeys pabConf = do
   files <- listDirectory $ Text.unpack pabConf.pcSigningKeyFileDir
-  let sKeyFiles = filter (`endsWith` ".skey") files
+  let sKeyFiles =
+        map (\filename -> Text.unpack pabConf.pcSigningKeyFileDir ++ "/" ++ filename) $
+          filter (`endsWith` ".skey") files
   privKeys <- mapM readPrivateKey sKeyFiles
   pure $ toPrivKeyMap <$> sequence privKeys
   where

@@ -10,7 +10,6 @@ import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (runWriter)
 import Data.Aeson (Value)
-import Data.Either.Combinators (fromRight)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
@@ -157,7 +156,7 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBal
 
   utxos <- CardanoCLI.utxosAt contractEnv.cePABConfig ownAddress
   privKeys <-
-    fromRight (error "Reading signing key files failed")
+    either (error . Text.unpack) id
       <$> Files.readPrivateKeys contractEnv.cePABConfig
 
   let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex
