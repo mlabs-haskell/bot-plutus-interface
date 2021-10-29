@@ -12,6 +12,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
 import Ledger.Crypto (PrivateKey, PubKeyHash)
@@ -39,17 +40,17 @@ preBalanceTx ::
   Integer ->
   Integer ->
   Map TxOutRef TxOut ->
-  Address ->
+  PubKeyHash ->
   Map PubKeyHash PrivateKey ->
   [PubKeyHash] ->
   Tx ->
   Either Text Tx
-preBalanceTx minLovelaces fees utxos changeAddr privKeys requiredSignatories tx =
+preBalanceTx minLovelaces fees utxos ownPkh privKeys requiredSignatories tx =
   addTxCollaterals utxos tx
     >>= balanceTxIns utxos minLovelaces fees
     >>= Right . addLovelaces minLovelaces
-    >>= balanceNonAdaOuts changeAddr utxos
-    >>= addSignatories privKeys requiredSignatories
+    >>= balanceNonAdaOuts ownPkh utxos
+    >>= addSignatories ownPkh privKeys requiredSignatories
 
 -- | Getting the necessary utxos to cover the fees for the transaction
 collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
@@ -138,9 +139,10 @@ addTxCollaterals utxos tx = do
       _ -> Left "There are no utxos to be used as collateral"
 
 -- | We need to balance non ada values, as the cardano-cli is unable to balance them (as of 2021/09/24)
-balanceNonAdaOuts :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
-balanceNonAdaOuts changeAddr utxos tx =
-  let txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
+balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+balanceNonAdaOuts ownPkh utxos tx =
+  let changeAddr = Ledger.pubKeyHashAddress ownPkh
+      txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
       inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
       outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
       nonMintedOutputValue = outputValue `minus` txMint tx
@@ -161,8 +163,8 @@ balanceNonAdaOuts changeAddr utxos tx =
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
 -}
-addSignatories :: Map PubKeyHash PrivateKey -> [PubKeyHash] -> Tx -> Either Text Tx
-addSignatories privKeys pkhs tx =
+addSignatories :: PubKeyHash -> Map PubKeyHash PrivateKey -> [PubKeyHash] -> Tx -> Either Text Tx
+addSignatories ownPkh privKeys pkhs tx =
   foldM
     ( \tx' pkh ->
         case Map.lookup pkh privKeys of
@@ -170,7 +172,7 @@ addSignatories privKeys pkhs tx =
           Nothing -> Left "Signing key not found."
     )
     tx
-    pkhs
+    (ownPkh : pkhs)
 
 showText :: Show a => a -> Text
 showText = Text.pack . show

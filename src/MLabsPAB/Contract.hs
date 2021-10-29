@@ -143,7 +143,6 @@ balanceTx :: ContractEnvironment -> UnbalancedTx -> IO BalanceTxResponse
 balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBalancedTxRequiredSignatories} = do
   -- TODO: getting own address from pub key
   let ownPkh = Ledger.pubKeyHash contractEnv.ceOwnPubKey
-  let ownAddress = Ledger.pubKeyHashAddress ownPkh
   -- TODO: Handle paging
   -- (_, Page {pageItems}) <-
   --   queryChainIndex $
@@ -154,7 +153,7 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBal
   --       Map.fromList $
   --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
 
-  utxos <- CardanoCLI.utxosAt contractEnv.cePABConfig ownAddress
+  utxos <- CardanoCLI.utxosAt contractEnv.cePABConfig $ Ledger.pubKeyHashAddress ownPkh
   privKeys <-
     either (error . Text.unpack) id
       <$> Files.readPrivateKeys contractEnv.cePABConfig
@@ -166,9 +165,9 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBal
           contractEnv.ceMinLovelaces
           contractEnv.ceFees
           utxoIndex
-          ownAddress
+          ownPkh
           privKeys
-          (ownPkh : Map.keys unBalancedTxRequiredSignatories)
+          (Map.keys unBalancedTxRequiredSignatories)
           unBalancedTxTx
 
   case eitherPreBalancedTx of

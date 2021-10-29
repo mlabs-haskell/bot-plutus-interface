@@ -118,7 +118,7 @@ buildTx pabConf ownPubKey tx =
     requiredSigners =
       concatMap
         (\pubKey -> ["--required-signer", signingKeyFilePath pabConf (Ledger.pubKeyHash pubKey)])
-        (ownPubKey : Map.keys (Ledger.txSignatures tx))
+        (Map.keys (Ledger.txSignatures tx))
     opts =
       mconcat
         [ ["transaction", "build", "--alonzo-era"]
