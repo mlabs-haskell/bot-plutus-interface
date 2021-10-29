@@ -88,7 +88,7 @@ redeemerJsonFilePath pabConf (RedeemerHash redeemerHash) =
 signingKeyFilePath :: PABConfig -> PubKeyHash -> Text
 signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
   let h = encodeByteString $ fromBuiltin pubKeyHash
-   in pabConf.pcScriptFileDir <> "/signing-key-" <> h <> ".skey"
+   in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
 
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile :: PABConfig -> MintingPolicy -> IO (Either (FileError ()) Text)
