@@ -143,7 +143,8 @@ handlePABReq contractEnv req = do
 balanceTx :: ContractEnvironment -> UnbalancedTx -> IO BalanceTxResponse
 balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBalancedTxRequiredSignatories} = do
   -- TODO: getting own address from pub key
-  let ownAddress = Ledger.pubKeyHashAddress $ Ledger.pubKeyHash contractEnv.ceOwnPubKey
+  let ownPkh = Ledger.pubKeyHash contractEnv.ceOwnPubKey
+  let ownAddress = Ledger.pubKeyHashAddress ownPkh
   -- TODO: Handle paging
   -- (_, Page {pageItems}) <-
   --   queryChainIndex $
@@ -168,7 +169,7 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBal
           utxoIndex
           ownAddress
           privKeys
-          (Map.keys unBalancedTxRequiredSignatories)
+          (ownPkh : Map.keys unBalancedTxRequiredSignatories)
           unBalancedTxTx
 
   case eitherPreBalancedTx of
