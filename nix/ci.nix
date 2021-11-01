@@ -17,8 +17,7 @@ in rec {
 
   inherit (project) projectCoverageReport;
   inherit (project.mlabs-pab.components) library;
-  inherit (project.mlabs-pab.components.exes) mlabs-pab;
-  inherit (project.mlabs-pad.components.tests) mlabs-pab-test;
+  inherit (project.mlabs-pab.components.tests) mlabs-pab-test;
 
   inherit solc;
 
