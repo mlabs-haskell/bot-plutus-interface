@@ -1,6 +1,7 @@
 module MLabsPAB.Types (
   PABConfig (..),
   CLILocation (..),
+  LogLevel (..),
   ContractEnvironment (..),
   HasDefinitions (..),
   FormSchema,
@@ -38,6 +39,7 @@ data PABConfig = PABConfig
     pcProtocolParamsFile :: !Text
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
+  , pcLogLevel :: !LogLevel
   }
 
 data ContractEnvironment = ContractEnvironment
@@ -54,6 +56,9 @@ data ContractEnvironment = ContractEnvironment
 
 data CLILocation = Local | Remote Text
 
+data LogLevel = Error | Warn | Notice | Info | Debug
+  deriving stock (Eq, Ord, Show)
+
 instance Default PABConfig where
   def =
     PABConfig
@@ -64,4 +69,5 @@ instance Default PABConfig where
       , pcSigningKeyFileDir = "signing-keys"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
+      , pcLogLevel = Info
       }

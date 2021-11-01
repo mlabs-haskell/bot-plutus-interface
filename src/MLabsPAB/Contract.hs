@@ -4,7 +4,7 @@
 module MLabsPAB.Contract (runContract) where
 
 import Control.Lens ((^.))
-import Control.Monad.Freer (Eff, LastMember, interpretM, runM, type (~>))
+import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
@@ -19,10 +19,16 @@ import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import MLabsPAB.CardanoCLI qualified as CardanoCLI
+import MLabsPAB.Effects (
+  PABEffect,
+  chainIndexQuery,
+  createDirectoryIfMissing,
+  handlePABEffect,
+  printLog,
+ )
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.PreBalance qualified as PreBalance
-import MLabsPAB.Types (CLILocation (..), ContractEnvironment (..))
-import Network.HTTP.Client (defaultManagerSettings, newManager)
+import MLabsPAB.Types (ContractEnvironment (..), LogLevel (Debug))
 import Network.HTTP.Types (Status (..))
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
 import Plutus.ChainIndex.Types (TxStatus (..), TxValidity (..))
@@ -38,15 +44,10 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import Servant.Client (
-  BaseUrl (..),
   ClientError (FailureResponse),
   ClientM,
   ResponseF (Response, responseStatusCode),
-  Scheme (Http),
-  mkClientEnv,
-  runClientM,
  )
-import System.Directory (createDirectoryIfMissing)
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Wallet.Emulator.Types (Wallet)
 import Prelude
@@ -59,17 +60,17 @@ runContract ::
   Contract w s e a ->
   IO (Either e a, w)
 runContract contractEnv _ (Contract effs) = do
-  runM $ handleContract contractEnv effs
+  runM $ handlePABEffect contractEnv.cePABConfig $ handleContract contractEnv effs
 
 handleContract ::
   forall w effs e a.
-  (LastMember IO effs, Monoid w) =>
+  (Monoid w) =>
   ContractEnvironment ->
   Eff (ContractEffs w e) a ->
-  Eff effs (Either e a, w)
+  Eff (PABEffect ': effs) (Either e a, w)
 handleContract contractEnv =
   handleResumable contractEnv
-    . handleCheckpoint
+    . handleCheckpointIgnore
     . runWriter
     . handleLogIgnore @Value
     . runError
@@ -77,11 +78,10 @@ handleContract contractEnv =
 
 handleResumable ::
   forall effs.
-  (LastMember IO effs) =>
   ContractEnvironment ->
-  Eff (Resumable PABResp PABReq ': effs) ~> Eff effs
+  Eff (Resumable PABResp PABReq ': effs) ~> Eff (PABEffect ': effs)
 handleResumable contractEnv =
-  interpretM
+  reinterpret
     ( \case
         RRequest o -> handlePABReq contractEnv o
         RSelect -> pure True
@@ -89,9 +89,9 @@ handleResumable contractEnv =
     )
 
 -- | Mocking checkpoint calls
-handleCheckpoint :: forall effs. (LastMember IO effs) => Eff (Checkpoint ': effs) ~> Eff effs
-handleCheckpoint =
-  interpretM
+handleCheckpointIgnore :: Eff (Checkpoint ': effs) ~> Eff effs
+handleCheckpointIgnore =
+  interpret
     ( \case
         DoCheckpoint -> pure ()
         AllocateKey -> pure 1
@@ -103,9 +103,9 @@ handleCheckpoint =
  A few of these effects are not handled, these just return some dummy result to make the
  type system happy
 -}
-handlePABReq :: ContractEnvironment -> PABReq -> IO PABResp
+handlePABReq :: Member PABEffect effs => ContractEnvironment -> PABReq -> Eff effs PABResp
 handlePABReq contractEnv req = do
-  print req
+  printLog Debug $ show req
   resp <- case req of
     ----------------------
     -- Handled requests --
@@ -115,8 +115,8 @@ handlePABReq contractEnv req = do
       pure $ OwnPublicKeyResp contractEnv.ceOwnPubKey
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
-    ChainIndexQueryReq chainIndexQuery ->
-      ChainIndexQueryResp <$> handleChainIndexReq contractEnv chainIndexQuery
+    ChainIndexQueryReq query ->
+      ChainIndexQueryResp <$> handleChainIndexReq contractEnv query
     BalanceTxReq unbalancedTx ->
       BalanceTxResp <$> balanceTx contractEnv unbalancedTx
     WriteBalancedTxReq tx ->
@@ -135,20 +135,20 @@ handlePABReq contractEnv req = do
     -- PosixTimeRangeToContainedSlotRangeReq POSIXTimeRange -> PosixTimeRangeToContainedSlotRangeResp (Either SlotConversionError SlotRange)
     _ -> pure $ OwnContractInstanceIdResp contractEnv.ceContractInstanceId
 
-  print resp
+  printLog Debug $ show resp
   pure resp
 
 -- | This is not identical to the real balancing, we only do a pre-balance at this stage
-balanceTx :: ContractEnvironment -> UnbalancedTx -> IO BalanceTxResponse
+balanceTx :: Member PABEffect effs => ContractEnvironment -> UnbalancedTx -> Eff effs BalanceTxResponse
 balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBalancedTxRequiredSignatories} = do
   -- TODO: getting own address from pub key
   let ownPkh = Ledger.pubKeyHash contractEnv.ceOwnPubKey
   -- TODO: Handle paging
   -- (_, Page {pageItems}) <-
-  --   queryChainIndex $
+  --   chainIndexQueryMany $
   --     ChainIndexClient.getUtxoAtAddress $
   --       addressCredential ownAddress
-  -- chainIndexTxOuts <- traverse (queryChainIndexToMaybe . ChainIndexClient.getTxOut) pageItems
+  -- chainIndexTxOuts <- traverse (chainIndexQueryOne . ChainIndexClient.getTxOut) pageItems
   -- let utxos =
   --       Map.fromList $
   --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
@@ -159,7 +159,7 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBal
       <$> Files.readPrivateKeys contractEnv.cePABConfig
 
   let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex
-  print utxoIndex
+  printLog Debug $ show utxoIndex
   let eitherPreBalancedTx =
         PreBalance.preBalanceTx
           contractEnv.ceMinLovelaces
@@ -175,7 +175,11 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBal
     Right tx -> pure $ BalanceTxSuccess tx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
-writeBalancedTx :: ContractEnvironment -> Tx -> IO WriteBalancedTxResponse
+writeBalancedTx ::
+  Member PABEffect effs =>
+  ContractEnvironment ->
+  Tx ->
+  Eff effs WriteBalancedTxResponse
 writeBalancedTx contractEnv tx = do
   createDirectoryIfMissing False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
 
@@ -203,9 +207,7 @@ writeBalancedTx contractEnv tx = do
     Right _ -> do
       let requiredSigners = Map.keys $ tx ^. Tx.signatures
 
-      case contractEnv.cePABConfig.pcCliLocation of
-        Remote serverIP -> CardanoCLI.uploadFiles contractEnv.cePABConfig serverIP
-        Local -> pure ()
+      CardanoCLI.uploadFiles contractEnv.cePABConfig
 
       CardanoCLI.buildTx contractEnv.cePABConfig contractEnv.ceOwnPubKey tx
       CardanoCLI.signTx contractEnv.cePABConfig requiredSigners
@@ -219,43 +221,44 @@ writeBalancedTx contractEnv tx = do
         Just err -> pure $ WriteBalancedTxFailed $ OtherError err
         Nothing -> pure $ WriteBalancedTxSuccess tx
 
-handleChainIndexReq :: ContractEnvironment -> ChainIndexQuery -> IO ChainIndexResponse
+handleChainIndexReq ::
+  Member PABEffect effs =>
+  ContractEnvironment ->
+  ChainIndexQuery ->
+  Eff effs ChainIndexResponse
 handleChainIndexReq _ = \case
   DatumFromHash datumHash ->
-    DatumHashResponse <$> queryChainIndexToMaybe (ChainIndexClient.getDatum datumHash)
+    DatumHashResponse <$> chainIndexQueryOne (ChainIndexClient.getDatum datumHash)
   ValidatorFromHash validatorHash ->
-    ValidatorHashResponse <$> queryChainIndexToMaybe (ChainIndexClient.getValidator validatorHash)
+    ValidatorHashResponse <$> chainIndexQueryOne (ChainIndexClient.getValidator validatorHash)
   MintingPolicyFromHash mintingPolicyHash ->
     MintingPolicyHashResponse
-      <$> queryChainIndexToMaybe (ChainIndexClient.getMintingPolicy mintingPolicyHash)
+      <$> chainIndexQueryOne (ChainIndexClient.getMintingPolicy mintingPolicyHash)
   StakeValidatorFromHash stakeValidatorHash ->
     StakeValidatorHashResponse
-      <$> queryChainIndexToMaybe (ChainIndexClient.getStakeValidator stakeValidatorHash)
+      <$> chainIndexQueryOne (ChainIndexClient.getStakeValidator stakeValidatorHash)
   RedeemerFromHash _ ->
     pure $ RedeemerHashResponse Nothing
   -- RedeemerFromHash redeemerHash ->
   --   pure $ RedeemerHashResponse (Maybe Redeemer)
   TxOutFromRef txOutRef ->
-    TxOutRefResponse <$> queryChainIndexToMaybe (ChainIndexClient.getTxOut txOutRef)
+    TxOutRefResponse <$> chainIndexQueryOne (ChainIndexClient.getTxOut txOutRef)
   TxFromTxId txId ->
-    TxIdResponse <$> queryChainIndexToMaybe (ChainIndexClient.getTx txId)
+    TxIdResponse <$> chainIndexQueryOne (ChainIndexClient.getTx txId)
   UtxoSetMembership txOutRef ->
-    UtxoSetMembershipResponse <$> queryChainIndex (ChainIndexClient.getIsUtxo txOutRef)
+    UtxoSetMembershipResponse <$> chainIndexQueryMany (ChainIndexClient.getIsUtxo txOutRef)
   UtxoSetAtAddress credential -> do
-    UtxoSetAtResponse <$> queryChainIndex (ChainIndexClient.getUtxoAtAddress credential)
+    UtxoSetAtResponse <$> chainIndexQueryMany (ChainIndexClient.getUtxoAtAddress credential)
   GetTip ->
-    GetTipResponse <$> queryChainIndex ChainIndexClient.getTip
+    GetTipResponse <$> chainIndexQueryMany ChainIndexClient.getTip
 
-queryChainIndex :: ClientM a -> IO a
-queryChainIndex endpoint = do
-  manager' <- newManager defaultManagerSettings
-  res <- runClientM endpoint $ mkClientEnv manager' $ BaseUrl Http "localhost" 9083 ""
-  pure $ either (error . show) id res
+chainIndexQueryMany :: Member PABEffect effs => ClientM a -> Eff effs a
+chainIndexQueryMany endpoint =
+  either (error . show) id <$> chainIndexQuery endpoint
 
-queryChainIndexToMaybe :: ClientM a -> IO (Maybe a)
-queryChainIndexToMaybe endpoint = do
-  manager' <- newManager defaultManagerSettings
-  res <- runClientM endpoint $ mkClientEnv manager' $ BaseUrl Http "localhost" 9083 ""
+chainIndexQueryOne :: Member PABEffect effs => ClientM a -> Eff effs (Maybe a)
+chainIndexQueryOne endpoint = do
+  res <- chainIndexQuery endpoint
   case res of
     Right result -> pure $ Just result
     Left failureResp@(FailureResponse _ Response {responseStatusCode})

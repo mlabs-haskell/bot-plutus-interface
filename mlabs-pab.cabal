@@ -76,6 +76,7 @@ library
   import:          common-lang
   exposed-modules:
     MLabsPAB
+    MLabsPAB.Effects
     MLabsPAB.Types
 
   other-modules:

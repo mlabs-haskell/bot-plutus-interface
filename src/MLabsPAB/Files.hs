@@ -19,10 +19,7 @@ import Cardano.Api (
   PaymentKey,
   SigningKey,
   getVerificationKey,
-  readFileTextEnvelope,
   serialiseToRawBytes,
-  writeFileJSON,
-  writeFileTextEnvelope,
  )
 import Cardano.Api.Shelley (
   PlutusScript (PlutusScriptSerialised),
@@ -33,6 +30,7 @@ import Cardano.Api.Shelley (
  )
 import Cardano.Crypto.Wallet qualified as Crypto
 import Codec.Serialise qualified as Codec
+import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
@@ -46,6 +44,13 @@ import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Crypto (PrivateKey, PubKeyHash (PubKeyHash))
 import Ledger.Value qualified as Value
+import MLabsPAB.Effects (
+  PABEffect,
+  listDirectory,
+  readFileTextEnvelope,
+  writeFileJSON,
+  writeFileTextEnvelope,
+ )
 import MLabsPAB.Types (PABConfig)
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
@@ -60,7 +65,6 @@ import Plutus.V1.Ledger.Api (
  )
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
-import System.Directory (listDirectory)
 import Prelude
 
 -- | Filename of a minting policy script
@@ -91,36 +95,47 @@ signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
    in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
 
 -- | Compiles and writes a script file under the given folder
-writePolicyScriptFile :: PABConfig -> MintingPolicy -> IO (Either (FileError ()) Text)
+writePolicyScriptFile :: Member PABEffect effs => PABConfig -> MintingPolicy -> Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
   let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
       filepath = policyScriptFilePath pabConf (Ledger.scriptCurrencySymbol mintingPolicy)
    in fmap (const filepath) <$> writeFileTextEnvelope (Text.unpack filepath) Nothing script
 
 -- | Compiles and writes a script file under the given folder
-writeValidatorScriptFile :: PABConfig -> Validator -> IO (Either (FileError ()) Text)
+writeValidatorScriptFile ::
+  Member PABEffect effs =>
+  PABConfig ->
+  Validator ->
+  Eff effs (Either (FileError ()) Text)
 writeValidatorScriptFile pabConf validatorScript =
   let script = serialiseScript $ Ledger.unValidatorScript validatorScript
       filepath = validatorScriptFilePath pabConf (Ledger.validatorHash validatorScript)
    in fmap (const filepath) <$> writeFileTextEnvelope (Text.unpack filepath) Nothing script
 
 writeAll ::
+  Member PABEffect effs =>
   PABConfig ->
   [MintingPolicy] ->
   [Validator] ->
   [Datum] ->
   [Redeemer] ->
-  IO (Either (FileError ()) [Text])
-writeAll pabConf policyScripts validatorScripts datums redeemers =
-  sequence
-    <$> mconcat
-      [ mapM (writePolicyScriptFile pabConf) policyScripts
-      , mapM (writeValidatorScriptFile pabConf) validatorScripts
-      , mapM (writeDatumJsonFile pabConf) datums
-      , mapM (writeRedeemerJsonFile pabConf) redeemers
-      ]
+  Eff effs (Either (FileError ()) [Text])
+writeAll pabConf policyScripts validatorScripts datums redeemers = do
+  results <-
+    sequence $
+      mconcat
+        [ map (writePolicyScriptFile pabConf) policyScripts
+        , map (writeValidatorScriptFile pabConf) validatorScripts
+        , map (writeDatumJsonFile pabConf) datums
+        , map (writeRedeemerJsonFile pabConf) redeemers
+        ]
 
-readPrivateKeys :: PABConfig -> IO (Either Text (Map PubKeyHash PrivateKey))
+  pure $ sequence results
+
+readPrivateKeys ::
+  Member PABEffect effs =>
+  PABConfig ->
+  Eff effs (Either Text (Map PubKeyHash PrivateKey))
 readPrivateKeys pabConf = do
   files <- listDirectory $ Text.unpack pabConf.pcSigningKeyFileDir
   let sKeyFiles =
@@ -138,7 +153,7 @@ readPrivateKeys pabConf = do
         )
         Map.empty
 
-readPrivateKey :: FilePath -> IO (Either Text PrivateKey)
+readPrivateKey :: Member PABEffect effs => FilePath -> Eff effs (Either Text PrivateKey)
 readPrivateKey filePath = do
   pKey <- mapLeft (Text.pack . show) <$> readFileTextEnvelope (AsSigningKey AsPaymentKey) filePath
   pure $ fromCardanoPaymentKey =<< pKey
@@ -172,13 +187,21 @@ serialiseScript =
     . LazyByteString.toStrict
     . Codec.serialise
 
-writeDatumJsonFile :: PABConfig -> Datum -> IO (Either (FileError ()) Text)
+writeDatumJsonFile ::
+  Member PABEffect effs =>
+  PABConfig ->
+  Datum ->
+  Eff effs (Either (FileError ()) Text)
 writeDatumJsonFile pabConf datum =
   let json = dataToJson $ getDatum datum
       filepath = datumJsonFilePath pabConf (Ledger.datumHash datum)
    in fmap (const filepath) <$> writeFileJSON (Text.unpack filepath) json
 
-writeRedeemerJsonFile :: PABConfig -> Redeemer -> IO (Either (FileError ()) Text)
+writeRedeemerJsonFile ::
+  Member PABEffect effs =>
+  PABConfig ->
+  Redeemer ->
+  Eff effs (Either (FileError ()) Text)
 writeRedeemerJsonFile pabConf redeemer =
   let json = dataToJson $ getRedeemer redeemer
       filepath = redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)

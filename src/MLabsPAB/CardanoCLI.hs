@@ -12,6 +12,7 @@ module MLabsPAB.CardanoCLI (
 ) where
 
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
+import Control.Monad.Freer (Eff, Member)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
 import Data.Either.Combinators (rightToMaybe)
@@ -43,6 +44,7 @@ import Ledger.Tx (
 import Ledger.TxId (TxId (..))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
+import MLabsPAB.Effects (PABEffect, ShellArgs (..), callCommand, uploadDir)
 import MLabsPAB.Files (
   datumJsonFilePath,
   policyScriptFilePath,
@@ -50,51 +52,27 @@ import MLabsPAB.Files (
   signingKeyFilePath,
   validatorScriptFilePath,
  )
-import MLabsPAB.Types (
-  CLILocation (..),
-  PABConfig (..),
- )
+import MLabsPAB.Types (PABConfig)
 import MLabsPAB.UtxoParser qualified as UtxoParser
 import Plutus.Contract.CardanoAPI (toCardanoAddress)
 import Plutus.V1.Ledger.Api (CurrencySymbol (..), TokenName (..))
 import PlutusTx.Builtins (fromBuiltin)
-import System.Process (readProcess)
 import Prelude
 
-data ShellCommand a = ShellCommand
-  { cmdName :: Text
-  , cmdArgs :: [Text]
-  , cmdOutParser :: String -> a
-  }
-
-callCommand :: PABConfig -> ShellCommand a -> IO a
-callCommand PABConfig {pcCliLocation} ShellCommand {cmdName, cmdArgs, cmdOutParser} =
-  case pcCliLocation of
-    Local -> cmdOutParser <$> readProcess (Text.unpack cmdName) (map Text.unpack cmdArgs) ""
-    Remote serverIP ->
-      cmdOutParser
-        <$> readProcess
-          "ssh"
-          (map Text.unpack [serverIP, Text.unwords $ "source ~/.bash_profile;" : cmdName : cmdArgs])
-          ""
-
--- | Upload script files via ssh
-uploadFiles :: PABConfig -> Text -> IO ()
-uploadFiles pabConf serverIP =
+-- | Upload script files to remote server
+uploadFiles :: Member PABEffect effs => PABConfig -> Eff effs ()
+uploadFiles pabConf =
   mapM_
     uploadDir
     [ pabConf.pcScriptFileDir
     , pabConf.pcSigningKeyFileDir
     ]
-  where
-    uploadDir dir = readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ serverIP <> ":$HOME"] ""
 
 -- | Getting all available UTXOs at an address (all utxos are assumed to be PublicKeyChainIndexTxOut)
-utxosAt :: PABConfig -> Address -> IO (Map TxOutRef ChainIndexTxOut)
+utxosAt :: Member PABEffect effs => PABConfig -> Address -> Eff effs (Map TxOutRef ChainIndexTxOut)
 utxosAt pabConf address = do
   callCommand
-    pabConf
-    ShellCommand
+    ShellArgs
       { cmdName = "cardano-cli"
       , cmdArgs =
           mconcat
@@ -110,9 +88,9 @@ utxosAt pabConf address = do
     toUtxo line = parseOnly (UtxoParser.utxoMapParser address) line
 
 -- | Build a tx body and write it to disk
-buildTx :: PABConfig -> PubKey -> Tx -> IO ()
+buildTx :: Member PABEffect effs => PABConfig -> PubKey -> Tx -> Eff effs ()
 buildTx pabConf ownPubKey tx =
-  callCommand pabConf $ ShellCommand "cardano-cli" opts (const ())
+  callCommand $ ShellArgs "cardano-cli" opts (const ())
   where
     ownAddr = Ledger.pubKeyHashAddress $ Ledger.pubKeyHash ownPubKey
     requiredSigners =
@@ -136,10 +114,10 @@ buildTx pabConf ownPubKey tx =
         ]
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
-signTx :: PABConfig -> [PubKey] -> IO ()
+signTx :: Member PABEffect effs => PABConfig -> [PubKey] -> Eff effs ()
 signTx pabConf pubKeys =
-  callCommand pabConf $
-    ShellCommand
+  callCommand $
+    ShellArgs
       "cardano-cli"
       ( mconcat
           [ ["transaction", "sign"]
@@ -156,10 +134,10 @@ signTx pabConf pubKeys =
         pubKeys
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
-submitTx :: PABConfig -> IO (Maybe Text)
+submitTx :: Member PABEffect effs => PABConfig -> Eff effs (Maybe Text)
 submitTx pabConf =
-  callCommand pabConf $
-    ShellCommand
+  callCommand $
+    ShellArgs
       "cardano-cli"
       ( mconcat
           [ ["transaction", "submit"]
@@ -228,7 +206,7 @@ mintOpts pabConf mintingPolicies redeemers mintValue =
     , if not (Value.isZero mintValue)
         then
           [ "--mint"
-          , quotes $ valueToCliArg mintValue
+          , valueToCliArg mintValue
           ]
         else []
     ]
@@ -238,12 +216,11 @@ txOutOpts pabConf =
   concatMap
     ( \TxOut {txOutAddress, txOutValue} ->
         [ "--tx-out"
-        , quotes $
-            Text.intercalate
-              "+"
-              [ unsafeSerialiseAddress pabConf txOutAddress
-              , valueToCliArg txOutValue
-              ]
+        , Text.intercalate
+            "+"
+            [ unsafeSerialiseAddress pabConf txOutAddress
+            , valueToCliArg txOutValue
+            ]
         ]
     )
 
@@ -269,9 +246,6 @@ flatValueToCliArg (curSymbol, name, amount)
 valueToCliArg :: Value -> Text
 valueToCliArg val =
   Text.intercalate " + " $ map flatValueToCliArg $ sort $ Value.flattenValue val
-
-quotes :: Text -> Text
-quotes str = "\"" <> str <> "\""
 
 unsafeSerialiseAddress :: PABConfig -> Address -> Text
 unsafeSerialiseAddress pabConf address =
