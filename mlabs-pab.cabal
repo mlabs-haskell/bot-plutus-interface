@@ -76,13 +76,14 @@ library
   import:          common-lang
   exposed-modules:
     MLabsPAB
+    MLabsPAB.ChainIndex
+    MLabsPAB.Contract
     MLabsPAB.Effects
+    MLabsPAB.Files
     MLabsPAB.Types
 
   other-modules:
     MLabsPAB.CardanoCLI
-    MLabsPAB.Contract
-    MLabsPAB.Files
     MLabsPAB.PreBalance
     MLabsPAB.Server
     MLabsPAB.UtxoParser
@@ -141,14 +142,22 @@ test-suite mlabs-pab-test
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
+  other-modules:
+    Spec.MLabsPAB.Contract
+    Spec.Mock
+
   build-depends:
     , aeson                 ^>=1.5.0.0
     , attoparsec
     , base
     , base-compat
     , bytestring            ^>=0.10.12.0
+    , cardano-api
+    , cardano-crypto-class
+    , cardano-ledger-core
     , cardano-prelude
     , containers
+    , data-default
     , data-default-class
     , either
     , freer-extras
@@ -156,6 +165,7 @@ test-suite mlabs-pab-test
     , generic-arbitrary
     , lens
     , mlabs-pab
+    , neat-interpolation
     , playground-common
     , plutus-contract
     , plutus-core
@@ -170,10 +180,13 @@ test-suite mlabs-pab-test
     , row-types
     , serialise
     , servant
+    , servant-client
     , servant-server
     , tasty
+    , tasty-hunit
     , tasty-quickcheck
     , text                  ^>=1.2.4.0
+    , uuid
     , vector                ^>=0.12.1.2
     , wai
     , warp

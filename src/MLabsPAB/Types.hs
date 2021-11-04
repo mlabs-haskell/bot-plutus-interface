@@ -41,6 +41,7 @@ data PABConfig = PABConfig
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
   }
+  deriving stock (Show, Eq)
 
 data ContractEnvironment = ContractEnvironment
   { cePABConfig :: PABConfig
@@ -48,13 +49,15 @@ data ContractEnvironment = ContractEnvironment
   , ceWallet :: Wallet
   , -- | TODO: We should get this from the wallet, once the integration works
     ceOwnPubKey :: PubKey
-  , -- | TODO: We should be able acalculate this
+  , -- | TODO: We should be able to calculate this
     ceFees :: Integer
-  , -- | TODO: We should be able acalculate this
+  , -- | TODO: We should be able to calculate this
     ceMinLovelaces :: Integer
   }
+  deriving stock (Show, Eq)
 
 data CLILocation = Local | Remote Text
+  deriving stock (Show, Eq)
 
 data LogLevel = Error | Warn | Notice | Info | Debug
   deriving stock (Eq, Ord, Show)

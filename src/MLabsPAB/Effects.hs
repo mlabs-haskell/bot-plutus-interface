@@ -4,7 +4,7 @@
 
 module MLabsPAB.Effects (
   createDirectoryIfMissing,
-  chainIndexQuery,
+  queryChainIndex,
   listDirectory,
   threadDelay,
   uploadDir,
@@ -27,16 +27,9 @@ import Control.Monad.Freer.TH (makeEffect)
 import Data.Aeson qualified as JSON
 import Data.Text (Text)
 import Data.Text qualified as Text
+import MLabsPAB.ChainIndex (handleChainIndexReq)
 import MLabsPAB.Types (CLILocation (..), LogLevel (..), PABConfig (..))
-import Network.HTTP.Client (defaultManagerSettings, newManager)
-import Servant.Client (
-  BaseUrl (..),
-  ClientError,
-  ClientM,
-  Scheme (Http),
-  mkClientEnv,
-  runClientM,
- )
+import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import System.Directory qualified as Directory
 import System.Process (readProcess)
 import Prelude hiding (readFile)
@@ -69,7 +62,7 @@ data PABEffect r where
     PABEffect (Either (FileError ()) ())
   ListDirectory :: FilePath -> PABEffect [FilePath]
   UploadDir :: Text -> PABEffect ()
-  ChainIndexQuery :: ClientM a -> PABEffect (Either ClientError a)
+  QueryChainIndex :: ChainIndexQuery -> PABEffect ChainIndexResponse
 
 handlePABEffect :: forall effs. (LastMember IO effs) => PABConfig -> Eff (PABEffect ': effs) ~> Eff effs
 handlePABEffect pabConf =
@@ -93,8 +86,8 @@ handlePABEffect pabConf =
             Local -> pure ()
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
-        ChainIndexQuery endpoint ->
-          chainIndexQuery' endpoint
+        QueryChainIndex query ->
+          handleChainIndexReq query
     )
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
@@ -114,10 +107,5 @@ callRemoteCommand ipAddr ShellArgs {cmdName, cmdArgs, cmdOutParser} =
       ""
 quotes :: Text -> Text
 quotes str = "\"" <> str <> "\""
-
-chainIndexQuery' :: ClientM a -> IO (Either ClientError a)
-chainIndexQuery' endpoint = do
-  manager' <- newManager defaultManagerSettings
-  runClientM endpoint $ mkClientEnv manager' $ BaseUrl Http "localhost" 9083 ""
 
 makeEffect ''PABEffect

@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 
-module MLabsPAB.Contract (runContract) where
+module MLabsPAB.Contract (runContract, handleContract) where
 
 import Control.Lens ((^.))
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, type (~>))
@@ -21,33 +21,24 @@ import Ledger.Tx qualified as Tx
 import MLabsPAB.CardanoCLI qualified as CardanoCLI
 import MLabsPAB.Effects (
   PABEffect,
-  chainIndexQuery,
   createDirectoryIfMissing,
   handlePABEffect,
   printLog,
+  queryChainIndex,
  )
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.PreBalance qualified as PreBalance
 import MLabsPAB.Types (ContractEnvironment (..), LogLevel (Debug))
-import Network.HTTP.Types (Status (..))
-import Plutus.ChainIndex.Client qualified as ChainIndexClient
 import Plutus.ChainIndex.Types (TxStatus (..), TxValidity (..))
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (
   BalanceTxResponse (..),
-  ChainIndexQuery (..),
-  ChainIndexResponse (..),
   PABReq (..),
   PABResp (..),
   WriteBalancedTxResponse (..),
  )
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
-import Servant.Client (
-  ClientError (FailureResponse),
-  ClientM,
-  ResponseF (Response, responseStatusCode),
- )
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Wallet.Emulator.Types (Wallet)
 import Prelude
@@ -116,7 +107,7 @@ handlePABReq contractEnv req = do
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
-      ChainIndexQueryResp <$> handleChainIndexReq contractEnv query
+      ChainIndexQueryResp <$> queryChainIndex query
     BalanceTxReq unbalancedTx ->
       BalanceTxResp <$> balanceTx contractEnv unbalancedTx
     WriteBalancedTxReq tx ->
@@ -220,48 +211,3 @@ writeBalancedTx contractEnv tx = do
       case result of
         Just err -> pure $ WriteBalancedTxFailed $ OtherError err
         Nothing -> pure $ WriteBalancedTxSuccess tx
-
-handleChainIndexReq ::
-  Member PABEffect effs =>
-  ContractEnvironment ->
-  ChainIndexQuery ->
-  Eff effs ChainIndexResponse
-handleChainIndexReq _ = \case
-  DatumFromHash datumHash ->
-    DatumHashResponse <$> chainIndexQueryOne (ChainIndexClient.getDatum datumHash)
-  ValidatorFromHash validatorHash ->
-    ValidatorHashResponse <$> chainIndexQueryOne (ChainIndexClient.getValidator validatorHash)
-  MintingPolicyFromHash mintingPolicyHash ->
-    MintingPolicyHashResponse
-      <$> chainIndexQueryOne (ChainIndexClient.getMintingPolicy mintingPolicyHash)
-  StakeValidatorFromHash stakeValidatorHash ->
-    StakeValidatorHashResponse
-      <$> chainIndexQueryOne (ChainIndexClient.getStakeValidator stakeValidatorHash)
-  RedeemerFromHash _ ->
-    pure $ RedeemerHashResponse Nothing
-  -- RedeemerFromHash redeemerHash ->
-  --   pure $ RedeemerHashResponse (Maybe Redeemer)
-  TxOutFromRef txOutRef ->
-    TxOutRefResponse <$> chainIndexQueryOne (ChainIndexClient.getTxOut txOutRef)
-  TxFromTxId txId ->
-    TxIdResponse <$> chainIndexQueryOne (ChainIndexClient.getTx txId)
-  UtxoSetMembership txOutRef ->
-    UtxoSetMembershipResponse <$> chainIndexQueryMany (ChainIndexClient.getIsUtxo txOutRef)
-  UtxoSetAtAddress credential -> do
-    UtxoSetAtResponse <$> chainIndexQueryMany (ChainIndexClient.getUtxoAtAddress credential)
-  GetTip ->
-    GetTipResponse <$> chainIndexQueryMany ChainIndexClient.getTip
-
-chainIndexQueryMany :: Member PABEffect effs => ClientM a -> Eff effs a
-chainIndexQueryMany endpoint =
-  either (error . show) id <$> chainIndexQuery endpoint
-
-chainIndexQueryOne :: Member PABEffect effs => ClientM a -> Eff effs (Maybe a)
-chainIndexQueryOne endpoint = do
-  res <- chainIndexQuery endpoint
-  case res of
-    Right result -> pure $ Just result
-    Left failureResp@(FailureResponse _ Response {responseStatusCode})
-      | statusCode responseStatusCode == 404 -> pure Nothing
-      | otherwise -> error (show failureResp)
-    Left failureResp -> error (show failureResp)

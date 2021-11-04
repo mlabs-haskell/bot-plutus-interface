@@ -10,6 +10,7 @@ module MLabsPAB.Files (
   writeRedeemerJsonFile,
   writeValidatorScriptFile,
   datumJsonFilePath,
+  fromCardanoPaymentKey,
   writeDatumJsonFile,
 ) where
 
