@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Spec.Mock (
+module Spec.MockContract (
   signingKey1,
   signingKey2,
   runContractPure,
@@ -11,8 +11,10 @@ module Spec.Mock (
   MockContractState (..),
   pubKey1,
   pubKey2,
+  pubKey3,
   pkh1,
   pkh2,
+  pkh3,
 ) where
 
 import Cardano.Api (
@@ -56,17 +58,20 @@ import Wallet.Emulator (knownWallet)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 
-signingKey1, signingKey2 :: SigningKey PaymentKey
+signingKey1, signingKey2, signingKey3 :: SigningKey PaymentKey
 signingKey1 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 0
 signingKey2 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 1
+signingKey3 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 2
 
-pubKey1, pubKey2 :: PubKey
+pubKey1, pubKey2, pubKey3 :: PubKey
 pubKey1 = toPubKey signingKey1
 pubKey2 = toPubKey signingKey2
+pubKey3 = toPubKey signingKey3
 
-pkh1, pkh2 :: PubKeyHash
+pkh1, pkh2, pkh3 :: PubKeyHash
 pkh1 = Ledger.pubKeyHash pubKey1
 pkh2 = Ledger.pubKeyHash pubKey2
+pkh3 = Ledger.pubKeyHash pubKey3
 
 toPubKey :: SigningKey PaymentKey -> PubKey
 toPubKey = Ledger.toPublicKey . fromRight (error "Impossible happened") . Files.fromCardanoPaymentKey
@@ -91,7 +96,8 @@ data MockContractState = MockContractState
 instance Default MockContractState where
   def =
     MockContractState
-      { files = Map.fromList $ map (toSigningKeyFile "signing-keys") [signingKey1, signingKey1]
+      { files = Map.fromList $ map (toSigningKeyFile "signing-keys") 
+          [signingKey1, signingKey2, signingKey3]
       , commandHistory = mempty
       , contractEnv = def
       }

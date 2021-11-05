@@ -144,7 +144,7 @@ test-suite mlabs-pab-test
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
     Spec.MLabsPAB.Contract
-    Spec.Mock
+    Spec.MockContract
 
   build-depends:
     , aeson                 ^>=1.5.0.0
