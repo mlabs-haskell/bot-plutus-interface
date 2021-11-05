@@ -96,8 +96,11 @@ data MockContractState = MockContractState
 instance Default MockContractState where
   def =
     MockContractState
-      { files = Map.fromList $ map (toSigningKeyFile "signing-keys") 
-          [signingKey1, signingKey2, signingKey3]
+      { files =
+          Map.fromList $
+            map
+              (toSigningKeyFile "signing-keys")
+              [signingKey1, signingKey2, signingKey3]
       , commandHistory = mempty
       , contractEnv = def
       }
