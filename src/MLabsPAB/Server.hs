@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
 module MLabsPAB.Server (app, State, initState) where
@@ -58,11 +59,11 @@ server :: HasDefinitions t => PABConfig -> State -> Server (API t)
 server pabConfig state =
   websocketHandler state :<|> activateContractHandler pabConfig state
 
-apiProxy :: Proxy t -> Proxy (API t)
-apiProxy _ = Proxy
+apiProxy :: forall t. Proxy (API t)
+apiProxy = Proxy
 
-app :: (HasDefinitions t, FromJSON t) => PABConfig -> Proxy t -> State -> Application
-app pabConfig contractDef state = serve (apiProxy contractDef) $ server pabConfig state
+app :: forall t. (HasDefinitions t, FromJSON t) => PABConfig -> State -> Application
+app pabConfig state = serve (apiProxy @t) $ server pabConfig state
 
 -- | Mock websocket handler (can only send ContractFinished message)
 websocketHandler :: State -> PendingConnection -> Handler ()
