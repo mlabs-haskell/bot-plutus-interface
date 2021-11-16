@@ -6,7 +6,6 @@ let
   project = import ./haskell.nix {
     inherit sourcesFile system sources plutus deferPluginErrors doCoverage;
   };
-  npmlock2nix = plutus.pkgs.callPackage sources.npmlock2nix { };
 in rec {
   # What should CI build?
 
