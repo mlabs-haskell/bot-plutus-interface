@@ -39,9 +39,11 @@ import Data.Aeson qualified as JSON
 import Data.ByteString qualified as ByteString
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight, mapLeft, maybeToRight)
+import Data.Kind (Type)
 import Data.List (isPrefixOf)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.UUID qualified as UUID
@@ -118,7 +120,7 @@ instance Default ContractEnvironment where
 type MockContract a = Eff '[Error (), State MockContractState, Writer [String]] a
 
 runContractPure ::
-  forall w s e a.
+  forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
   (Monoid w) =>
   Contract w s e a ->
   MockConfig ->
@@ -128,7 +130,7 @@ runContractPure contract config initContractState =
   snd . fst $ runContractPure' contract config initContractState
 
 runContractPure' ::
-  forall w s e a.
+  forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
   (Monoid w) =>
   Contract w s e a ->
   MockConfig ->
@@ -138,6 +140,7 @@ runContractPure' (Contract effs) config initContractState =
   runPABEffectPure config initContractState $ handleContract initContractState.contractEnv effs
 
 runPABEffectPure ::
+  forall (a :: Type).
   MockConfig ->
   MockContractState ->
   Eff '[PABEffect] a ->
@@ -159,7 +162,11 @@ runPABEffectPure config initState req =
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
 
-mockCallCommand :: ((Text, [Text]) -> MockContract String) -> ShellArgs a -> MockContract a
+mockCallCommand ::
+  forall (a :: Type).
+  ((Text, [Text]) -> MockContract String) ->
+  ShellArgs a ->
+  MockContract a
 mockCallCommand handleCliCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
   tell $ map Text.unpack cmdArgs
   modify (\st -> st {commandHistory = cmdName <> " " <> Text.unwords cmdArgs : st.commandHistory})
@@ -176,6 +183,7 @@ mockThreadDelay :: Int -> MockContract ()
 mockThreadDelay _ = pure ()
 
 mockReadFileTextEnvelope ::
+  forall (a :: Type).
   HasTextEnvelope a =>
   AsType a ->
   FilePath ->
@@ -196,6 +204,7 @@ mockWriteFileJSON :: FilePath -> JSON.Value -> MockContract (Either (FileError (
 mockWriteFileJSON _ _ = pure $ Right ()
 
 mockWriteFileTextEnvelope ::
+  forall (a :: Type).
   HasTextEnvelope a =>
   FilePath ->
   Maybe TextEnvelopeDescr ->

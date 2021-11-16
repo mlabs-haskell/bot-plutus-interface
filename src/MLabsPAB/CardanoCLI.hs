@@ -16,6 +16,7 @@ import Control.Monad.Freer (Eff, Member)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
 import Data.Either.Combinators (rightToMaybe)
+import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -60,7 +61,11 @@ import PlutusTx.Builtins (fromBuiltin)
 import Prelude
 
 -- | Upload script files to remote server
-uploadFiles :: Member PABEffect effs => PABConfig -> Eff effs ()
+uploadFiles ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  Eff effs ()
 uploadFiles pabConf =
   mapM_
     uploadDir
@@ -69,7 +74,12 @@ uploadFiles pabConf =
     ]
 
 -- | Getting all available UTXOs at an address (all utxos are assumed to be PublicKeyChainIndexTxOut)
-utxosAt :: Member PABEffect effs => PABConfig -> Address -> Eff effs (Map TxOutRef ChainIndexTxOut)
+utxosAt ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  Address ->
+  Eff effs (Map TxOutRef ChainIndexTxOut)
 utxosAt pabConf address = do
   callCommand
     ShellArgs
@@ -88,7 +98,13 @@ utxosAt pabConf address = do
     toUtxo line = parseOnly (UtxoParser.utxoMapParser address) line
 
 -- | Build a tx body and write it to disk
-buildTx :: Member PABEffect effs => PABConfig -> PubKey -> Tx -> Eff effs ()
+buildTx ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  PubKey ->
+  Tx ->
+  Eff effs ()
 buildTx pabConf ownPubKey tx =
   callCommand $ ShellArgs "cardano-cli" opts (const ())
   where
@@ -114,7 +130,12 @@ buildTx pabConf ownPubKey tx =
         ]
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
-signTx :: Member PABEffect effs => PABConfig -> [PubKey] -> Eff effs ()
+signTx ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  [PubKey] ->
+  Eff effs ()
 signTx pabConf pubKeys =
   callCommand $
     ShellArgs
@@ -134,7 +155,11 @@ signTx pabConf pubKeys =
         pubKeys
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
-submitTx :: Member PABEffect effs => PABConfig -> Eff effs (Maybe Text)
+submitTx ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  Eff effs (Maybe Text)
 submitTx pabConf =
   callCommand $
     ShellArgs
@@ -253,7 +278,7 @@ unsafeSerialiseAddress pabConf address =
     Right a -> a
     Left _ -> error "Couldn't create address"
 
-showText :: Show a => a -> Text
+showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
 
 -- -- TODO: There is some issue with this function, the generated wallet key is incorrect

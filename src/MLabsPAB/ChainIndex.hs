@@ -2,6 +2,7 @@
 
 module MLabsPAB.ChainIndex (handleChainIndexReq) where
 
+import Data.Kind (Type)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
@@ -44,16 +45,16 @@ handleChainIndexReq = \case
   GetTip ->
     GetTipResponse <$> chainIndexQueryMany ChainIndexClient.getTip
 
-chainIndexQuery' :: ClientM a -> IO (Either ClientError a)
+chainIndexQuery' :: forall (a :: Type). ClientM a -> IO (Either ClientError a)
 chainIndexQuery' endpoint = do
   manager' <- newManager defaultManagerSettings
   runClientM endpoint $ mkClientEnv manager' $ BaseUrl Http "localhost" 9083 ""
 
-chainIndexQueryMany :: ClientM a -> IO a
+chainIndexQueryMany :: forall (a :: Type). ClientM a -> IO a
 chainIndexQueryMany endpoint =
   either (error . show) id <$> chainIndexQuery' endpoint
 
-chainIndexQueryOne :: ClientM a -> IO (Maybe a)
+chainIndexQueryOne :: forall (a :: Type). ClientM a -> IO (Maybe a)
 chainIndexQueryOne endpoint = do
   res <- chainIndexQuery' endpoint
   case res of

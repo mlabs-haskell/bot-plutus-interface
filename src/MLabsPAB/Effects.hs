@@ -25,6 +25,7 @@ import Control.Monad (void, when)
 import Control.Monad.Freer (Eff, LastMember, interpretM, type (~>))
 import Control.Monad.Freer.TH (makeEffect)
 import Data.Aeson qualified as JSON
+import Data.Kind (Type)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import MLabsPAB.ChainIndex (handleChainIndexReq)
@@ -64,7 +65,11 @@ data PABEffect r where
   UploadDir :: Text -> PABEffect ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect ChainIndexResponse
 
-handlePABEffect :: forall effs. (LastMember IO effs) => PABConfig -> Eff (PABEffect ': effs) ~> Eff effs
+handlePABEffect ::
+  forall (effs :: [Type -> Type]).
+  (LastMember IO effs) =>
+  PABConfig ->
+  Eff (PABEffect ': effs) ~> Eff effs
 handlePABEffect pabConf =
   interpretM
     ( \case
@@ -94,11 +99,11 @@ printLog' :: LogLevel -> LogLevel -> String -> IO ()
 printLog' logLevelSetting msgLogLvl msg =
   when (logLevelSetting >= msgLogLvl) $ putStrLn msg
 
-callLocalCommand :: ShellArgs a -> IO a
+callLocalCommand :: forall (a :: Type). ShellArgs a -> IO a
 callLocalCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} =
   cmdOutParser <$> readProcess (Text.unpack cmdName) (map Text.unpack cmdArgs) ""
 
-callRemoteCommand :: Text -> ShellArgs a -> IO a
+callRemoteCommand :: forall (a :: Type). Text -> ShellArgs a -> IO a
 callRemoteCommand ipAddr ShellArgs {cmdName, cmdArgs, cmdOutParser} =
   cmdOutParser
     <$> readProcess

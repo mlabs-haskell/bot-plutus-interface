@@ -4,6 +4,7 @@ module MLabsPAB.PreBalance (
 
 import Control.Monad (foldM)
 import Data.Either.Combinators (rightToMaybe)
+import Data.Kind (Type)
 import Data.List (partition)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -174,7 +175,7 @@ addSignatories ownPkh privKeys pkhs tx =
     tx
     (ownPkh : pkhs)
 
-showText :: Show a => a -> Text
+showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
 
 -- | Filter a value to contain only non ada assets

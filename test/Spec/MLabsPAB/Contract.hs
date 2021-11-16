@@ -39,7 +39,7 @@ sendAda =
               ("cardano-cli", "query" : "utxo" : _) ->
                 pure $
                   queryUtxoOut
-                    [("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5", 0, 1250)]
+                    [("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5", 0, 1300)]
               ("cardano-cli", "transaction" : "build" : _) ->
                 pure ""
               ("cardano-cli", "transaction" : "sign" : _) ->
@@ -81,7 +81,7 @@ multisigSupport =
               ("cardano-cli", "query" : "utxo" : _) ->
                 pure $
                   queryUtxoOut
-                    [("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5", 0, 1250)]
+                    [("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5", 0, 1300)]
               ("cardano-cli", "transaction" : "build" : _) ->
                 pure ""
               ("cardano-cli", "transaction" : "sign" : _) ->

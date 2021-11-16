@@ -10,8 +10,10 @@ import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (runWriter)
 import Data.Aeson (Value)
+import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
+import Data.Row (Row)
 import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Ledger qualified
@@ -44,7 +46,7 @@ import Wallet.Emulator.Types (Wallet)
 import Prelude
 
 runContract ::
-  forall w s e a.
+  forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
   (Monoid w) =>
   ContractEnvironment ->
   Wallet ->
@@ -54,7 +56,7 @@ runContract contractEnv _ (Contract effs) = do
   runM $ handlePABEffect contractEnv.cePABConfig $ handleContract contractEnv effs
 
 handleContract ::
-  forall w effs e a.
+  forall (w :: Type) (e :: Type) (a :: Type) (effs :: [Type -> Type]).
   (Monoid w) =>
   ContractEnvironment ->
   Eff (ContractEffs w e) a ->
@@ -68,7 +70,7 @@ handleContract contractEnv =
     . raiseEnd
 
 handleResumable ::
-  forall effs.
+  forall (effs :: [Type -> Type]).
   ContractEnvironment ->
   Eff (Resumable PABResp PABReq ': effs) ~> Eff (PABEffect ': effs)
 handleResumable contractEnv =
@@ -80,7 +82,7 @@ handleResumable contractEnv =
     )
 
 -- | Mocking checkpoint calls
-handleCheckpointIgnore :: Eff (Checkpoint ': effs) ~> Eff effs
+handleCheckpointIgnore :: forall (effs :: [Type -> Type]). Eff (Checkpoint ': effs) ~> Eff effs
 handleCheckpointIgnore =
   interpret
     ( \case
@@ -94,7 +96,12 @@ handleCheckpointIgnore =
  A few of these effects are not handled, these just return some dummy result to make the
  type system happy
 -}
-handlePABReq :: Member PABEffect effs => ContractEnvironment -> PABReq -> Eff effs PABResp
+handlePABReq ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  ContractEnvironment ->
+  PABReq ->
+  Eff effs PABResp
 handlePABReq contractEnv req = do
   printLog Debug $ show req
   resp <- case req of
@@ -130,7 +137,12 @@ handlePABReq contractEnv req = do
   pure resp
 
 -- | This is not identical to the real balancing, we only do a pre-balance at this stage
-balanceTx :: Member PABEffect effs => ContractEnvironment -> UnbalancedTx -> Eff effs BalanceTxResponse
+balanceTx ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  ContractEnvironment ->
+  UnbalancedTx ->
+  Eff effs BalanceTxResponse
 balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBalancedTxRequiredSignatories} = do
   -- TODO: getting own address from pub key
   let ownPkh = Ledger.pubKeyHash contractEnv.ceOwnPubKey
@@ -167,6 +179,7 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBal
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
+  forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   ContractEnvironment ->
   Tx ->

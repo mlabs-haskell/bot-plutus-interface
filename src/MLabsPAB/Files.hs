@@ -38,6 +38,7 @@ import Data.ByteString qualified as ByteString
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
+import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -97,7 +98,12 @@ signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
    in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
 
 -- | Compiles and writes a script file under the given folder
-writePolicyScriptFile :: Member PABEffect effs => PABConfig -> MintingPolicy -> Eff effs (Either (FileError ()) Text)
+writePolicyScriptFile ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  MintingPolicy ->
+  Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
   let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
       filepath = policyScriptFilePath pabConf (Ledger.scriptCurrencySymbol mintingPolicy)
@@ -115,6 +121,7 @@ writeValidatorScriptFile pabConf validatorScript =
    in fmap (const filepath) <$> writeFileTextEnvelope (Text.unpack filepath) Nothing script
 
 writeAll ::
+  forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
   [MintingPolicy] ->
@@ -135,6 +142,7 @@ writeAll pabConf policyScripts validatorScripts datums redeemers = do
   pure $ sequence results
 
 readPrivateKeys ::
+  forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
   Eff effs (Either Text (Map PubKeyHash PrivateKey))
@@ -155,7 +163,11 @@ readPrivateKeys pabConf = do
         )
         Map.empty
 
-readPrivateKey :: Member PABEffect effs => FilePath -> Eff effs (Either Text PrivateKey)
+readPrivateKey ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  FilePath ->
+  Eff effs (Either Text PrivateKey)
 readPrivateKey filePath = do
   pKey <- mapLeft (Text.pack . show) <$> readFileTextEnvelope (AsSigningKey AsPaymentKey) filePath
   pure $ fromCardanoPaymentKey =<< pKey
@@ -186,6 +198,7 @@ serialiseScript =
     . Codec.serialise
 
 writeDatumJsonFile ::
+  forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
   Datum ->
@@ -196,6 +209,7 @@ writeDatumJsonFile pabConf datum =
    in fmap (const filepath) <$> writeFileJSON (Text.unpack filepath) json
 
 writeRedeemerJsonFile ::
+  forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
   Redeemer ->
@@ -205,6 +219,6 @@ writeRedeemerJsonFile pabConf redeemer =
       filepath = redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
    in fmap (const filepath) <$> writeFileJSON (Text.unpack filepath) json
 
-dataToJson :: ToData a => a -> JSON.Value
+dataToJson :: forall (a :: Type). ToData a => a -> JSON.Value
 dataToJson =
   scriptDataToJson ScriptDataJsonDetailedSchema . fromPlutusData . PlutusTx.toData
