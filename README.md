@@ -103,7 +103,7 @@ The fake PAB consists of the following modules:
 - **MLabsPAB** main entry point
 - **MLabsPAB.Server** Servant server, handling http endpoint calls and websockets
 - **MLabsPAB.Contract** handling contract effects by creating the necessary files and calling cardano-cli commands (a few effects are mocked)
-- **MLabsPAB.PreBalanc** doing some preparations so the cli can process the rest (non-ada asset balancing, addig tx inputs, adding minimum lovelaces, add signatories)
+- **MLabsPAB.PreBalance** doing some preparations so the cli can process the rest (non-ada asset balancing, addig tx inputs, adding minimum lovelaces, add signatories)
 - **MLabsPAB.CardanoCLI** wrappers for cardano-cli commands
 - For development purposes, I created an ssh wrapper, so I can call relay these commands through an ssh connection. This is not nice, unsafe, and pretty slow, so I'm hoping to get rid of this pretty soon.
 - **MLabsPAB.UtxoParser** parse the output of the `cardano-cli query utxo` command
