@@ -103,6 +103,7 @@ library
     , data-default-class
     , directory
     , either
+    , filepath
     , freer-extras
     , freer-simple
     , http-client

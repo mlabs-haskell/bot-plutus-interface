@@ -66,6 +66,7 @@ import Plutus.V1.Ledger.Api (
  )
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
+import System.FilePath (isExtensionOf)
 import Prelude
 
 -- | Filename of a minting policy script
@@ -141,7 +142,7 @@ readPrivateKeys pabConf = do
   files <- listDirectory $ Text.unpack pabConf.pcSigningKeyFileDir
   let sKeyFiles =
         map (\filename -> Text.unpack pabConf.pcSigningKeyFileDir ++ "/" ++ filename) $
-          filter (`endsWith` ".skey") files
+          filter ("png" `isExtensionOf`) files
   privKeys <- mapM readPrivateKey sKeyFiles
   pure $ toPrivKeyMap <$> sequence privKeys
   where
@@ -176,10 +177,6 @@ fromCardanoPaymentKey sKey =
    in mapLeft Text.pack $
         Crypto.xprv $
           mconcat [privkeyBS, dummyPrivKeySuffix, pubkeyBS, dummyChainCode]
-
-endsWith :: String -> String -> Bool
-endsWith str suffix =
-  suffix == drop (length str - length suffix) str
 
 serialiseScript :: Script -> PlutusScript PlutusScriptV1
 serialiseScript =
