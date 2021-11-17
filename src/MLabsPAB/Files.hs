@@ -150,7 +150,7 @@ readPrivateKeys pabConf = do
   files <- listDirectory $ Text.unpack pabConf.pcSigningKeyFileDir
   let sKeyFiles =
         map (\filename -> Text.unpack pabConf.pcSigningKeyFileDir ++ "/" ++ filename) $
-          filter ("png" `isExtensionOf`) files
+          filter ("skey" `isExtensionOf`) files
   privKeys <- mapM readPrivateKey sKeyFiles
   pure $ toPrivKeyMap <$> sequence privKeys
   where
