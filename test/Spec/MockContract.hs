@@ -117,25 +117,29 @@ instance Default ContractEnvironment where
       , ceFees = 200
       , ceMinLovelaces = 50
       }
-type MockContract a = Eff '[Error (), State MockContractState, Writer [String]] a
+type MockContract a = Eff '[Error Text, State MockContractState, Writer [String]] a
 
+{- | Run the contract monad in a pure mock runner, and return a tuple of the contract result and
+ the contract state
+-}
 runContractPure ::
-  forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
+  forall (w :: Type) (s :: Row Type) (a :: Type).
   (Monoid w) =>
-  Contract w s e a ->
+  Contract w s Text a ->
   MockConfig ->
   MockContractState ->
-  MockContractState
+  (Either Text a, MockContractState)
 runContractPure contract config initContractState =
-  snd . fst $ runContractPure' contract config initContractState
+  let ((res, st), _) = runContractPure' contract config initContractState
+   in (fst =<< res, st {commandHistory = reverse st.commandHistory})
 
 runContractPure' ::
-  forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
+  forall (w :: Type) (s :: Row Type) (a :: Type).
   (Monoid w) =>
-  Contract w s e a ->
+  Contract w s Text a ->
   MockConfig ->
   MockContractState ->
-  ((Either () (Either e a, w), MockContractState), [String])
+  ((Either Text (Either Text a, w), MockContractState), [String])
 runContractPure' (Contract effs) config initContractState =
   runPABEffectPure config initContractState $ handleContract initContractState.contractEnv effs
 
@@ -144,7 +148,7 @@ runPABEffectPure ::
   MockConfig ->
   MockContractState ->
   Eff '[PABEffect] a ->
-  ((Either () a, MockContractState), [String])
+  ((Either Text a, MockContractState), [String])
 runPABEffectPure config initState req =
   run (runWriter (runState initState (runError (reinterpret3 go req))))
   where
@@ -240,8 +244,8 @@ mockQueryChainIndex = \case
   TxFromTxId _ ->
     pure $ TxIdResponse Nothing
   UtxoSetMembership _ ->
-    throwError ()
+    throwError @Text "Unimplemented"
   UtxoSetAtAddress _ ->
-    throwError ()
+    throwError @Text "Unimplemented"
   GetTip ->
-    throwError ()
+    throwError @Text "Unimplemented"

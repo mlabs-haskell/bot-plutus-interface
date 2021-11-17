@@ -161,6 +161,7 @@ test-suite mlabs-pab-test
     , data-default
     , data-default-class
     , either
+    , extra
     , freer-extras
     , freer-simple
     , generic-arbitrary
