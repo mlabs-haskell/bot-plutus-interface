@@ -157,23 +157,15 @@ sendTokens = do
 
       (result, state) = runContractPure contract mockConfig def
   result @?= Right ()
-  state.commandHistory
-    @?= [ "cardano-cli query utxo \
-          \--address addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35 \
-          \--testnet-magic 42"
-        , "cardano-cli transaction build --alonzo-era \
-          \--tx-in e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0 \
-          \--tx-in-collateral e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0 \
-          \--tx-out addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35+50 + 95 abcd1234.testToken \
-          \--tx-out addr_test1vqxk54m7j3q6mrkevcunryrwf4p7e68c93cjk8gzxkhlkpsffv7s0+1000 + 5 abcd1234.testToken \
-          \--change-address addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35 \
-          \--required-signer signing-keys/signing-key-cb9358529df4729c3246a2a033cb9821abbfd16de4888005904abc41.skey \
-          \--testnet-magic 42 --protocol-params-file ./protocol.json --out-file tx.raw"
-        , "cardano-cli transaction sign \
-          \--tx-body-file tx.raw \
-          \--signing-key-file signing-keys/signing-key-cb9358529df4729c3246a2a033cb9821abbfd16de4888005904abc41.skey \
-          \--out-file tx.signed"
-        ]
+  (state.commandHistory !! 1)
+    @?= "cardano-cli transaction build --alonzo-era \
+        \--tx-in e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0 \
+        \--tx-in-collateral e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0 \
+        \--tx-out addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35+50 + 95 abcd1234.testToken \
+        \--tx-out addr_test1vqxk54m7j3q6mrkevcunryrwf4p7e68c93cjk8gzxkhlkpsffv7s0+1000 + 5 abcd1234.testToken \
+        \--change-address addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35 \
+        \--required-signer signing-keys/signing-key-cb9358529df4729c3246a2a033cb9821abbfd16de4888005904abc41.skey \
+        \--testnet-magic 42 --protocol-params-file ./protocol.json --out-file tx.raw"
 
 queryUtxoOut :: [(Text, Int, Int, [(Text, Int)])] -> String
 queryUtxoOut utxos =
