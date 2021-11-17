@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-
 module MLabsPAB.Server (app, State, initState) where
 
 import Control.Concurrent (ThreadId, forkIO)

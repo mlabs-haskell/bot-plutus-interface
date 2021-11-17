@@ -3,6 +3,7 @@
 
 module MLabsPAB.Contract (runContract) where
 
+import Control.Lens ((^.))
 import Control.Monad.Freer (Eff, LastMember, interpretM, runM, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
@@ -20,7 +21,7 @@ import Ledger.Tx qualified as Tx
 import MLabsPAB.CardanoCLI qualified as CardanoCLI
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.PreBalance qualified as PreBalance
-import MLabsPAB.Types (ContractEnvironment (..))
+import MLabsPAB.Types (CLILocation (..), ContractEnvironment (..))
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types (Status (..))
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
@@ -139,9 +140,9 @@ handlePABReq contractEnv req = do
 
 -- | This is not identical to the real balancing, we only do a pre-balance at this stage
 balanceTx :: ContractEnvironment -> UnbalancedTx -> IO BalanceTxResponse
-balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex} = do
+balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBalancedTxRequiredSignatories} = do
   -- TODO: getting own address from pub key
-  let ownAddress = Ledger.pubKeyHashAddress $ Ledger.pubKeyHash contractEnv.ceOwnPubKey
+  let ownPkh = Ledger.pubKeyHash contractEnv.ceOwnPubKey
   -- TODO: Handle paging
   -- (_, Page {pageItems}) <-
   --   queryChainIndex $
@@ -152,7 +153,10 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex} = do
   --       Map.fromList $
   --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
 
-  utxos <- CardanoCLI.utxosAt contractEnv.cePABConfig ownAddress
+  utxos <- CardanoCLI.utxosAt contractEnv.cePABConfig $ Ledger.pubKeyHashAddress ownPkh
+  privKeys <-
+    either (error . Text.unpack) id
+      <$> Files.readPrivateKeys contractEnv.cePABConfig
 
   let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex
   print utxoIndex
@@ -161,7 +165,9 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex} = do
           contractEnv.ceMinLovelaces
           contractEnv.ceFees
           utxoIndex
-          ownAddress
+          ownPkh
+          privKeys
+          (Map.keys unBalancedTxRequiredSignatories)
           unBalancedTxTx
 
   case eitherPreBalancedTx of
@@ -188,9 +194,6 @@ writeBalancedTx contractEnv tx = do
       allDatums
       allRedeemers
 
-  -- TODO: get this from the tx body
-  let signingKeyFile = "./addresses/server.skey"
-      ownAddress = Ledger.pubKeyHashAddress $ Ledger.pubKeyHash contractEnv.ceOwnPubKey
   case fileWriteRes of
     Left err ->
       pure $
@@ -198,8 +201,14 @@ writeBalancedTx contractEnv tx = do
           OtherError $
             "Failed to write script file(s): " <> Text.pack (show err)
     Right _ -> do
-      CardanoCLI.buildTx contractEnv.cePABConfig ownAddress signingKeyFile tx
-      CardanoCLI.signTx contractEnv.cePABConfig signingKeyFile
+      let requiredSigners = Map.keys $ tx ^. Tx.signatures
+
+      case contractEnv.cePABConfig.pcCliLocation of
+        Remote serverIP -> CardanoCLI.uploadFiles contractEnv.cePABConfig serverIP
+        Local -> pure ()
+
+      CardanoCLI.buildTx contractEnv.cePABConfig contractEnv.ceOwnPubKey tx
+      CardanoCLI.signTx contractEnv.cePABConfig requiredSigners
 
       result <-
         if contractEnv.cePABConfig.pcDryRun

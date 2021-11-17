@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-
 module MLabsPAB (runPAB) where
 
 import Data.Aeson (FromJSON)

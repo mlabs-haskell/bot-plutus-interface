@@ -32,6 +32,8 @@ data PABConfig = PABConfig
   , pcProtocolParams :: !(Maybe ProtocolParameters)
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
+  , -- | Directory name of the signing key files
+    pcSigningKeyFileDir :: !Text
   , -- | Protocol params file location relative to the cardano-cli working directory (needed for the cli)
     pcProtocolParamsFile :: !Text
   , -- | Dry run mode will build the tx, but skip the submit step
@@ -59,6 +61,7 @@ instance Default PABConfig where
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = Nothing
       , pcScriptFileDir = "result-scripts"
+      , pcSigningKeyFileDir = "signing-keys"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
       }
