@@ -20,7 +20,7 @@ import NeatInterpolation (text)
 import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith)
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
-import Spec.MockContract (pubKey2, pubKey3, runContractPure, withUtxos)
+import Spec.MockContract (addr1, addr2, pkh1', pkh3', pubKey2, pubKey3, runContractPure, withUtxos)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 import Prelude
@@ -41,10 +41,9 @@ tests =
 
 sendAda :: Assertion
 sendAda = do
-  let mockConfig =
-        def
-          & withUtxos
-            [("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5", 0, 1250, [])]
+  let txId = "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5"
+      mockConfig = def & withUtxos [(txId, 0, 1250, [])]
+
       contract :: Contract () (Endpoint "SendAda" ()) Text ()
       contract = do
         let constraints =
@@ -54,28 +53,37 @@ sendAda = do
       (result, state) = runContractPure contract mockConfig def
   result @?= Right ()
   state.commandHistory
-    @?= [ "cardano-cli query utxo \
-          \--address addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35 \
-          \--testnet-magic 42"
-        , "cardano-cli transaction build --alonzo-era \
-          \--tx-in e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0 \
-          \--tx-in-collateral e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0 \
-          \--tx-out addr_test1vqxk54m7j3q6mrkevcunryrwf4p7e68c93cjk8gzxkhlkpsffv7s0+1000 \
-          \--change-address addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35 \
-          \--required-signer signing-keys/signing-key-cb9358529df4729c3246a2a033cb9821abbfd16de4888005904abc41.skey \
-          \--testnet-magic 42 --protocol-params-file ./protocol.json --out-file tx.raw"
-        , "cardano-cli transaction sign \
-          \--tx-body-file tx.raw \
-          \--signing-key-file signing-keys/signing-key-cb9358529df4729c3246a2a033cb9821abbfd16de4888005904abc41.skey \
-          \--out-file tx.signed"
-        ]
+    @?= map
+      (Text.replace "\n" " ")
+      [ [text|
+            cardano-cli query utxo
+            --address ${addr1}
+            --mainnet
+           |]
+      , [text|
+            cardano-cli transaction build --alonzo-era
+            --tx-in ${txId}#0
+            --tx-in-collateral ${txId}#0
+            --tx-out ${addr2}+1000
+            --change-address ${addr1}
+            --required-signer signing-keys/signing-key-${pkh1'}.skey
+            --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
+          |]
+      , [text|
+            cardano-cli transaction sign
+            --tx-body-file tx.raw
+            --signing-key-file signing-keys/signing-key-${pkh1'}.skey
+            --out-file tx.signed
+          |]
+      ]
 
 multisigSupport :: Assertion
 multisigSupport = do
-  let mockConfig =
+  let txId = "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5"
+      mockConfig =
         def
           & withUtxos
-            [("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5", 0, 1250, [])]
+            [(txId, 0, 1250, [])]
       contract :: Contract Text (Endpoint "SendAda" ()) Text ()
       contract = do
         let constraints =
@@ -87,31 +95,40 @@ multisigSupport = do
   -- Building and siging the tx includes both signing keys
   result @?= Right ()
   state.commandHistory
-    @?= [ "cardano-cli query utxo \
-          \--address addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35 \
-          \--testnet-magic 42"
-        , "cardano-cli transaction build --alonzo-era \
-          \--tx-in e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0 \
-          \--tx-in-collateral e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0 \
-          \--tx-out addr_test1vqxk54m7j3q6mrkevcunryrwf4p7e68c93cjk8gzxkhlkpsffv7s0+1000 \
-          \--change-address addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35 \
-          \--required-signer signing-keys/signing-key-cb9358529df4729c3246a2a033cb9821abbfd16de4888005904abc41.skey \
-          \--required-signer signing-keys/signing-key-008b47844d92812fc30d1f0ac9b6fbf38778ccba9db8312ad9079079.skey \
-          \--testnet-magic 42 --protocol-params-file ./protocol.json --out-file tx.raw"
-        , "cardano-cli transaction sign \
-          \--tx-body-file tx.raw \
-          \--signing-key-file signing-keys/signing-key-cb9358529df4729c3246a2a033cb9821abbfd16de4888005904abc41.skey \
-          \--signing-key-file signing-keys/signing-key-008b47844d92812fc30d1f0ac9b6fbf38778ccba9db8312ad9079079.skey \
-          \--out-file tx.signed"
-        ]
+    @?= map
+      (Text.replace "\n" " ")
+      [ [text|
+          cardano-cli query utxo
+          --address ${addr1}
+          --mainnet
+          |]
+      , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${txId}#0
+          --tx-in-collateral ${txId}#0
+          --tx-out ${addr2}+1000
+          --change-address ${addr1}
+          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --required-signer signing-keys/signing-key-${pkh3'}.skey
+          --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
+        |]
+      , [text| 
+          cardano-cli transaction sign
+          --tx-body-file tx.raw
+          --signing-key-file signing-keys/signing-key-${pkh1'}.skey
+          --signing-key-file signing-keys/signing-key-${pkh3'}.skey
+          --out-file tx.signed
+        |]
+      ]
 
 sendTokens :: Assertion
 sendTokens = do
-  let mockConfig =
+  let txId = "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5"
+      mockConfig =
         def
           & withUtxos
             [
-              ( "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5"
+              ( txId
               , 0
               , 1250
               , [("abcd1234.testToken", 100)]
@@ -133,21 +150,22 @@ sendTokens = do
       " "
       [text|
         cardano-cli transaction build --alonzo-era
-        --tx-in e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0
-        --tx-in-collateral e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0
-        --tx-out addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35+50 + 95 abcd1234.testToken
-        --tx-out addr_test1vqxk54m7j3q6mrkevcunryrwf4p7e68c93cjk8gzxkhlkpsffv7s0+1000 + 5 abcd1234.testToken
-        --change-address addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35
-        --required-signer signing-keys/signing-key-cb9358529df4729c3246a2a033cb9821abbfd16de4888005904abc41.skey
-        --testnet-magic 42 --protocol-params-file ./protocol.json --out-file tx.raw
+        --tx-in ${txId}#0
+        --tx-in-collateral ${txId}#0
+        --tx-out ${addr1}+50 + 95 abcd1234.testToken
+        --tx-out ${addr2}+1000 + 5 abcd1234.testToken
+        --change-address ${addr1}
+        --required-signer signing-keys/signing-key-${pkh1'}.skey
+        --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
       |]
 
 mintTokens :: Assertion
 mintTokens = do
-  let mockConfig =
+  let txId = "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5"
+      mockConfig =
         def
           & withUtxos
-            [("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5", 0, 1250, [])]
+            [(txId, 0, 1250, [])]
 
       mintingPolicy :: Scripts.MintingPolicy
       mintingPolicy =
@@ -159,6 +177,10 @@ mintTokens = do
 
       curSymbol' :: Text
       curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
+
+      redeemerHash =
+        let (Scripts.RedeemerHash rh) = Ledger.redeemerHash Ledger.unitRedeemer
+         in encodeByteString $ fromBuiltin rh
 
       contract :: Contract () (Endpoint "SendAda" ()) Text ()
       contract = do
@@ -178,13 +200,13 @@ mintTokens = do
       "\n"
       " "
       [text| cardano-cli transaction build --alonzo-era
-       --tx-in e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0
-       --tx-in-collateral e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5#0
-       --tx-out addr_test1vqxk54m7j3q6mrkevcunryrwf4p7e68c93cjk8gzxkhlkpsffv7s0+1000 + 5 ${curSymbol'}.testToken
+       --tx-in ${txId}#0
+       --tx-in-collateral ${txId}#0
+       --tx-out ${addr2}+1000 + 5 ${curSymbol'}.testToken
        --mint-script-file result-scripts/policy-${curSymbol'}.plutus
-       --mint-redeemer-file result-scripts/redeemer-923918e403bf43c34b4ef6b48eb2ee04babed17320d8d1b9ff9ad086e86f44ec.json
+       --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
        --mint 5 ${curSymbol'}.testToken
-       --change-address addr_test1vr9exkzjnh6898pjg632qv7tnqs6h073dhjg3qq9jp9tcsg8d6n35
-       --required-signer signing-keys/signing-key-cb9358529df4729c3246a2a033cb9821abbfd16de4888005904abc41.skey
-       --testnet-magic 42 --protocol-params-file ./protocol.json --out-file tx.raw
+       --change-address ${addr1}
+       --required-signer signing-keys/signing-key-${pkh1'}.skey
+       --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
       |]

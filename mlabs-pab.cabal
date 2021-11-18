@@ -76,6 +76,7 @@ library
   import:          common-lang
   exposed-modules:
     MLabsPAB
+    MLabsPAB.CardanoCLI
     MLabsPAB.ChainIndex
     MLabsPAB.Contract
     MLabsPAB.Effects
@@ -83,7 +84,6 @@ library
     MLabsPAB.Types
 
   other-modules:
-    MLabsPAB.CardanoCLI
     MLabsPAB.PreBalance
     MLabsPAB.Server
     MLabsPAB.UtxoParser

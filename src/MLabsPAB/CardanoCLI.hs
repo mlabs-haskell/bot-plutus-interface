@@ -87,7 +87,7 @@ utxosAt pabConf address = do
       , cmdArgs =
           mconcat
             [ ["query", "utxo"]
-            , ["--address", unsafeSerialiseAddress pabConf address]
+            , ["--address", unsafeSerialiseAddress pabConf.pcNetwork address]
             , networkOpt pabConf
             ]
       , cmdOutParser =
@@ -121,7 +121,7 @@ buildTx pabConf ownPubKey tx =
         , txOutOpts pabConf (txOutputs tx)
         , mintOpts pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
         , mconcat
-            [ ["--change-address", unsafeSerialiseAddress pabConf ownAddr]
+            [ ["--change-address", unsafeSerialiseAddress pabConf.pcNetwork ownAddr]
             , requiredSigners
             , networkOpt pabConf
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
@@ -243,7 +243,7 @@ txOutOpts pabConf =
         [ "--tx-out"
         , Text.intercalate
             "+"
-            [ unsafeSerialiseAddress pabConf txOutAddress
+            [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
             , valueToCliArg txOutValue
             ]
         ]
@@ -272,9 +272,9 @@ valueToCliArg :: Value -> Text
 valueToCliArg val =
   Text.intercalate " + " $ map flatValueToCliArg $ sort $ Value.flattenValue val
 
-unsafeSerialiseAddress :: PABConfig -> Address -> Text
-unsafeSerialiseAddress pabConf address =
-  case serialiseAddress <$> toCardanoAddress pabConf.pcNetwork address of
+unsafeSerialiseAddress :: NetworkId -> Address -> Text
+unsafeSerialiseAddress network address =
+  case serialiseAddress <$> toCardanoAddress network address of
     Right a -> a
     Left _ -> error "Couldn't create address"
 

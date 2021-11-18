@@ -17,6 +17,12 @@ module Spec.MockContract (
   pkh1,
   pkh2,
   pkh3,
+  pkh1',
+  pkh2',
+  pkh3',
+  addr1,
+  addr2,
+  addr3,
   queryUtxoOut,
   withUtxos,
 ) where
@@ -25,6 +31,7 @@ import Cardano.Api (
   AsType,
   FileError (FileError, FileIOError),
   HasTextEnvelope,
+  NetworkId (Mainnet),
   PaymentKey,
   SigningKey (PaymentSigningKey),
   TextEnvelope,
@@ -40,6 +47,7 @@ import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.State (State, get, modify, runState)
 import Control.Monad.Freer.Writer (Writer, runWriter, tell)
 import Data.Aeson qualified as JSON
+import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight, mapLeft, maybeToRight)
@@ -54,13 +62,15 @@ import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
 import Ledger qualified
 import Ledger.Crypto (PubKey, PubKeyHash)
+import MLabsPAB.CardanoCLI (unsafeSerialiseAddress)
 import MLabsPAB.Contract (handleContract)
 import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
 import MLabsPAB.Files qualified as Files
-import MLabsPAB.Types (ContractEnvironment (..), LogLevel (..))
+import MLabsPAB.Types (ContractEnvironment (..), LogLevel (..), PABConfig (..))
 import NeatInterpolation (text)
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
+import PlutusTx.Builtins (fromBuiltin)
 import Wallet.Emulator (knownWallet)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
@@ -79,6 +89,16 @@ pkh1, pkh2, pkh3 :: PubKeyHash
 pkh1 = Ledger.pubKeyHash pubKey1
 pkh2 = Ledger.pubKeyHash pubKey2
 pkh3 = Ledger.pubKeyHash pubKey3
+
+pkh1', pkh2', pkh3' :: Text
+pkh1' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh1
+pkh2' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh2
+pkh3' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh3
+
+addr1, addr2, addr3 :: Text
+addr1 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress pkh1)
+addr2 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress pkh2)
+addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress pkh3)
 
 toPubKey :: SigningKey PaymentKey -> PubKey
 toPubKey = Ledger.toPublicKey . fromRight (error "Impossible happened") . Files.fromCardanoPaymentKey
@@ -161,7 +181,7 @@ instance Default MockContractState where
 instance Default ContractEnvironment where
   def =
     ContractEnvironment
-      { cePABConfig = def
+      { cePABConfig = def {pcNetwork = Mainnet}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceWallet = knownWallet 1
       , ceOwnPubKey = pubKey1
