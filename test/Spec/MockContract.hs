@@ -8,7 +8,6 @@ module Spec.MockContract (
   signingKey2,
   runContractPure,
   toSigningKeyFile,
-  MockConfig (..),
   runContractPure',
   MockContractState (..),
   pubKey1,
@@ -23,8 +22,6 @@ module Spec.MockContract (
   addr1,
   addr2,
   addr3,
-  queryUtxoOut,
-  withUtxos,
 ) where
 
 import Cardano.Api (
@@ -62,12 +59,15 @@ import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
 import Ledger qualified
 import Ledger.Crypto (PubKey, PubKeyHash)
+import Ledger.Tx (TxOutRef (TxOutRef))
+import Ledger.TxId (TxId (TxId))
 import MLabsPAB.CardanoCLI (unsafeSerialiseAddress)
 import MLabsPAB.Contract (handleContract)
 import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.Types (ContractEnvironment (..), LogLevel (..), PABConfig (..))
 import NeatInterpolation (text)
+import Plutus.ChainIndex.Types (BlockId (..), Page (..), PageSize (..), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import PlutusTx.Builtins (fromBuiltin)
@@ -109,60 +109,12 @@ toSigningKeyFile signingKeyFileDir sKey =
   , serialiseToTextEnvelope Nothing sKey
   )
 
-data MockConfig = MockConfig
-  { handleCliCommand :: (Text, [Text]) -> MockContract String
-  }
-
-instance Default MockConfig where
-  def =
-    MockConfig
-      { handleCliCommand = \case
-          ("cardano-cli", "query" : "utxo" : _) ->
-            pure $ queryUtxoOut []
-          ("cardano-cli", "transaction" : "build" : _) ->
-            pure ""
-          ("cardano-cli", "transaction" : "sign" : _) ->
-            pure ""
-          ("cardano-cli", "transaction" : "submit" : _) ->
-            pure ""
-          _ -> throwError @Text "Unknown command"
-      }
-
--- Return a mock response for 'cardano-cli query utxo' calls
-withUtxos :: [(Text, Int, Int, [(Text, Int)])] -> MockConfig -> MockConfig
-withUtxos utxos config =
-  config
-    { handleCliCommand = \case
-        ("cardano-cli", "query" : "utxo" : _) ->
-          pure $ queryUtxoOut utxos
-        command -> config.handleCliCommand command
-    }
-
-queryUtxoOut :: [(Text, Int, Int, [(Text, Int)])] -> String
-queryUtxoOut utxos =
-  Text.unpack $
-    Text.unlines
-      [ "                           TxHash                                 TxIx        Amount"
-      , "--------------------------------------------------------------------------------------"
-      , Text.unlines $
-          map
-            ( \(txId, txIx, amt, tokens) ->
-                let txIx' = Text.pack $ show txIx
-                    amts =
-                      Text.intercalate
-                        " + "
-                        ( Text.pack (show amt) <> " " <> "lovelace" :
-                          map (\(tSymbol, tAmt) -> Text.pack (show tAmt) <> " " <> tSymbol) tokens
-                        )
-                 in [text|${txId}     ${txIx'}        ${amts} + TxOutDatumNone"|]
-            )
-            utxos
-      ]
-
 data MockContractState = MockContractState
   { files :: Map FilePath TextEnvelope
   , commandHistory :: [Text]
   , contractEnv :: ContractEnvironment
+  , utxos :: [(TxOutRef, Int, [(Text, Int)])]
+  , tip :: Tip
   }
   deriving stock (Show, Eq)
 
@@ -176,6 +128,8 @@ instance Default MockContractState where
               [signingKey1, signingKey2, signingKey3]
       , commandHistory = mempty
       , contractEnv = def
+      , utxos = []
+      , tip = Tip 1000 (BlockId "ab12") 4
       }
 
 instance Default ContractEnvironment where
@@ -197,34 +151,31 @@ runContractPure ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
   (Monoid w) =>
   Contract w s Text a ->
-  MockConfig ->
   MockContractState ->
   (Either Text a, MockContractState)
-runContractPure contract config initContractState =
-  let ((res, st), _) = runContractPure' contract config initContractState
+runContractPure contract initContractState =
+  let ((res, st), _) = runContractPure' contract initContractState
    in (fst =<< res, st {commandHistory = reverse st.commandHistory})
 
 runContractPure' ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
   (Monoid w) =>
   Contract w s Text a ->
-  MockConfig ->
   MockContractState ->
   ((Either Text (Either Text a, w), MockContractState), [String])
-runContractPure' (Contract effs) config initContractState =
-  runPABEffectPure config initContractState $ handleContract initContractState.contractEnv effs
+runContractPure' (Contract effs) initContractState =
+  runPABEffectPure initContractState $ handleContract initContractState.contractEnv effs
 
 runPABEffectPure ::
   forall (a :: Type).
-  MockConfig ->
   MockContractState ->
   Eff '[PABEffect] a ->
   ((Either Text a, MockContractState), [String])
-runPABEffectPure config initState req =
+runPABEffectPure initState req =
   run (runWriter (runState initState (runError (reinterpret3 go req))))
   where
     go :: PABEffect v -> MockContract v
-    go (CallCommand args) = mockCallCommand config.handleCliCommand args
+    go (CallCommand args) = mockCallCommand args
     go (CreateDirectoryIfMissing createParents filePath) =
       mockCreateDirectoryIfMissing createParents filePath
     go (PrintLog logLevel msg) = mockPrintLog logLevel msg
@@ -239,14 +190,46 @@ runPABEffectPure config initState req =
 
 mockCallCommand ::
   forall (a :: Type).
-  ((Text, [Text]) -> MockContract String) ->
   ShellArgs a ->
   MockContract a
-mockCallCommand handleCliCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
+mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
   tell $ map Text.unpack cmdArgs
   modify (\st -> st {commandHistory = cmdName <> " " <> Text.unwords cmdArgs : st.commandHistory})
 
-  cmdOutParser <$> handleCliCommand (cmdName, cmdArgs)
+  case (cmdName, cmdArgs) of
+    ("cardano-cli", "query" : "utxo" : _) -> do
+      state <- get @MockContractState
+
+      pure $ cmdOutParser $ mockQueryUtxoOut state.utxos
+    ("cardano-cli", "transaction" : "build" : _) ->
+      pure $ cmdOutParser ""
+    ("cardano-cli", "transaction" : "sign" : _) ->
+      pure $ cmdOutParser ""
+    ("cardano-cli", "transaction" : "submit" : _) ->
+      pure $ cmdOutParser ""
+    _ -> throwError @Text "Unknown command"
+
+mockQueryUtxoOut :: [(TxOutRef, Int, [(Text, Int)])] -> String
+mockQueryUtxoOut utxos =
+  Text.unpack $
+    Text.unlines
+      [ "                           TxHash                                 TxIx        Amount"
+      , "--------------------------------------------------------------------------------------"
+      , Text.unlines $
+          map
+            ( \(TxOutRef (TxId txId) txIx, amt, tokens) ->
+                let txId' = encodeByteString $ fromBuiltin txId
+                    txIx' = Text.pack $ show txIx
+                    amts =
+                      Text.intercalate
+                        " + "
+                        ( Text.pack (show amt) <> " " <> "lovelace" :
+                          map (\(tSymbol, tAmt) -> Text.pack (show tAmt) <> " " <> tSymbol) tokens
+                        )
+                 in [text|${txId'}     ${txIx'}        ${amts} + TxOutDatumNone"|]
+            )
+            utxos
+      ]
 
 mockCreateDirectoryIfMissing :: Bool -> FilePath -> MockContract ()
 mockCreateDirectoryIfMissing _ _ = pure ()
@@ -315,8 +298,10 @@ mockQueryChainIndex = \case
   TxFromTxId _ ->
     pure $ TxIdResponse Nothing
   UtxoSetMembership _ ->
-    throwError @Text "Unimplemented"
-  UtxoSetAtAddress _ ->
-    throwError @Text "Unimplemented"
+    throwError @Text "UtxoSetMembership is unimplemented"
+  UtxoSetAtAddress _ -> do
+    state <- get @MockContractState
+    let txOutRefs = map (\(o, _, _) -> o) state.utxos
+    pure $ UtxoSetAtResponse (state.tip, Page (PageSize 100) 1 1 txOutRefs)
   GetTip ->
-    throwError @Text "Unimplemented"
+    throwError @Text "GetTip is unimplemented"

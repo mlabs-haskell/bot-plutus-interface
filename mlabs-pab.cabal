@@ -169,6 +169,7 @@ test-suite mlabs-pab-test
     , mlabs-pab
     , neat-interpolation
     , playground-common
+    , plutus-chain-index
     , plutus-contract
     , plutus-core
     , plutus-ledger

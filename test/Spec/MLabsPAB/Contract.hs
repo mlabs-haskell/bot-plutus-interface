@@ -7,7 +7,6 @@ module Spec.MLabsPAB.Contract (tests) where
 import Control.Monad (void)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
-import Data.Function ((&))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
@@ -15,12 +14,23 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Scripts qualified as Scripts
+import Ledger.Tx (TxOutRef (TxOutRef), txOutRefId)
+import Ledger.TxId (getTxId)
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
 import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith)
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
-import Spec.MockContract (addr1, addr2, pkh1', pkh3', pubKey2, pubKey3, runContractPure, withUtxos)
+import Spec.MockContract (
+  MockContractState (..),
+  addr1,
+  addr2,
+  pkh1',
+  pkh3',
+  pubKey2,
+  pubKey3,
+  runContractPure,
+ )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 import Prelude
@@ -41,8 +51,9 @@ tests =
 
 sendAda :: Assertion
 sendAda = do
-  let txId = "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5"
-      mockConfig = def & withUtxos [(txId, 0, 1250, [])]
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      initState = def {utxos = [(txOutRef, 1250, [])]}
+      txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text ()
       contract = do
@@ -50,7 +61,7 @@ sendAda = do
               Constraints.mustPayToPubKey (Ledger.pubKeyHash pubKey2) (Ada.lovelaceValueOf 1000)
         void $ submitTx constraints
 
-      (result, state) = runContractPure contract mockConfig def
+      (result, state) = runContractPure contract initState
   result @?= Right ()
   state.commandHistory
     @?= map
@@ -79,11 +90,10 @@ sendAda = do
 
 multisigSupport :: Assertion
 multisigSupport = do
-  let txId = "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5"
-      mockConfig =
-        def
-          & withUtxos
-            [(txId, 0, 1250, [])]
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      initState = def {utxos = [(txOutRef, 1250, [])]}
+      txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
+
       contract :: Contract Text (Endpoint "SendAda" ()) Text ()
       contract = do
         let constraints =
@@ -91,7 +101,7 @@ multisigSupport = do
                 <> Constraints.mustBeSignedBy (Ledger.pubKeyHash pubKey3)
         void $ submitTx constraints
 
-      (result, state) = runContractPure contract mockConfig def
+      (result, state) = runContractPure contract initState
   -- Building and siging the tx includes both signing keys
   result @?= Right ()
   state.commandHistory
@@ -123,17 +133,10 @@ multisigSupport = do
 
 sendTokens :: Assertion
 sendTokens = do
-  let txId = "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5"
-      mockConfig =
-        def
-          & withUtxos
-            [
-              ( txId
-              , 0
-              , 1250
-              , [("abcd1234.testToken", 100)]
-              )
-            ]
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      initState = def {utxos = [(txOutRef, 1250, [("abcd1234.testToken", 100)])]}
+      txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
+
       contract :: Contract () (Endpoint "SendAda" ()) Text ()
       contract = do
         let constraints =
@@ -142,7 +145,7 @@ sendTokens = do
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
         void $ submitTx constraints
 
-      (result, state) = runContractPure contract mockConfig def
+      (result, state) = runContractPure contract initState
   result @?= Right ()
   (state.commandHistory !! 1)
     @?= Text.replace
@@ -161,11 +164,9 @@ sendTokens = do
 
 mintTokens :: Assertion
 mintTokens = do
-  let txId = "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5"
-      mockConfig =
-        def
-          & withUtxos
-            [(txId, 0, 1250, [])]
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      initState = def {utxos = [(txOutRef, 1250, [])]}
+      txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
 
       mintingPolicy :: Scripts.MintingPolicy
       mintingPolicy =
@@ -193,7 +194,7 @@ mintTokens = do
                   (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
         void $ submitTxConstraintsWith @Void lookups constraints
 
-      (result, state) = runContractPure contract mockConfig def
+      (result, state) = runContractPure contract initState
   result @?= Right ()
   (state.commandHistory !! 1)
     @?= Text.replace
