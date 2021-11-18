@@ -1,4 +1,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Spec.MockContract (
@@ -15,6 +17,8 @@ module Spec.MockContract (
   pkh1,
   pkh2,
   pkh3,
+  queryUtxoOut,
+  withUtxos,
 ) where
 
 import Cardano.Api (
@@ -54,6 +58,7 @@ import MLabsPAB.Contract (handleContract)
 import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.Types (ContractEnvironment (..), LogLevel (..))
+import NeatInterpolation (text)
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Wallet.Emulator (knownWallet)
@@ -87,6 +92,52 @@ toSigningKeyFile signingKeyFileDir sKey =
 data MockConfig = MockConfig
   { handleCliCommand :: (Text, [Text]) -> MockContract String
   }
+
+instance Default MockConfig where
+  def =
+    MockConfig
+      { handleCliCommand = \case
+          ("cardano-cli", "query" : "utxo" : _) ->
+            pure $ queryUtxoOut []
+          ("cardano-cli", "transaction" : "build" : _) ->
+            pure ""
+          ("cardano-cli", "transaction" : "sign" : _) ->
+            pure ""
+          ("cardano-cli", "transaction" : "submit" : _) ->
+            pure ""
+          _ -> throwError @Text "Unknown command"
+      }
+
+-- Return a mock response for 'cardano-cli query utxo' calls
+withUtxos :: [(Text, Int, Int, [(Text, Int)])] -> MockConfig -> MockConfig
+withUtxos utxos config =
+  config
+    { handleCliCommand = \case
+        ("cardano-cli", "query" : "utxo" : _) ->
+          pure $ queryUtxoOut utxos
+        command -> config.handleCliCommand command
+    }
+
+queryUtxoOut :: [(Text, Int, Int, [(Text, Int)])] -> String
+queryUtxoOut utxos =
+  Text.unpack $
+    Text.unlines
+      [ "                           TxHash                                 TxIx        Amount"
+      , "--------------------------------------------------------------------------------------"
+      , Text.unlines $
+          map
+            ( \(txId, txIx, amt, tokens) ->
+                let txIx' = Text.pack $ show txIx
+                    amts =
+                      Text.intercalate
+                        " + "
+                        ( Text.pack (show amt) <> " " <> "lovelace" :
+                          map (\(tSymbol, tAmt) -> Text.pack (show tAmt) <> " " <> tSymbol) tokens
+                        )
+                 in [text|${txId}     ${txIx'}        ${amts} + TxOutDatumNone"|]
+            )
+            utxos
+      ]
 
 data MockContractState = MockContractState
   { files :: Map FilePath TextEnvelope
