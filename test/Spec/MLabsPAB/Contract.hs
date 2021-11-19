@@ -12,23 +12,25 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
+import Ledger.Address qualified as Address
 import Ledger.Constraints qualified as Constraints
 import Ledger.Scripts qualified as Scripts
-import Ledger.Tx (TxOutRef (TxOutRef), txOutRefId)
+import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef), txOutRefId)
 import Ledger.TxId (getTxId)
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith)
+import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith, utxosAt)
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import Spec.MockContract (
   MockContractState (..),
   addr1,
   addr2,
+  pkh1,
   pkh1',
+  pkh2,
+  pkh3,
   pkh3',
-  pubKey2,
-  pubKey3,
   runContractPure,
  )
 import Test.Tasty (TestTree, testGroup)
@@ -47,18 +49,20 @@ tests =
     , testCase "Support multiple signatories" multisigSupport
     , testCase "Send native tokens" sendTokens
     , testCase "Mint native tokens" mintTokens
+    , testCase "Redeem from validator script" redeemFromValidator
     ]
 
 sendAda :: Assertion
 sendAda = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      initState = def {utxos = [(txOutRef, 1250, [])]}
+      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      initState = def {utxos = [(txOutRef, txOut)]}
       txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text ()
       contract = do
         let constraints =
-              Constraints.mustPayToPubKey (Ledger.pubKeyHash pubKey2) (Ada.lovelaceValueOf 1000)
+              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
         void $ submitTx constraints
 
       (result, state) = runContractPure contract initState
@@ -91,14 +95,15 @@ sendAda = do
 multisigSupport :: Assertion
 multisigSupport = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      initState = def {utxos = [(txOutRef, 1250, [])]}
+      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      initState = def {utxos = [(txOutRef, txOut)]}
       txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
 
       contract :: Contract Text (Endpoint "SendAda" ()) Text ()
       contract = do
         let constraints =
-              Constraints.mustPayToPubKey (Ledger.pubKeyHash pubKey2) (Ada.lovelaceValueOf 1000)
-                <> Constraints.mustBeSignedBy (Ledger.pubKeyHash pubKey3)
+              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
+                <> Constraints.mustBeSignedBy pkh3
         void $ submitTx constraints
 
       (result, state) = runContractPure contract initState
@@ -134,14 +139,19 @@ multisigSupport = do
 sendTokens :: Assertion
 sendTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      initState = def {utxos = [(txOutRef, 1250, [("abcd1234.testToken", 100)])]}
+      txOut =
+        TxOut
+          (Ledger.pubKeyHashAddress pkh1)
+          (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "testToken" 100)
+          Nothing
+      initState = def {utxos = [(txOutRef, txOut)]}
       txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text ()
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
-                (Ledger.pubKeyHash pubKey2)
+                pkh2
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
         void $ submitTx constraints
 
@@ -165,7 +175,8 @@ sendTokens = do
 mintTokens :: Assertion
 mintTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      initState = def {utxos = [(txOutRef, 1250, [])]}
+      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      initState = def {utxos = [(txOutRef, txOut)]}
       txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
 
       mintingPolicy :: Scripts.MintingPolicy
@@ -190,7 +201,7 @@ mintTokens = do
         let constraints =
               Constraints.mustMintValue (Value.singleton curSymbol "testToken" 5)
                 <> Constraints.mustPayToPubKey
-                  (Ledger.pubKeyHash pubKey2)
+                  pkh2
                   (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
         void $ submitTxConstraintsWith @Void lookups constraints
 
@@ -207,6 +218,76 @@ mintTokens = do
        --mint-script-file result-scripts/policy-${curSymbol'}.plutus
        --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
        --mint 5 ${curSymbol'}.testToken
+       --change-address ${addr1}
+       --required-signer signing-keys/signing-key-${pkh1'}.skey
+       --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
+      |]
+
+redeemFromValidator :: Assertion
+redeemFromValidator = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 100) Nothing
+      txOutRef' = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
+      txOut' = TxOut valAddr (Ada.lovelaceValueOf 1250) (Just datumHash)
+      initState = def {utxos = [(txOutRef, txOut), (txOutRef', txOut')]}
+      txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
+
+      validator :: Scripts.Validator
+      validator =
+        Scripts.mkValidatorScript
+          $$(PlutusTx.compile [||(\_ _ _ -> ())||])
+
+      valHash :: Ledger.ValidatorHash
+      valHash = Ledger.validatorHash validator
+
+      valAddr :: Ledger.Address
+      valAddr = Address.scriptAddress validator
+
+      valHash' :: Text
+      valHash' =
+        let (Ledger.ValidatorHash vh) = valHash
+         in encodeByteString $ fromBuiltin vh
+
+      datum :: Ledger.Datum
+      datum = Ledger.Datum $ PlutusTx.toBuiltinData (11 :: Integer)
+
+      datumHash :: Scripts.DatumHash
+      datumHash = Ledger.datumHash datum
+
+      datumHash' =
+        let (Scripts.DatumHash dh) = datumHash
+         in encodeByteString $ fromBuiltin dh
+
+      redeemerHash =
+        let (Scripts.RedeemerHash rh) = Ledger.redeemerHash Ledger.unitRedeemer
+         in encodeByteString $ fromBuiltin rh
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text ()
+      contract = do
+        utxos <- utxosAt valAddr
+        let lookups =
+              Constraints.otherScript validator
+                <> Constraints.otherData datum
+                <> Constraints.unspentOutputs utxos
+        let constraints =
+              Constraints.mustSpendScriptOutput txOutRef' Ledger.unitRedeemer
+                <> Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 500)
+        void $ submitTxConstraintsWith @Void lookups constraints
+
+      (result, state) = runContractPure contract initState
+
+  result @?= Right ()
+  (state.commandHistory !! 1)
+    @?= Text.replace
+      "\n"
+      " "
+      [text| cardano-cli transaction build --alonzo-era
+       --tx-in ${txId}#1
+       --tx-in-script-file result-scripts/validator-${valHash'}.plutus
+       --tx-in-datum-file result-scripts/datum-${datumHash'}.json
+       --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+       --tx-in-collateral ${txId}#0
+       --tx-out ${addr2}+500
        --change-address ${addr1}
        --required-signer signing-keys/signing-key-${pkh1'}.skey
        --mainnet --protocol-params-file ./protocol.json --out-file tx.raw

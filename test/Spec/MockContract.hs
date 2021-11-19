@@ -55,12 +55,17 @@ import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.Encoding (decodeUtf8)
 import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
 import Ledger qualified
+import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
-import Ledger.Tx (TxOutRef (TxOutRef))
+import Ledger.Scripts (DatumHash (DatumHash))
+import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef))
+import Ledger.Tx qualified as Tx
 import Ledger.TxId (TxId (TxId))
+import Ledger.Value qualified as Value
 import MLabsPAB.CardanoCLI (unsafeSerialiseAddress)
 import MLabsPAB.Contract (handleContract)
 import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
@@ -113,7 +118,7 @@ data MockContractState = MockContractState
   { files :: Map FilePath TextEnvelope
   , commandHistory :: [Text]
   , contractEnv :: ContractEnvironment
-  , utxos :: [(TxOutRef, Int, [(Text, Int)])]
+  , utxos :: [(TxOutRef, TxOut)]
   , tip :: Tip
   }
   deriving stock (Show, Eq)
@@ -197,10 +202,8 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
   modify (\st -> st {commandHistory = cmdName <> " " <> Text.unwords cmdArgs : st.commandHistory})
 
   case (cmdName, cmdArgs) of
-    ("cardano-cli", "query" : "utxo" : _) -> do
-      state <- get @MockContractState
-
-      pure $ cmdOutParser $ mockQueryUtxoOut state.utxos
+    ("cardano-cli", "query" : "utxo" : "--address" : addr : _) ->
+      cmdOutParser <$> mockQueryUtxo addr
     ("cardano-cli", "transaction" : "build" : _) ->
       pure $ cmdOutParser ""
     ("cardano-cli", "transaction" : "sign" : _) ->
@@ -209,7 +212,18 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
       pure $ cmdOutParser ""
     _ -> throwError @Text "Unknown command"
 
-mockQueryUtxoOut :: [(TxOutRef, Int, [(Text, Int)])] -> String
+mockQueryUtxo :: Text -> MockContract String
+mockQueryUtxo addr = do
+  state <- get @MockContractState
+
+  let network = state.contractEnv.cePABConfig.pcNetwork
+  pure $
+    mockQueryUtxoOut $
+      filter
+        ((==) addr . unsafeSerialiseAddress network . Ledger.txOutAddress . snd)
+        state.utxos
+
+mockQueryUtxoOut :: [(TxOutRef, TxOut)] -> String
 mockQueryUtxoOut utxos =
   Text.unpack $
     Text.unlines
@@ -217,16 +231,34 @@ mockQueryUtxoOut utxos =
       , "--------------------------------------------------------------------------------------"
       , Text.unlines $
           map
-            ( \(TxOutRef (TxId txId) txIx, amt, tokens) ->
+            ( \(TxOutRef (TxId txId) txIx, TxOut _ val datumHash) ->
                 let txId' = encodeByteString $ fromBuiltin txId
                     txIx' = Text.pack $ show txIx
                     amts =
                       Text.intercalate
                         " + "
-                        ( Text.pack (show amt) <> " " <> "lovelace" :
-                          map (\(tSymbol, tAmt) -> Text.pack (show tAmt) <> " " <> tSymbol) tokens
+                        ( map
+                            ( \(curSymbol, tokenName, tAmt) ->
+                                let token =
+                                      if curSymbol == Ada.adaSymbol
+                                        then "lovelace"
+                                        else
+                                          let curSymbol' =
+                                                encodeByteString $
+                                                  fromBuiltin $ Value.unCurrencySymbol curSymbol
+                                              tokenName' =
+                                                decodeUtf8 $
+                                                  fromBuiltin $ Value.unTokenName tokenName
+                                           in [text|${curSymbol'}.${tokenName'}|]
+                                 in Text.pack (show tAmt) <> " " <> token
+                            )
+                            (Value.flattenValue val)
                         )
-                 in [text|${txId'}     ${txIx'}        ${amts} + TxOutDatumNone"|]
+                    datumHash' = case datumHash of
+                      Nothing -> "TxOutDatumNone"
+                      Just (DatumHash dh) ->
+                        "TxDatumHash ScriptDataInAlonzoEra " <> encodeByteString (fromBuiltin dh)
+                 in [text|${txId'}     ${txIx'}        ${amts} + ${datumHash'}"|]
             )
             utxos
       ]
@@ -284,24 +316,30 @@ mockUploadDir _ = pure ()
 mockQueryChainIndex :: ChainIndexQuery -> MockContract ChainIndexResponse
 mockQueryChainIndex = \case
   DatumFromHash _ ->
-    pure $ DatumHashResponse Nothing
+    -- pure $ DatumHashResponse Nothing
+    throwError @Text "DatumFromHash is unimplemented"
   ValidatorFromHash _ ->
-    pure $ ValidatorHashResponse Nothing
+    -- pure $ ValidatorHashResponse Nothing
+    throwError @Text "ValidatorFromHashis unimplemented"
   MintingPolicyFromHash _ ->
-    pure $ MintingPolicyHashResponse Nothing
+    -- pure $ MintingPolicyHashResponse Nothing
+    throwError @Text "GetTip is unimplemented"
   StakeValidatorFromHash _ ->
-    pure $ StakeValidatorHashResponse Nothing
+    -- pure $ StakeValidatorHashResponse Nothing
+    throwError @Text "StakeValidatorFromHash is unimplemented"
   RedeemerFromHash _ ->
-    pure $ RedeemerHashResponse Nothing
-  TxOutFromRef _ ->
-    pure $ TxOutRefResponse Nothing
+    -- pure $ RedeemerHashResponse Nothing
+    throwError @Text "RedeemerFromHash is unimplemented"
+  TxOutFromRef txOutRef -> do
+    state <- get @MockContractState
+    pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef state.utxos
   TxFromTxId _ ->
-    pure $ TxIdResponse Nothing
+    -- pure $ TxIdResponse Nothing
+    throwError @Text "TxFromTxId is unimplemented"
   UtxoSetMembership _ ->
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress _ -> do
     state <- get @MockContractState
-    let txOutRefs = map (\(o, _, _) -> o) state.utxos
-    pure $ UtxoSetAtResponse (state.tip, Page (PageSize 100) 1 1 txOutRefs)
+    pure $ UtxoSetAtResponse (state.tip, Page (PageSize 100) 1 1 (map fst state.utxos))
   GetTip ->
     throwError @Text "GetTip is unimplemented"
