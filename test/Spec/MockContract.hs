@@ -33,7 +33,7 @@ import Cardano.Api (
   SigningKey (PaymentSigningKey),
   TextEnvelope,
   TextEnvelopeDescr,
-  TextEnvelopeError,
+  TextEnvelopeError (TextEnvelopeAesonDecodeError),
   deserialiseFromTextEnvelope,
   serialiseToTextEnvelope,
  )
@@ -47,7 +47,7 @@ import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
 import Data.Default (Default (def))
-import Data.Either.Combinators (fromRight, mapLeft, maybeToRight)
+import Data.Either.Combinators (fromRight, mapLeft)
 import Data.Kind (Type)
 import Data.List (isPrefixOf)
 import Data.Map (Map)
@@ -108,19 +108,24 @@ addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress pkh3)
 toPubKey :: SigningKey PaymentKey -> PubKey
 toPubKey = Ledger.toPublicKey . fromRight (error "Impossible happened") . Files.fromCardanoPaymentKey
 
-toSigningKeyFile :: FilePath -> SigningKey PaymentKey -> (String, TextEnvelope)
+toSigningKeyFile :: FilePath -> SigningKey PaymentKey -> (FilePath, MockFile)
 toSigningKeyFile signingKeyFileDir sKey =
   ( signingKeyFileDir ++ "/signing-key-" ++ show (Ledger.pubKeyHash (toPubKey sKey)) ++ ".skey"
-  , serialiseToTextEnvelope Nothing sKey
+  , TextEnvelopeFile $ serialiseToTextEnvelope Nothing sKey
   )
 
 data MockContractState = MockContractState
-  { files :: Map FilePath TextEnvelope
+  { files :: Map FilePath MockFile
   , commandHistory :: [Text]
   , contractEnv :: ContractEnvironment
   , utxos :: [(TxOutRef, TxOut)]
   , tip :: Tip
   }
+  deriving stock (Show, Eq)
+
+data MockFile
+  = TextEnvelopeFile TextEnvelope
+  | JsonFile JSON.Value
   deriving stock (Show, Eq)
 
 instance Default MockContractState where
@@ -157,10 +162,10 @@ runContractPure ::
   (Monoid w) =>
   Contract w s Text a ->
   MockContractState ->
-  (Either Text a, MockContractState)
+  (Either Text a, MockContractState, [String])
 runContractPure contract initContractState =
-  let ((res, st), _) = runContractPure' contract initContractState
-   in (fst =<< res, st {commandHistory = reverse st.commandHistory})
+  let ((res, st), logs) = runContractPure' contract initContractState
+   in (fst =<< res, st {commandHistory = reverse st.commandHistory}, logs)
 
 runContractPure' ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
@@ -281,17 +286,25 @@ mockReadFileTextEnvelope ::
 mockReadFileTextEnvelope ttoken filepath = do
   state <- get @MockContractState
 
-  let maybeFile = Map.lookup filepath state.files
+  pure $
+    case Map.lookup filepath state.files of
+      Nothing -> Left $ FileIOError filepath (IOError Nothing NoSuchThing "" "No such file in the MockContractState" Nothing Nothing)
+      Just (TextEnvelopeFile te) ->
+        mapLeft (FileError filepath) $ deserialiseFromTextEnvelope ttoken te
+      Just _ -> Left $ FileError filepath $ TextEnvelopeAesonDecodeError "Invalid format."
 
-  pure $ do
-    te <-
-      maybeToRight
-        (FileIOError filepath (IOError Nothing NoSuchThing "" "No such file in the MockContractState" Nothing Nothing))
-        maybeFile
-    mapLeft (FileError filepath) $ deserialiseFromTextEnvelope ttoken te
+-- pure $ do
+--   te <-
+--     maybeToRight
+--       maybeFile
+--   mapLeft (FileError filepath) $ deserialiseFromTextEnvelope ttoken te
 
 mockWriteFileJSON :: FilePath -> JSON.Value -> MockContract (Either (FileError ()) ())
-mockWriteFileJSON _ _ = pure $ Right ()
+mockWriteFileJSON filepath value = do
+  let fileContent = JsonFile value
+  modify (\st -> st {files = Map.insert filepath fileContent st.files})
+
+  pure $ Right ()
 
 mockWriteFileTextEnvelope ::
   forall (a :: Type).
@@ -301,7 +314,8 @@ mockWriteFileTextEnvelope ::
   a ->
   MockContract (Either (FileError ()) ())
 mockWriteFileTextEnvelope filepath descr content = do
-  modify (\st -> st {files = Map.insert filepath (serialiseToTextEnvelope descr content) st.files})
+  let fileContent = TextEnvelopeFile (serialiseToTextEnvelope descr content)
+  modify (\st -> st {files = Map.insert filepath fileContent st.files})
 
   pure $ Right ()
 

@@ -7,6 +7,8 @@ module Spec.MLabsPAB.Contract (tests) where
 import Control.Monad (void)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
+import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
@@ -34,7 +36,7 @@ import Spec.MockContract (
   runContractPure,
  )
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (Assertion, testCase, (@?=))
+import Test.Tasty.HUnit (Assertion, assertBool, testCase, (@?=))
 import Prelude
 
 {- | Project wide tests
@@ -65,7 +67,8 @@ sendAda = do
               Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
         void $ submitTx constraints
 
-      (result, state) = runContractPure contract initState
+      (result, state, _) = runContractPure contract initState
+
   result @?= Right ()
   state.commandHistory
     @?= map
@@ -106,7 +109,7 @@ multisigSupport = do
                 <> Constraints.mustBeSignedBy pkh3
         void $ submitTx constraints
 
-      (result, state) = runContractPure contract initState
+      (result, state, _) = runContractPure contract initState
   -- Building and siging the tx includes both signing keys
   result @?= Right ()
   state.commandHistory
@@ -155,7 +158,8 @@ sendTokens = do
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
         void $ submitTx constraints
 
-      (result, state) = runContractPure contract initState
+      (result, state, _) = runContractPure contract initState
+
   result @?= Right ()
   (state.commandHistory !! 1)
     @?= Text.replace
@@ -205,7 +209,8 @@ mintTokens = do
                   (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
         void $ submitTxConstraintsWith @Void lookups constraints
 
-      (result, state) = runContractPure contract initState
+      (result, state, _) = runContractPure contract initState
+
   result @?= Right ()
   (state.commandHistory !! 1)
     @?= Text.replace
@@ -222,6 +227,13 @@ mintTokens = do
        --required-signer signing-keys/signing-key-${pkh1'}.skey
        --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
       |]
+
+  assertFiles
+    state
+    [ [text|result-scripts/policy-${curSymbol'}.plutus|]
+    , [text|result-scripts/redeemer-${redeemerHash}.json|]
+    , [text|signing-keys/signing-key-${pkh1'}.skey|]
+    ]
 
 redeemFromValidator :: Assertion
 redeemFromValidator = do
@@ -274,7 +286,7 @@ redeemFromValidator = do
                 <> Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 500)
         void $ submitTxConstraintsWith @Void lookups constraints
 
-      (result, state) = runContractPure contract initState
+      (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
   (state.commandHistory !! 1)
@@ -292,3 +304,23 @@ redeemFromValidator = do
        --required-signer signing-keys/signing-key-${pkh1'}.skey
        --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
       |]
+  assertFiles
+    state
+    [ [text|result-scripts/datum-${datumHash'}.json|]
+    , [text|result-scripts/redeemer-${redeemerHash}.json|]
+    , [text|result-scripts/validator-${valHash'}.plutus|]
+    , [text|signing-keys/signing-key-${pkh1'}.skey|]
+    ]
+
+assertFiles :: MockContractState -> [Text] -> Assertion
+assertFiles state files =
+  assertBool errorMsg $
+    Set.fromList (map Text.unpack files) `Set.isSubsetOf` Map.keysSet state.files
+  where
+    errorMsg =
+      unlines
+        [ "expected (at least):"
+        , show files
+        , "got:"
+        , show (Map.keys state.files)
+        ]
