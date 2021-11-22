@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module MLabsPAB.Server (app, State, initState) where
 
 import Control.Concurrent (ThreadId, forkIO)
@@ -7,6 +9,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON (toJSON))
 import Data.Aeson qualified as JSON
 import Data.Either.Combinators (leftToMaybe)
+import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
@@ -56,11 +59,11 @@ server :: HasDefinitions t => PABConfig -> State -> Server (API t)
 server pabConfig state =
   websocketHandler state :<|> activateContractHandler pabConfig state
 
-apiProxy :: Proxy t -> Proxy (API t)
-apiProxy _ = Proxy
+apiProxy :: forall (t :: Type). Proxy (API t)
+apiProxy = Proxy
 
-app :: (HasDefinitions t, FromJSON t) => PABConfig -> Proxy t -> State -> Application
-app pabConfig contractDef state = serve (apiProxy contractDef) $ server pabConfig state
+app :: forall (t :: Type). (HasDefinitions t, FromJSON t) => PABConfig -> State -> Application
+app pabConfig state = serve (apiProxy @t) $ server pabConfig state
 
 -- | Mock websocket handler (can only send ContractFinished message)
 websocketHandler :: State -> PendingConnection -> Handler ()

@@ -3,6 +3,8 @@
 This is a custom implementation of the PAB as the official one is not ready yet.
 This PAB is not feature complete, and not fully tested with all use cases, so please use it with care!
 
+Disclaimer: this project is still a work in progress, with a few missing features. We don't take any responsibility for any losses, only use it at your own risk!
+
 Supported features:
 
 - query utxos at an address (utxosAt)
@@ -76,7 +78,7 @@ main = do
           , -- Protocol params file location relative to the cardano-cli working directory (needed for the cli)
             pcProtocolParamsFile = "./protocol.json"
           }
-  MLabsPAB.runPAB pabConf (Proxy :: Proxy MyContracts)
+  MLabsPAB.runPAB @MyContracts pabConf
 ```
 
 To run the fake PAB, you need to prepare a few more things:
