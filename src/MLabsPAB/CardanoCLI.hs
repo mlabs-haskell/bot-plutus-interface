@@ -51,6 +51,7 @@ import MLabsPAB.Files (
   policyScriptFilePath,
   redeemerJsonFilePath,
   signingKeyFilePath,
+  txFilePath,
   validatorScriptFilePath,
  )
 import MLabsPAB.Types (PABConfig)
@@ -125,7 +126,7 @@ buildTx pabConf ownPubKey tx =
             , requiredSigners
             , networkOpt pabConf
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            , ["--out-file", "tx.raw"]
+            , ["--out-file", txFilePath pabConf "raw" tx]
             ]
         ]
 
@@ -134,17 +135,18 @@ signTx ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
+  Tx ->
   [PubKey] ->
   Eff effs ()
-signTx pabConf pubKeys =
+signTx pabConf tx pubKeys =
   callCommand $
     ShellArgs
       "cardano-cli"
       ( mconcat
           [ ["transaction", "sign"]
-          , ["--tx-body-file", "tx.raw"]
+          , ["--tx-body-file", txFilePath pabConf "raw" tx]
           , signingKeyFiles
-          , ["--out-file", "tx.signed"]
+          , ["--out-file", txFilePath pabConf "signed" tx]
           ]
       )
       (const ())
@@ -159,14 +161,15 @@ submitTx ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
+  Tx ->
   Eff effs (Maybe Text)
-submitTx pabConf =
+submitTx pabConf tx =
   callCommand $
     ShellArgs
       "cardano-cli"
       ( mconcat
           [ ["transaction", "submit"]
-          , ["--tx-file", "tx.signed"]
+          , ["--tx-file", txFilePath pabConf "signed" tx]
           , networkOpt pabConf
           ]
       )

@@ -35,6 +35,8 @@ data PABConfig = PABConfig
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
     pcSigningKeyFileDir :: !Text
+  , -- | Directory name of the transaction files
+    pcTxFileDir :: !Text
   , -- | Protocol params file location relative to the cardano-cli working directory (needed for the cli)
     pcProtocolParamsFile :: !Text
   , -- | Dry run mode will build the tx, but skip the submit step
@@ -70,6 +72,7 @@ instance Default PABConfig where
       , pcProtocolParams = Nothing
       , pcScriptFileDir = "result-scripts"
       , pcSigningKeyFileDir = "signing-keys"
+      , pcTxFileDir = "txs"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info

@@ -214,12 +214,12 @@ writeBalancedTx contractEnv tx = do
       CardanoCLI.uploadFiles contractEnv.cePABConfig
 
       CardanoCLI.buildTx contractEnv.cePABConfig contractEnv.ceOwnPubKey tx
-      CardanoCLI.signTx contractEnv.cePABConfig requiredSigners
+      CardanoCLI.signTx contractEnv.cePABConfig tx requiredSigners
 
       result <-
         if contractEnv.cePABConfig.pcDryRun
           then pure Nothing
-          else CardanoCLI.submitTx contractEnv.cePABConfig
+          else CardanoCLI.submitTx contractEnv.cePABConfig tx
 
       case result of
         Just err -> pure $ WriteBalancedTxFailed $ OtherError err
