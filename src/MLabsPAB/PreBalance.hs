@@ -49,7 +49,7 @@ preBalanceTx ::
 preBalanceTx minLovelaces fees utxos ownPkh privKeys requiredSignatories tx =
   addTxCollaterals utxos tx
     >>= balanceTxIns utxos minLovelaces fees
-    >>= balanceNonAdaOuts ownPkh utxos
+    >>= Right . balanceNonAdaOuts ownPkh utxos
     >>= Right . addLovelaces minLovelaces
     >>= addSignatories ownPkh privKeys requiredSignatories
 
@@ -140,7 +140,7 @@ addTxCollaterals utxos tx = do
       _ -> Left "There are no utxos to be used as collateral"
 
 -- | We need to balance non ada values, as the cardano-cli is unable to balance them (as of 2021/09/24)
-balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Tx
 balanceNonAdaOuts ownPkh utxos tx =
   let changeAddr = Ledger.pubKeyHashAddress ownPkh
       txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
@@ -160,8 +160,8 @@ balanceNonAdaOuts ownPkh utxos tx =
           (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
             txOut {txOutValue = v <> nonAdaChange} : (txOuts <> txOuts')
    in if Value.isZero nonAdaChange
-        then Right tx
-        else Right $ tx {txOutputs = outputs}
+        then tx
+        else tx {txOutputs = outputs}
 
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
