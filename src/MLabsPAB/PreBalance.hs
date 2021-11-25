@@ -4,6 +4,7 @@ module MLabsPAB.PreBalance (
 
 import Control.Monad (foldM)
 import Data.Either.Combinators (rightToMaybe)
+import Data.Kind (Type)
 import Data.List (partition)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -48,8 +49,8 @@ preBalanceTx ::
 preBalanceTx minLovelaces fees utxos ownPkh privKeys requiredSignatories tx =
   addTxCollaterals utxos tx
     >>= balanceTxIns utxos minLovelaces fees
-    >>= Right . addLovelaces minLovelaces
     >>= balanceNonAdaOuts ownPkh utxos
+    >>= Right . addLovelaces minLovelaces
     >>= addSignatories ownPkh privKeys requiredSignatories
 
 -- | Getting the necessary utxos to cover the fees for the transaction
@@ -148,7 +149,7 @@ balanceNonAdaOuts ownPkh utxos tx =
       nonMintedOutputValue = outputValue `minus` txMint tx
       nonAdaChange = filterNonAda inputValue `minus` filterNonAda nonMintedOutputValue
       outputs =
-        case partition ((/=) changeAddr . Tx.txOutAddress) $ txOutputs tx of
+        case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
           ([], txOuts) ->
             TxOut
               { txOutAddress = changeAddr
@@ -158,7 +159,9 @@ balanceNonAdaOuts ownPkh utxos tx =
             txOuts
           (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
             txOut {txOutValue = v <> nonAdaChange} : (txOuts <> txOuts')
-   in Right $ tx {txOutputs = outputs}
+   in if Value.isZero nonAdaChange
+        then Right tx
+        else Right $ tx {txOutputs = outputs}
 
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
@@ -174,7 +177,7 @@ addSignatories ownPkh privKeys pkhs tx =
     tx
     (ownPkh : pkhs)
 
-showText :: Show a => a -> Text
+showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
 
 -- | Filter a value to contain only non ada assets

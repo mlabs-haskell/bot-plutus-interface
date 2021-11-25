@@ -1,6 +1,7 @@
 module MLabsPAB.Types (
   PABConfig (..),
   CLILocation (..),
+  LogLevel (..),
   ContractEnvironment (..),
   HasDefinitions (..),
   FormSchema,
@@ -38,7 +39,9 @@ data PABConfig = PABConfig
     pcProtocolParamsFile :: !Text
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
+  , pcLogLevel :: !LogLevel
   }
+  deriving stock (Show, Eq)
 
 data ContractEnvironment = ContractEnvironment
   { cePABConfig :: PABConfig
@@ -46,13 +49,18 @@ data ContractEnvironment = ContractEnvironment
   , ceWallet :: Wallet
   , -- | TODO: We should get this from the wallet, once the integration works
     ceOwnPubKey :: PubKey
-  , -- | TODO: We should be able acalculate this
+  , -- | TODO: We should be able to calculate this
     ceFees :: Integer
-  , -- | TODO: We should be able acalculate this
+  , -- | TODO: We should be able to calculate this
     ceMinLovelaces :: Integer
   }
+  deriving stock (Show, Eq)
 
 data CLILocation = Local | Remote Text
+  deriving stock (Show, Eq)
+
+data LogLevel = Error | Warn | Notice | Info | Debug
+  deriving stock (Eq, Ord, Show)
 
 instance Default PABConfig where
   def =
@@ -64,4 +72,5 @@ instance Default PABConfig where
       , pcSigningKeyFileDir = "signing-keys"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
+      , pcLogLevel = Info
       }
