@@ -20,7 +20,7 @@ import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe, maybeToList)
+import Data.Maybe (fromMaybe, maybeToList)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -91,11 +91,12 @@ utxosAt pabConf address = do
             , networkOpt pabConf
             ]
       , cmdOutParser =
-          Map.fromList . mapMaybe (rightToMaybe . toUtxo) . drop 2 . Text.lines . Text.pack
+          Map.fromList
+            . fromMaybe []
+            . rightToMaybe
+            . parseOnly (UtxoParser.utxoMapParser address)
+            . Text.pack
       }
-  where
-    toUtxo :: Text -> Either String (TxOutRef, ChainIndexTxOut)
-    toUtxo line = parseOnly (UtxoParser.utxoMapParser address) line
 
 -- | Build a tx body and write it to disk
 buildTx ::
@@ -260,9 +261,9 @@ txOutRefToCliArg (TxOutRef (TxId txId) txIx) =
 
 flatValueToCliArg :: (CurrencySymbol, TokenName, Integer) -> Text
 flatValueToCliArg (curSymbol, name, amount)
-  | curSymbol == Ada.adaSymbol && name == Ada.adaToken = amountStr
-  | otherwise =
-    amountStr <> " " <> curSymbolStr <> "." <> tokenNameStr
+  | curSymbol == Ada.adaSymbol = amountStr
+  | Text.null tokenNameStr = amountStr <> " " <> curSymbolStr
+  | otherwise = amountStr <> " " <> curSymbolStr <> "." <> tokenNameStr
   where
     amountStr = showText amount
     curSymbolStr = encodeByteString $ fromBuiltin $ unCurrencySymbol curSymbol

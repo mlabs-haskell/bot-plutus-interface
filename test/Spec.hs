@@ -1,6 +1,7 @@
 module Main (main) where
 
-import Spec.MLabsPAB.Contract qualified as MLabsPAB.Contract
+import Spec.MLabsPAB.Contract qualified
+import Spec.MLabsPAB.UtxoParser qualified
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Prelude
 
@@ -16,4 +17,6 @@ tests :: TestTree
 tests =
   testGroup
     "MLabsPAB"
-    [MLabsPAB.Contract.tests]
+    [ Spec.MLabsPAB.Contract.tests
+    , Spec.MLabsPAB.UtxoParser.tests
+    ]

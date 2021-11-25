@@ -264,7 +264,9 @@ valueToUtxoOut =
                     tokenName' =
                       decodeUtf8 $
                         fromBuiltin $ Value.unTokenName tokenName
-                 in [text|${curSymbol'}.${tokenName'}|]
+                 in if Text.null tokenName'
+                      then curSymbol'
+                      else [text|${curSymbol'}.${tokenName'}|]
        in Text.pack (show tAmt) <> " " <> token
 
 mockCreateDirectoryIfMissing :: Bool -> FilePath -> MockContract ()
