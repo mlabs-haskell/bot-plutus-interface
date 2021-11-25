@@ -126,6 +126,7 @@ data MockContractState = MockContractState
 data MockFile
   = TextEnvelopeFile TextEnvelope
   | JsonFile JSON.Value
+  | OtherFile Text
   deriving stock (Show, Eq)
 
 instance Default MockContractState where
@@ -209,9 +210,19 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
   case (cmdName, cmdArgs) of
     ("cardano-cli", "query" : "utxo" : "--address" : addr : _) ->
       cmdOutParser <$> mockQueryUtxo addr
-    ("cardano-cli", "transaction" : "build" : _) ->
+    ("cardano-cli", "transaction" : "build" : args) -> do
+      case drop 1 $ dropWhile (/= "--out-file") args of
+        filepath : _ ->
+          modify (\st -> st {files = Map.insert (Text.unpack filepath) (OtherFile "TxBody") st.files})
+        _ -> throwError @Text "Out file argument is missing"
+
       pure $ cmdOutParser ""
-    ("cardano-cli", "transaction" : "sign" : _) ->
+    ("cardano-cli", "transaction" : "sign" : args) -> do
+      case drop 1 $ dropWhile (/= "--out-file") args of
+        filepath : _ ->
+          modify (\st -> st {files = Map.insert (Text.unpack filepath) (OtherFile "Tx") st.files})
+        _ -> throwError @Text "Out file argument is missing"
+
       pure $ cmdOutParser ""
     ("cardano-cli", "transaction" : "submit" : _) ->
       pure $ cmdOutParser ""

@@ -52,6 +52,7 @@ tests =
     , testCase "Send native tokens" sendTokens
     , testCase "Mint native tokens" mintTokens
     , testCase "Redeem from validator script" redeemFromValidator
+    , testCase "Multiple txs in a contract" multiTx
     ]
 
 sendAda :: Assertion
@@ -244,6 +245,8 @@ mintTokens = do
         [ [text|result-scripts/policy-${curSymbol'}.plutus|]
         , [text|result-scripts/redeemer-${redeemerHash}.json|]
         , [text|signing-keys/signing-key-${pkh1'}.skey|]
+        , [text|txs/tx-${outTxId}.raw|]
+        , [text|txs/tx-${outTxId}.signed|]
         ]
 
 redeemFromValidator :: Assertion
@@ -324,7 +327,41 @@ redeemFromValidator = do
         , [text|result-scripts/redeemer-${redeemerHash}.json|]
         , [text|result-scripts/validator-${valHash'}.plutus|]
         , [text|signing-keys/signing-key-${pkh1'}.skey|]
+        , [text|txs/tx-${outTxId}.raw|]
+        , [text|txs/tx-${outTxId}.signed|]
         ]
+
+multiTx :: Assertion
+multiTx = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      initState = def {utxos = [(txOutRef, txOut)]}
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text [Tx]
+      contract = do
+        let constraints =
+              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
+        tx1 <- submitTx constraints
+        tx2 <- submitTx constraints
+
+        pure [tx1, tx2]
+
+      (result, state, _) = runContractPure contract initState
+
+  case result of
+    Left errMsg -> assertFailure (show errMsg)
+    Right [tx1, tx2] ->
+      let outTxId1 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txId tx1
+          outTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txId tx2
+       in assertFiles
+            state
+            [ [text|signing-keys/signing-key-${pkh1'}.skey|]
+            , [text|txs/tx-${outTxId1}.raw|]
+            , [text|txs/tx-${outTxId2}.raw|]
+            , [text|txs/tx-${outTxId1}.signed|]
+            , [text|txs/tx-${outTxId2}.signed|]
+            ]
+    Right _ -> assertFailure "Wrong number of txs"
 
 assertFiles :: MockContractState -> [Text] -> Assertion
 assertFiles state files =
