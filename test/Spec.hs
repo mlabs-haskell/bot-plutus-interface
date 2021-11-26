@@ -1,7 +1,9 @@
 module Main (main) where
 
-import Test.Tasty
-import Prelude (IO)
+import Spec.MLabsPAB.Contract qualified
+import Spec.MLabsPAB.UtxoParser qualified
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Prelude
 
 -- | @since 0.1
 main :: IO ()
@@ -14,5 +16,7 @@ main = defaultMain tests
 tests :: TestTree
 tests =
   testGroup
-    "HackPAB"
-    []
+    "MLabsPAB"
+    [ Spec.MLabsPAB.Contract.tests
+    , Spec.MLabsPAB.UtxoParser.tests
+    ]
