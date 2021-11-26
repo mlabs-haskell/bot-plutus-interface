@@ -15,12 +15,12 @@ import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), ser
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
-import Data.Either.Combinators (rightToMaybe)
+import Data.Either (fromRight)
 import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (maybeToList)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -92,8 +92,7 @@ utxosAt pabConf address = do
             ]
       , cmdOutParser =
           Map.fromList
-            . fromMaybe []
-            . rightToMaybe
+            . fromRight []
             . parseOnly (UtxoParser.utxoMapParser address)
             . Text.pack
       }

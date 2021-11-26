@@ -5,14 +5,16 @@ module MLabsPAB.UtxoParser (
 ) where
 
 import Control.Applicative (many)
-import Control.Monad (forM_, mzero, void)
+import Control.Monad (mzero, void)
 import Data.Aeson.Extras (tryDecode)
 import Data.Attoparsec.Text (
   Parser,
   char,
   choice,
+  count,
   decimal,
   inClass,
+  isEndOfLine,
   option,
   sepBy,
   signed,
@@ -48,14 +50,15 @@ utxoMapParser address = do
 
 skipLine :: Int -> Parser ()
 skipLine n =
-  forM_ [1 .. n] $ \_ -> do
-    skipWhile (not . inClass "\r\n")
-    skipWhile $ inClass "\r\n"
+  void $
+    count n $ do
+      skipWhile (not . isEndOfLine)
+      skipWhile $ inClass "\r\n"
 
 utxoParser :: Address -> Parser (TxOutRef, ChainIndexTxOut)
 utxoParser address =
   (,) <$> (txOutRefParser <?> "TxOutRef") <* skipSpace
-    <*> (chainIndexTxOutParser address <?> "ChainIndexTxOut") <* skipWhile (inClass "\r\n")
+    <*> (chainIndexTxOutParser address <?> "ChainIndexTxOut") <* skipWhile isEndOfLine
 
 txOutRefParser :: Parser TxOutRef
 txOutRefParser = do
