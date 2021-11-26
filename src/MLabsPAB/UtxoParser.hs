@@ -53,7 +53,7 @@ skipLine n =
   void $
     count n $ do
       skipWhile (not . isEndOfLine)
-      skipWhile $ inClass "\r\n"
+      skipWhile isEndOfLine
 
 utxoParser :: Address -> Parser (TxOutRef, ChainIndexTxOut)
 utxoParser address =
