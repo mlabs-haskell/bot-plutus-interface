@@ -250,26 +250,7 @@ mockQueryUtxoOut utxos =
             ( \(TxOutRef (TxId txId) txIx, TxOut _ val datumHash) ->
                 let txId' = encodeByteString $ fromBuiltin txId
                     txIx' = Text.pack $ show txIx
-                    amts =
-                      Text.intercalate
-                        " + "
-                        ( map
-                            ( \(curSymbol, tokenName, tAmt) ->
-                                let token =
-                                      if curSymbol == Ada.adaSymbol
-                                        then "lovelace"
-                                        else
-                                          let curSymbol' =
-                                                encodeByteString $
-                                                  fromBuiltin $ Value.unCurrencySymbol curSymbol
-                                              tokenName' =
-                                                decodeUtf8 $
-                                                  fromBuiltin $ Value.unTokenName tokenName
-                                           in [text|${curSymbol'}.${tokenName'}|]
-                                 in Text.pack (show tAmt) <> " " <> token
-                            )
-                            (Value.flattenValue val)
-                        )
+                    amts = valueToUtxoOut val
                     datumHash' = case datumHash of
                       Nothing -> "TxOutDatumNone"
                       Just (DatumHash dh) ->
@@ -278,6 +259,26 @@ mockQueryUtxoOut utxos =
             )
             utxos
       ]
+
+valueToUtxoOut :: Value.Value -> Text
+valueToUtxoOut =
+  Text.intercalate " + " . map stringifyValue' . Value.flattenValue
+  where
+    stringifyValue' (curSymbol, tokenName, tAmt) =
+      let token =
+            if curSymbol == Ada.adaSymbol
+              then "lovelace"
+              else
+                let curSymbol' =
+                      encodeByteString $
+                        fromBuiltin $ Value.unCurrencySymbol curSymbol
+                    tokenName' =
+                      decodeUtf8 $
+                        fromBuiltin $ Value.unTokenName tokenName
+                 in if Text.null tokenName'
+                      then curSymbol'
+                      else [text|${curSymbol'}.${tokenName'}|]
+       in Text.pack (show tAmt) <> " " <> token
 
 mockCreateDirectoryIfMissing :: Bool -> FilePath -> MockContract ()
 mockCreateDirectoryIfMissing _ _ = pure ()
@@ -303,12 +304,6 @@ mockReadFileTextEnvelope ttoken filepath = do
       Just (TextEnvelopeFile te) ->
         mapLeft (FileError filepath) $ deserialiseFromTextEnvelope ttoken te
       Just _ -> Left $ FileError filepath $ TextEnvelopeAesonDecodeError "Invalid format."
-
--- pure $ do
---   te <-
---     maybeToRight
---       maybeFile
---   mapLeft (FileError filepath) $ deserialiseFromTextEnvelope ttoken te
 
 mockWriteFileJSON :: FilePath -> JSON.Value -> MockContract (Either (FileError ()) ())
 mockWriteFileJSON filepath value = do

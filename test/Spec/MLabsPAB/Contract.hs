@@ -39,7 +39,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
 import Prelude
 
-{- | Project wide tests
+{- | Contract tests
 
  @since 0.1
 -}
@@ -50,6 +50,7 @@ tests =
     [ testCase "Send ada to address" sendAda
     , testCase "Support multiple signatories" multisigSupport
     , testCase "Send native tokens" sendTokens
+    , testCase "Send native tokens (without token name)" sendTokensWithoutName
     , testCase "Mint native tokens" mintTokens
     , testCase "Redeem from validator script" redeemFromValidator
     , testCase "Multiple txs in a contract" multiTx
@@ -185,6 +186,43 @@ sendTokens = do
               --required-signer signing-keys/signing-key-${pkh1'}.skey
               --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
             |]
+
+sendTokensWithoutName :: Assertion
+sendTokensWithoutName = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut =
+        TxOut
+          (Ledger.pubKeyHashAddress pkh1)
+          (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "" 100)
+          Nothing
+      initState = def {utxos = [(txOutRef, txOut)]}
+      txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text ()
+      contract = do
+        let constraints =
+              Constraints.mustPayToPubKey
+                pkh2
+                (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "" 5)
+        void $ submitTx constraints
+
+      (result, state, _) = runContractPure contract initState
+
+  result @?= Right ()
+  (state.commandHistory !! 1)
+    @?= Text.replace
+      "\n"
+      " "
+      [text|
+        cardano-cli transaction build --alonzo-era
+        --tx-in ${txId}#0
+        --tx-in-collateral ${txId}#0
+        --tx-out ${addr1}+50 + 95 abcd1234
+        --tx-out ${addr2}+1000 + 5 abcd1234
+        --change-address ${addr1}
+        --required-signer signing-keys/signing-key-${pkh1'}.skey
+        --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
+      |]
 
 mintTokens :: Assertion
 mintTokens = do

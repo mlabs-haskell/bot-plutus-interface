@@ -25,13 +25,14 @@ import Ledger.Tx (
   TxOutRef (..),
  )
 import Ledger.Tx qualified as Tx
-import Ledger.Value (Value)
+import Ledger.Value (Value (Value), getValue)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
   TokenName (..),
  )
+import PlutusTx.AssocMap qualified as AssocMap
 import Prelude
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
@@ -49,7 +50,7 @@ preBalanceTx ::
 preBalanceTx minLovelaces fees utxos ownPkh privKeys requiredSignatories tx =
   addTxCollaterals utxos tx
     >>= balanceTxIns utxos minLovelaces fees
-    >>= balanceNonAdaOuts ownPkh utxos
+    >>= Right . balanceNonAdaOuts ownPkh utxos
     >>= Right . addLovelaces minLovelaces
     >>= addSignatories ownPkh privKeys requiredSignatories
 
@@ -140,7 +141,7 @@ addTxCollaterals utxos tx = do
       _ -> Left "There are no utxos to be used as collateral"
 
 -- | We need to balance non ada values, as the cardano-cli is unable to balance them (as of 2021/09/24)
-balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Tx
 balanceNonAdaOuts ownPkh utxos tx =
   let changeAddr = Ledger.pubKeyHashAddress ownPkh
       txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
@@ -160,8 +161,8 @@ balanceNonAdaOuts ownPkh utxos tx =
           (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
             txOut {txOutValue = v <> nonAdaChange} : (txOuts <> txOuts')
    in if Value.isZero nonAdaChange
-        then Right tx
-        else Right $ tx {txOutputs = outputs}
+        then tx
+        else tx {txOutputs = outputs}
 
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
@@ -180,13 +181,13 @@ addSignatories ownPkh privKeys pkhs tx =
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
 
+-- | Filter by key for Associated maps (why doesn't this exist?)
+filterKey :: (k -> Bool) -> AssocMap.Map k v -> AssocMap.Map k v
+filterKey f = AssocMap.mapMaybeWithKey $ \k v -> if f k then Just v else Nothing
+
 -- | Filter a value to contain only non ada assets
 filterNonAda :: Value -> Value
-filterNonAda =
-  mconcat
-    . map unflattenValue
-    . filter (\(curSymbol, tokenName, _) -> curSymbol /= Ada.adaSymbol && tokenName /= Ada.adaToken)
-    . Value.flattenValue
+filterNonAda = Value . filterKey (/= Ada.adaSymbol) . getValue
 
 minus :: Value -> Value -> Value
 minus x y =
