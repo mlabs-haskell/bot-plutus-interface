@@ -2,6 +2,8 @@
 
 module MLabsPAB.CardanoCLI (
   submitTx,
+  calculateMinUtxo,
+  calculateMinFee,
   buildTx,
   signTx,
   uploadFiles,
@@ -16,6 +18,7 @@ import Control.Monad.Freer (Eff, Member)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
 import Data.Either (fromRight)
+import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
@@ -80,7 +83,7 @@ utxosAt ::
   PABConfig ->
   Address ->
   Eff effs (Map TxOutRef ChainIndexTxOut)
-utxosAt pabConf address = do
+utxosAt pabConf address =
   callCommand
     ShellArgs
       { cmdName = "cardano-cli"
@@ -95,6 +98,49 @@ utxosAt pabConf address = do
             . fromRight []
             . parseOnly (UtxoParser.utxoMapParser address)
             . Text.pack
+      }
+
+calculateMinUtxo ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  Tx ->
+  Eff effs (Either Text Integer)
+calculateMinUtxo pabConf tx =
+  callCommand
+    ShellArgs
+      { cmdName = "cardano-cli"
+      , cmdArgs =
+          mconcat
+            [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
+            , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+            , txOutOpts pabConf (txOutputs tx)
+            ]
+      , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
+      }
+
+-- | Calculating fee for an unbalanced transaction
+calculateMinFee ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  Tx ->
+  Eff effs (Either Text Integer)
+calculateMinFee pabConf tx =
+  callCommand
+    ShellArgs
+      { cmdName = "cardano-cli"
+      , cmdArgs =
+          mconcat
+            [ ["transaction", "calculate-min-fee"]
+            , ["--tx-body-file", "tx.raw"]
+            , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+            , ["--tx-in-count", showText $ 1 + length (txInputs tx)]
+            , ["--tx-out-count", showText $ length $ txOutputs tx]
+            , ["--witness-count", showText $ length $ txSignatures tx]
+            , networkOpt pabConf
+            ]
+      , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
       }
 
 -- | Build a tx body and write it to disk
