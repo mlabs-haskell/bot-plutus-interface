@@ -1,5 +1,6 @@
 module MLabsPAB.UtxoParser (
   chainIndexTxOutParser,
+  feeParser,
   utxoParser,
   utxoMapParser,
 ) where
@@ -120,3 +121,12 @@ datumHashParser = do
 decodeHash :: Parser Text -> Parser BuiltinByteString
 decodeHash rawParser =
   rawParser >>= \parsed -> either (const mzero) (pure . toBuiltin) (tryDecode parsed)
+
+feeParser :: Parser Integer
+feeParser =
+  choice [prefixed, suffixed]
+  where
+    prefixed =
+      void "Lovelace" *> skipSpace *> signed decimal
+    suffixed =
+      signed decimal <* skipSpace <* void "Lovelace"

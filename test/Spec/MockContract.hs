@@ -149,8 +149,6 @@ instance Default ContractEnvironment where
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceWallet = knownWallet 1
       , ceOwnPubKey = pubKey1
-      , ceFees = 200
-      , ceMinLovelaces = 50
       }
 type MockContract a = Eff '[Error Text, State MockContractState, Writer [String]] a
 
@@ -211,6 +209,12 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
       cmdOutParser <$> mockQueryUtxo addr
     ("cardano-cli", "transaction" : "build" : _) ->
       pure $ cmdOutParser ""
+    ("cardano-cli", "transaction" : "build-raw" : _) ->
+      pure $ cmdOutParser ""
+    ("cardano-cli", "transaction" : "calculate-min-required-utxo" : _) ->
+      pure $ cmdOutParser "Lovelace 50"
+    ("cardano-cli", "transaction" : "calculate-min-fee" : _) ->
+      pure $ cmdOutParser "200 Lovelace"
     ("cardano-cli", "transaction" : "sign" : _) ->
       pure $ cmdOutParser ""
     ("cardano-cli", "transaction" : "submit" : _) ->

@@ -23,7 +23,7 @@ import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (maybeToList)
+import Data.Maybe (isJust, maybeToList)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -32,7 +32,8 @@ import Data.Text.Encoding (decodeUtf8)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
-import Ledger.Crypto (PubKey)
+import Ledger.Constraints.OffChain (UnbalancedTx (..))
+import Ledger.Crypto (PubKey, PubKeyHash)
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   ChainIndexTxOut,
@@ -104,17 +105,17 @@ calculateMinUtxo ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
-  Tx ->
+  UnbalancedTx ->
   Eff effs (Either Text Integer)
-calculateMinUtxo pabConf tx =
+calculateMinUtxo pabConf UnbalancedTx {unBalancedTxTx} =
   callCommand
     ShellArgs
       { cmdName = "cardano-cli"
       , cmdArgs =
           mconcat
             [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
+            , txOutOpts pabConf (txOutputs unBalancedTxTx)
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            , txOutOpts pabConf (txOutputs tx)
             ]
       , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
       }
@@ -124,9 +125,9 @@ calculateMinFee ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
-  Tx ->
+  UnbalancedTx ->
   Eff effs (Either Text Integer)
-calculateMinFee pabConf tx =
+calculateMinFee pabConf UnbalancedTx {unBalancedTxRequiredSignatories, unBalancedTxTx} =
   callCommand
     ShellArgs
       { cmdName = "cardano-cli"
@@ -134,41 +135,46 @@ calculateMinFee pabConf tx =
           mconcat
             [ ["transaction", "calculate-min-fee"]
             , ["--tx-body-file", "tx.raw"]
+            , ["--tx-in-count", showText $ 1 + length (txInputs unBalancedTxTx)]
+            , ["--tx-out-count", showText $ length $ txOutputs unBalancedTxTx]
+            , ["--witness-count", showText $ 1 + length (Map.keys unBalancedTxRequiredSignatories)]
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            , ["--tx-in-count", showText $ 1 + length (txInputs tx)]
-            , ["--tx-out-count", showText $ length $ txOutputs tx]
-            , ["--witness-count", showText $ length $ txSignatures tx]
             , networkOpt pabConf
             ]
       , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
       }
 
--- | Build a tx body and write it to disk
+{- | Build a tx body and write it to disk
+ If a fee if specified, it uses the build-raw command
+-}
 buildTx ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
-  PubKey ->
+  PubKeyHash ->
+  Maybe Integer ->
   Tx ->
   Eff effs ()
-buildTx pabConf ownPubKey tx =
+buildTx pabConf ownPkh maybeFee tx =
   callCommand $ ShellArgs "cardano-cli" opts (const ())
   where
-    ownAddr = Ledger.pubKeyHashAddress $ Ledger.pubKeyHash ownPubKey
+    ownAddr = Ledger.pubKeyHashAddress ownPkh
     requiredSigners =
       concatMap
         (\pubKey -> ["--required-signer", signingKeyFilePath pabConf (Ledger.pubKeyHash pubKey)])
         (Map.keys (Ledger.txSignatures tx))
     opts =
       mconcat
-        [ ["transaction", "build", "--alonzo-era"]
+        [ ["transaction", if isJust maybeFee then "build-raw" else "build", "--alonzo-era"]
         , txInOpts pabConf (txInputs tx)
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txOutputs tx)
         , mintOpts pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
+        , case maybeFee of
+            Just fee -> ["--fee", showText fee]
+            Nothing -> ["--change-address", unsafeSerialiseAddress pabConf.pcNetwork ownAddr]
         , mconcat
-            [ ["--change-address", unsafeSerialiseAddress pabConf.pcNetwork ownAddr]
-            , requiredSigners
+            [ requiredSigners
             , networkOpt pabConf
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             , ["--out-file", "tx.raw"]

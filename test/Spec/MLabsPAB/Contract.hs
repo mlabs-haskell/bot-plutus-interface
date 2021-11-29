@@ -80,6 +80,26 @@ sendAda = do
             --mainnet
            |]
       , [text|
+            cardano-cli transaction calculate-min-required-utxo --alonzo-era
+            --tx-out ${addr2}+1000
+            --protocol-params-file ./protocol.json
+          |]
+      , [text|
+            cardano-cli transaction build-raw --alonzo-era
+            --tx-out ${addr2}+1000
+            --fee 0
+            --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
+          |]
+      , [text|
+            cardano-cli transaction calculate-min-fee
+            --tx-body-file tx.raw
+            --tx-in-count 1
+            --tx-out-count 1
+            --witness-count 1
+            --protocol-params-file ./protocol.json
+            --mainnet
+          |]
+      , [text|
             cardano-cli transaction build --alonzo-era
             --tx-in ${txId}#0
             --tx-in-collateral ${txId}#0
@@ -113,12 +133,16 @@ multisigSupport = do
       (result, state, _) = runContractPure contract initState
   -- Building and siging the tx includes both signing keys
   result @?= Right ()
-  state.commandHistory
+  drop 3 state.commandHistory
     @?= map
       (Text.replace "\n" " ")
       [ [text|
-          cardano-cli query utxo
-          --address ${addr1}
+          cardano-cli transaction calculate-min-fee
+          --tx-body-file tx.raw
+          --tx-in-count 1
+          --tx-out-count 1
+          --witness-count 2
+          --protocol-params-file ./protocol.json
           --mainnet
           |]
       , [text|
@@ -162,7 +186,7 @@ sendTokens = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
-  (state.commandHistory !! 1)
+  (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
       " "
@@ -199,7 +223,7 @@ sendTokensWithoutName = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
-  (state.commandHistory !! 1)
+  (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
       " "
@@ -250,7 +274,7 @@ mintTokens = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
-  (state.commandHistory !! 1)
+  (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
       " "
@@ -327,7 +351,7 @@ redeemFromValidator = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
-  (state.commandHistory !! 1)
+  (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
       " "

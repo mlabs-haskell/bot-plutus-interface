@@ -1,8 +1,13 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module MLabsPAB.PreBalance (
   preBalanceTx,
 ) where
 
 import Control.Monad (foldM)
+import Control.Monad.Freer (Eff, Member)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Either (newEitherT, runEitherT)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
 import Data.List (partition)
@@ -16,6 +21,7 @@ import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
+import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Tx (
   Tx (..),
@@ -27,6 +33,10 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value (Value (Value), getValue)
 import Ledger.Value qualified as Value
+import MLabsPAB.CardanoCLI qualified as CardanoCLI
+import MLabsPAB.Effects (PABEffect, printLog)
+import MLabsPAB.Files qualified as Files
+import MLabsPAB.Types (LogLevel (Debug), PABConfig)
 import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
@@ -39,20 +49,33 @@ import Prelude
  assets
 -}
 preBalanceTx ::
-  Integer ->
-  Integer ->
-  Map TxOutRef TxOut ->
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
   PubKeyHash ->
-  Map PubKeyHash PrivateKey ->
-  [PubKeyHash] ->
-  Tx ->
-  Either Text Tx
-preBalanceTx minLovelaces fees utxos ownPkh privKeys requiredSignatories tx =
-  addTxCollaterals utxos tx
-    >>= balanceTxIns utxos minLovelaces fees
-    >>= Right . balanceNonAdaOuts ownPkh utxos
-    >>= Right . addLovelaces minLovelaces
-    >>= addSignatories ownPkh privKeys requiredSignatories
+  UnbalancedTx ->
+  Eff effs (Either Text Tx)
+preBalanceTx pabConf ownPkh tx =
+  runEitherT $
+    do
+      utxos <- lift $ CardanoCLI.utxosAt pabConf $ Ledger.pubKeyHashAddress ownPkh
+      privKeys <- newEitherT $ Files.readPrivateKeys pabConf
+
+      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex tx
+      lift $ printLog Debug $ show utxoIndex
+
+      minUtxo <- newEitherT $ CardanoCLI.calculateMinUtxo pabConf tx
+      lift $ CardanoCLI.buildTx pabConf ownPkh (Just 0) (unBalancedTxTx tx)
+
+      fees <- newEitherT $ CardanoCLI.calculateMinFee pabConf tx
+
+      newEitherT $
+        pure $
+          addTxCollaterals utxoIndex (unBalancedTxTx tx)
+            >>= balanceTxIns utxoIndex minUtxo fees
+            >>= Right . balanceNonAdaOuts ownPkh utxoIndex
+            >>= Right . addLovelaces minUtxo
+            >>= addSignatories ownPkh privKeys (Map.keys (unBalancedTxRequiredSignatories tx))
 
 -- | Getting the necessary utxos to cover the fees for the transaction
 collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
