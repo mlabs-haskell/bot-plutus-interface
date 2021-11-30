@@ -9,7 +9,7 @@ import Data.Set qualified as Set
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address)
-import Ledger.Crypto ( PubKeyHash, privateKey1)
+import Ledger.Crypto (PubKeyHash, privateKey1)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
 import Ledger.Value qualified as Value
 import MLabsPAB.PreBalance qualified as PreBalance
@@ -32,7 +32,6 @@ tests =
     , testCase "Add utxos to cover native tokens" addUtxosForNativeTokens
     , testProperty "Double pre balancing does not change the result" prop_DoublePreBalancing
     ]
-
 
 pkh1, pkh2 :: PubKeyHash
 pkh1 = Ledger.pubKeyHash $ Wallet.walletPubKey (Wallet.knownWallet 1)
