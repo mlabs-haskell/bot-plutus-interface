@@ -1,7 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
-
 module Spec.MLabsPAB.PreBalance (tests) where
 
 import Data.Map qualified as Map
