@@ -1,4 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 
 module MLabsPAB.Contract (runContract, handleContract) where
@@ -155,7 +154,7 @@ balanceTx contractEnv unbalancedTx = do
   --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
 
   eitherPreBalancedTx <-
-    PreBalance.preBalanceTx
+    PreBalance.preBalanceTxIO
       contractEnv.cePABConfig
       (Ledger.pubKeyHash contractEnv.ceOwnPubKey)
       unbalancedTx

@@ -81,13 +81,11 @@ library
     MLabsPAB.Contract
     MLabsPAB.Effects
     MLabsPAB.Files
+    MLabsPAB.PreBalance
     MLabsPAB.Types
     MLabsPAB.UtxoParser
 
-  other-modules:
-    MLabsPAB.PreBalance
-    MLabsPAB.Server
-
+  other-modules:   MLabsPAB.Server
   build-depends:
     , aeson                ^>=1.5.0.0
     , aeson-casing
@@ -147,6 +145,7 @@ test-suite mlabs-pab-test
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
     Spec.MLabsPAB.Contract
+    Spec.MLabsPAB.PreBalance
     Spec.MLabsPAB.UtxoParser
     Spec.MockContract
 

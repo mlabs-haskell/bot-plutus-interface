@@ -1,5 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
-
 module MLabsPAB.CardanoCLI (
   submitTx,
   calculateMinUtxo,
@@ -170,13 +168,16 @@ buildTx pabConf ownPkh maybeFee tx =
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txOutputs tx)
         , mintOpts pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
+        , requiredSigners
         , case maybeFee of
             Just fee -> ["--fee", showText fee]
-            Nothing -> ["--change-address", unsafeSerialiseAddress pabConf.pcNetwork ownAddr]
+            Nothing ->
+              mconcat
+                [ ["--change-address", unsafeSerialiseAddress pabConf.pcNetwork ownAddr]
+                , networkOpt pabConf
+                ]
         , mconcat
-            [ requiredSigners
-            , networkOpt pabConf
-            , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+            [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             , ["--out-file", "tx.raw"]
             ]
         ]
