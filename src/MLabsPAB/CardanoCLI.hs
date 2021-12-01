@@ -1,6 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module MLabsPAB.CardanoCLI (
+  BuildMode (..),
   submitTx,
   calculateMinUtxo,
   calculateMinFee,
@@ -14,16 +15,19 @@ module MLabsPAB.CardanoCLI (
 ) where
 
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
+import Codec.Serialise qualified as Codec
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
+import Data.ByteString.Lazy qualified as LazyByteString
+import Data.ByteString.Short qualified as ShortByteString
 import Data.Either (fromRight)
-import Data.Either.Combinators (mapLeft)
+import Data.Either.Combinators (mapLeft, maybeToRight)
 import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (isJust, maybeToList)
+import Data.Maybe (maybeToList)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -60,7 +64,16 @@ import MLabsPAB.Files (
 import MLabsPAB.Types (PABConfig)
 import MLabsPAB.UtxoParser qualified as UtxoParser
 import Plutus.Contract.CardanoAPI (toCardanoAddress)
-import Plutus.V1.Ledger.Api (CurrencySymbol (..), TokenName (..))
+import Plutus.V1.Ledger.Api (
+  BuiltinData,
+  CurrencySymbol (..),
+  ExBudget (..),
+  ExCPU (..),
+  ExMemory (..),
+  Script,
+  TokenName (..),
+ )
+import Plutus.V1.Ledger.Api qualified as Plutus
 import PlutusTx.Builtins (fromBuiltin)
 import Prelude
 
@@ -144,6 +157,13 @@ calculateMinFee pabConf UnbalancedTx {unBalancedTxRequiredSignatories, unBalance
       , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
       }
 
+data BuildMode = BuildRaw Integer | BuildAuto
+  deriving stock (Show)
+
+isRawBuildMode :: BuildMode -> Bool
+isRawBuildMode (BuildRaw _) = True
+isRawBuildMode _ = False
+
 {- | Build a tx body and write it to disk
  If a fee if specified, it uses the build-raw command
 -}
@@ -152,10 +172,10 @@ buildTx ::
   Member PABEffect effs =>
   PABConfig ->
   PubKeyHash ->
-  Maybe Integer ->
+  BuildMode ->
   Tx ->
   Eff effs ()
-buildTx pabConf ownPkh maybeFee tx =
+buildTx pabConf ownPkh buildMode tx =
   callCommand $ ShellArgs "cardano-cli" opts (const ())
   where
     ownAddr = Ledger.pubKeyHashAddress ownPkh
@@ -165,15 +185,15 @@ buildTx pabConf ownPkh maybeFee tx =
         (Map.keys (Ledger.txSignatures tx))
     opts =
       mconcat
-        [ ["transaction", if isJust maybeFee then "build-raw" else "build", "--alonzo-era"]
-        , txInOpts pabConf (txInputs tx)
+        [ ["transaction", if isRawBuildMode buildMode then "build-raw" else "build", "--alonzo-era"]
+        , txInOpts pabConf buildMode (txInputs tx)
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txOutputs tx)
-        , mintOpts pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
+        , mintOpts pabConf buildMode (txMintScripts tx) (txRedeemers tx) (txMint tx)
         , requiredSigners
-        , case maybeFee of
-            Just fee -> ["--fee", showText fee]
-            Nothing ->
+        , case buildMode of
+            BuildRaw fee -> ["--fee", showText fee]
+            BuildAuto ->
               mconcat
                 [ ["--change-address", unsafeSerialiseAddress pabConf.pcNetwork ownAddr]
                 , networkOpt pabConf
@@ -233,28 +253,36 @@ submitTx pabConf =
           . Text.pack
       )
 
-txInOpts :: PABConfig -> Set TxIn -> [Text]
-txInOpts pabConf =
+txInOpts :: PABConfig -> BuildMode -> Set TxIn -> [Text]
+txInOpts pabConf buildMode =
   concatMap
     ( \(TxIn txOutRef txInType) ->
         mconcat
           [ ["--tx-in", txOutRefToCliArg txOutRef]
           , case txInType of
               Just (ConsumeScriptAddress validator redeemer datum) ->
-                mconcat
-                  [
-                    [ "--tx-in-script-file"
-                    , validatorScriptFilePath pabConf (Ledger.validatorHash validator)
-                    ]
-                  ,
-                    [ "--tx-in-datum-file"
-                    , datumJsonFilePath pabConf (Ledger.datumHash datum)
-                    ]
-                  ,
-                    [ "--tx-in-redeemer-file"
-                    , redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
-                    ]
-                  ]
+                let exBudget =
+                      fromRight (ExBudget (ExCPU 0) (ExMemory 0)) $
+                        calculateExBudget
+                          (Scripts.unValidatorScript validator)
+                          [Plutus.getRedeemer redeemer, Plutus.getDatum datum]
+                 in mconcat
+                      [
+                        [ "--tx-in-script-file"
+                        , validatorScriptFilePath pabConf (Ledger.validatorHash validator)
+                        ]
+                      ,
+                        [ "--tx-in-datum-file"
+                        , datumJsonFilePath pabConf (Ledger.datumHash datum)
+                        ]
+                      ,
+                        [ "--tx-in-redeemer-file"
+                        , redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
+                        ]
+                      , if isRawBuildMode buildMode
+                          then ["--tx-in-execution-units", exBudgetToCliArg exBudget]
+                          else []
+                      ]
               Just ConsumePublicKeyAddress -> []
               Just ConsumeSimpleScriptAddress -> []
               Nothing -> []
@@ -267,8 +295,8 @@ txInCollateralOpts =
   concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef]) . Set.toList
 
 -- Minting options
-mintOpts :: PABConfig -> Set Scripts.MintingPolicy -> Redeemers -> Value -> [Text]
-mintOpts pabConf mintingPolicies redeemers mintValue =
+mintOpts :: PABConfig -> BuildMode -> Set Scripts.MintingPolicy -> Redeemers -> Value -> [Text]
+mintOpts pabConf buildMode mintingPolicies redeemers mintValue =
   mconcat
     [ mconcat $
         concatMap
@@ -276,9 +304,17 @@ mintOpts pabConf mintingPolicies redeemers mintValue =
               let redeemerPtr = RedeemerPtr Mint idx
                   redeemer = Map.lookup redeemerPtr redeemers
                   curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
+                  exBudget r =
+                    fromRight (ExBudget (ExCPU 0) (ExMemory 0)) $
+                      calculateExBudget
+                        (Scripts.unMintingPolicyScript policy)
+                        [Plutus.getRedeemer r]
                   toOpts r =
                     [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
                     , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Ledger.redeemerHash r)]
+                    , if isRawBuildMode buildMode
+                        then ["--mint-execution-units", exBudgetToCliArg (exBudget r)]
+                        else []
                     ]
                in mconcat $ maybeToList $ fmap toOpts redeemer
           )
@@ -332,6 +368,19 @@ unsafeSerialiseAddress network address =
   case serialiseAddress <$> toCardanoAddress network address of
     Right a -> a
     Left _ -> error "Couldn't create address"
+
+calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
+calculateExBudget script builtinData = do
+  modelParams <- maybeToRight "Cost model params invalid." Plutus.defaultCostModelParams
+  let serialisedScript = ShortByteString.toShort $ LazyByteString.toStrict $ Codec.serialise script
+  let pData = map Plutus.builtinDataToData builtinData
+  mapLeft showText $
+    snd $
+      Plutus.evaluateScriptCounting Plutus.Verbose modelParams serialisedScript pData
+
+exBudgetToCliArg :: ExBudget -> Text
+exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
+  "(" <> showText steps <> "," <> showText memory <> ")"
 
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show

@@ -87,14 +87,14 @@ library
 
   other-modules:   MLabsPAB.Server
   build-depends:
-    , aeson                ^>=1.5.0.0
+    , aeson                  ^>=1.5.0.0
     , aeson-casing
     , ansi-terminal
-    , attoparsec           >=0.13.2.2
-    , bytestring           ^>=0.10.12.0
+    , attoparsec             >=0.13.2.2
+    , bytestring             ^>=0.10.12.0
     , cardano-api
     , cardano-crypto
-    , cardano-prelude
+    , cardano-ledger-alonzo
     , containers
     , cryptonite
     , data-default
@@ -127,11 +127,11 @@ library
     , servant-websockets
     , split
     , stm
-    , text                 ^>=1.2.4.0
+    , text                   ^>=1.2.4.0
     , transformers
     , transformers-either
     , uuid
-    , vector               ^>=0.12.1.2
+    , vector                 ^>=0.12.1.2
     , wai
     , warp
     , websockets

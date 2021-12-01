@@ -200,7 +200,7 @@ writeBalancedTx contractEnv tx = do
 
       CardanoCLI.uploadFiles contractEnv.cePABConfig
 
-      CardanoCLI.buildTx contractEnv.cePABConfig ownPkh Nothing tx
+      CardanoCLI.buildTx contractEnv.cePABConfig ownPkh CardanoCLI.BuildAuto tx
       CardanoCLI.signTx contractEnv.cePABConfig requiredSigners
 
       result <-

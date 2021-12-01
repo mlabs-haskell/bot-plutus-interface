@@ -276,6 +276,24 @@ mintTokens = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
+
+  (state.commandHistory !! 2)
+    @?= Text.replace
+      "\n"
+      " "
+      [text| cardano-cli transaction build-raw --alonzo-era
+       --tx-in ${txId}#0
+       --tx-in-collateral ${txId}#0
+       --tx-out ${addr2}+1000 + 5 ${curSymbol'}.testToken
+       --mint-script-file result-scripts/policy-${curSymbol'}.plutus
+       --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+       --mint-execution-units (297830,1100)
+       --mint 5 ${curSymbol'}.testToken
+       --required-signer signing-keys/signing-key-${pkh1'}.skey
+       --fee 0
+       --protocol-params-file ./protocol.json --out-file tx.raw
+      |]
+
   (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
@@ -353,6 +371,23 @@ redeemFromValidator = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
+
+  (state.commandHistory !! 2)
+    @?= Text.replace
+      "\n"
+      " "
+      [text| cardano-cli transaction build-raw --alonzo-era
+       --tx-in ${txId}#1
+       --tx-in-script-file result-scripts/validator-${valHash'}.plutus
+       --tx-in-datum-file result-scripts/datum-${datumHash'}.json
+       --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+       --tx-in-execution-units (387149,1400)
+       --tx-in-collateral ${txId}#0
+       --tx-out ${addr2}+500
+       --required-signer signing-keys/signing-key-${pkh1'}.skey
+       --fee 0 --protocol-params-file ./protocol.json --out-file tx.raw
+      |]
+
   (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
@@ -368,6 +403,7 @@ redeemFromValidator = do
        --change-address ${addr1}
        --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
       |]
+
   assertFiles
     state
     [ [text|result-scripts/datum-${datumHash'}.json|]
