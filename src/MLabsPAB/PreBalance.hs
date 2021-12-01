@@ -90,6 +90,7 @@ preBalanceTx minUtxo fees utxos ownPkh privKeys requiredSigs tx =
     >>= balanceNonAdaOuts ownPkh utxos
     >>= Right . addLovelaces minUtxo
     >>= balanceTxIns utxos fees -- Adding more inputs if required
+    >>= balanceNonAdaOuts ownPkh utxos
     >>= addSignatories ownPkh privKeys requiredSigs
 
 -- | Getting the necessary utxos to cover the fees for the transaction
