@@ -196,33 +196,36 @@ sendTokensWithoutName = do
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "" 100)
           Nothing
       initState = def {utxos = [(txOutRef, txOut)]}
-      txId = encodeByteString $ fromBuiltin $ getTxId $ txOutRefId txOutRef
+      txId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text ()
+      contract :: Contract () (Endpoint "SendAda" ()) Text Tx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
                 pkh2
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "" 5)
-        void $ submitTx constraints
+        submitTx constraints
 
       (result, state, _) = runContractPure contract initState
 
-  result @?= Right ()
-  (state.commandHistory !! 1)
-    @?= Text.replace
-      "\n"
-      " "
-      [text|
-        cardano-cli transaction build --alonzo-era
-        --tx-in ${txId}#0
-        --tx-in-collateral ${txId}#0
-        --tx-out ${addr1}+50 + 95 abcd1234
-        --tx-out ${addr2}+1000 + 5 abcd1234
-        --change-address ${addr1}
-        --required-signer signing-keys/signing-key-${pkh1'}.skey
-        --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
-      |]
+  case result of
+    Left errMsg -> assertFailure (show errMsg)
+    Right tx ->
+      let outTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txId tx
+       in (state.commandHistory !! 1)
+            @?= Text.replace
+              "\n"
+              " "
+              [text|
+                cardano-cli transaction build --alonzo-era
+                --tx-in ${txId}#0
+                --tx-in-collateral ${txId}#0
+                --tx-out ${addr1}+50 + 95 abcd1234
+                --tx-out ${addr2}+1000 + 5 abcd1234
+                --change-address ${addr1}
+                --required-signer signing-keys/signing-key-${pkh1'}.skey
+                --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+              |]
 
 mintTokens :: Assertion
 mintTokens = do
