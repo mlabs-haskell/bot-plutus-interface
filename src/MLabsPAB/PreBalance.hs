@@ -196,7 +196,7 @@ balanceNonAdaOuts ownPkh utxos tx =
           (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
             txOut {txOutValue = v <> nonAdaChange} : (txOuts <> txOuts')
    in if isValueNat nonAdaChange
-        then if Value.isZero nonAdaChange then Right tx else Right $ tx {txOutputs = outputs}
+        then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
 
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
