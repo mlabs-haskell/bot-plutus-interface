@@ -158,6 +158,7 @@ test-suite mlabs-pab-test
     , freer-extras
     , freer-simple
     , generic-arbitrary
+    , lens
     , mlabs-pab
     , neat-interpolation
     , plutus-chain-index
