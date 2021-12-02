@@ -148,9 +148,9 @@ calculateMinFee pabConf UnbalancedTx {unBalancedTxRequiredSignatories, unBalance
           mconcat
             [ ["transaction", "calculate-min-fee"]
             , ["--tx-body-file", "tx.raw"]
-            , ["--tx-in-count", showText $ 1 + length (txInputs unBalancedTxTx)]
+            , ["--tx-in-count", showText $ length $ txInputs unBalancedTxTx]
             , ["--tx-out-count", showText $ length $ txOutputs unBalancedTxTx]
-            , ["--witness-count", showText $ 1 + length (Map.keys unBalancedTxRequiredSignatories)]
+            , ["--witness-count", showText $ length $ Map.keys unBalancedTxRequiredSignatories]
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             , networkOpt pabConf
             ]
