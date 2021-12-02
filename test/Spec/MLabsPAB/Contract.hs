@@ -1,4 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -89,17 +88,49 @@ sendAda = do
       ,
         ( 1
         , [text|
+          cardano-cli transaction calculate-min-required-utxo --alonzo-era
+          --tx-out ${addr2}+1000
+          --protocol-params-file ./protocol.json
+          |]
+        )
+      ,
+        ( 2
+        , [text|
+          cardano-cli transaction build-raw --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000
+          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --fee 0
+          --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          |]
+        )
+      ,
+        ( 3
+        , [text|
+          cardano-cli transaction calculate-min-fee
+          --tx-body-file txs/tx-${outTxId}.raw
+          --tx-in-count 1
+          --tx-out-count 1
+          --witness-count 1
+          --protocol-params-file ./protocol.json
+          --mainnet
+          |]
+        )
+      ,
+        ( 4
+        , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
-          --change-address ${addr1}
           --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
         |]
         )
       ,
-        ( 2
+        ( 5
         , [text|
           cardano-cli transaction sign
           --tx-body-file txs/tx-${outTxId}.raw
@@ -128,28 +159,32 @@ multisigSupport = do
     assertCommandHistory
       state
       [
-        ( 0
+        ( 3
         , [text|
-          cardano-cli query utxo
-          --address ${addr1}
+          cardano-cli transaction calculate-min-fee
+          --tx-body-file txs/tx-${outTxId}.raw
+          --tx-in-count 1
+          --tx-out-count 1
+          --witness-count 2
+          --protocol-params-file ./protocol.json
           --mainnet
           |]
         )
       ,
-        ( 1
+        ( 4
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
-          --change-address ${addr1}
           --required-signer signing-keys/signing-key-${pkh1'}.skey
           --required-signer signing-keys/signing-key-${pkh3'}.skey
+          --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
           |]
         )
       ,
-        ( 2
+        ( 5
         , [text| 
           cardano-cli transaction sign
           --tx-body-file txs/tx-${outTxId}.raw
@@ -183,15 +218,15 @@ sendTokens = do
     assertCommandHistory
       state
       [
-        ( 1
+        ( 4
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+50 + 95 abcd1234.testToken
           --tx-out ${addr2}+1000 + 5 abcd1234.testToken
-          --change-address ${addr1}
           --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
         |]
         )
@@ -206,7 +241,7 @@ sendTokensWithoutName = do
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "" 100)
           Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
-      txId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text Tx
       contract = do
@@ -220,15 +255,15 @@ sendTokensWithoutName = do
     assertCommandHistory
       state
       [
-        ( 1
+        ( 4
         , [text|
           cardano-cli transaction build --alonzo-era
-          --tx-in ${txId}#0
-          --tx-in-collateral ${txId}#0
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+50 + 95 abcd1234
           --tx-out ${addr2}+1000 + 5 abcd1234
-          --change-address ${addr1}
           --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
           |]
         )
@@ -271,7 +306,23 @@ mintTokens = do
     assertCommandHistory
       state
       [
-        ( 1
+        ( 2
+        , [text| 
+          cardano-cli transaction build-raw --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000 + 5 ${curSymbol'}.testToken
+          --mint-script-file result-scripts/policy-${curSymbol'}.plutus
+          --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+          --mint-execution-units (297830,1100)
+          --mint 5 ${curSymbol'}.testToken
+          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --fee 0
+          --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+      |]
+        )
+      ,
+        ( 4
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
@@ -280,8 +331,8 @@ mintTokens = do
           --mint-script-file result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
           --mint 5 ${curSymbol'}.testToken
-          --change-address ${addr1}
           --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
           |]
         )
@@ -351,7 +402,22 @@ redeemFromValidator = do
     assertCommandHistory
       state
       [
-        ( 1
+        ( 2
+        , [text|
+          cardano-cli transaction build-raw --alonzo-era
+          --tx-in ${inTxId}#1
+          --tx-in-script-file result-scripts/validator-${valHash'}.plutus
+          --tx-in-datum-file result-scripts/datum-${datumHash'}.json
+          --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+          --tx-in-execution-units (387149,1400)
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+500
+          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --fee 0 --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+      |]
+        )
+      ,
+        ( 4
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#1
@@ -360,8 +426,8 @@ redeemFromValidator = do
           --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+500
-          --change-address ${addr1}
           --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
           |]
         )
