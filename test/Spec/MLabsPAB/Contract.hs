@@ -72,14 +72,18 @@ sendAda = do
         submitTx constraints
 
   assertContractWithTxId contract initState $ \state outTxId ->
-    state.commandHistory
-      @?= map
-        (Text.replace "\n" " ")
-        [ [text|
+    assertCommandHistory
+      state
+      [
+        ( 0
+        , [text|
           cardano-cli query utxo
           --address ${addr1}
           --mainnet
          |]
+        )
+      ,
+        ( 1
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
@@ -89,13 +93,17 @@ sendAda = do
           --required-signer signing-keys/signing-key-${pkh1'}.skey
           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
         |]
+        )
+      ,
+        ( 2
         , [text|
           cardano-cli transaction sign
           --tx-body-file txs/tx-${outTxId}.raw
           --signing-key-file signing-keys/signing-key-${pkh1'}.skey
           --out-file txs/tx-${outTxId}.signed
         |]
-        ]
+        )
+      ]
 
 multisigSupport :: Assertion
 multisigSupport = do
@@ -113,32 +121,40 @@ multisigSupport = do
 
   -- Building and siging the tx should include both signing keys
   assertContractWithTxId contract initState $ \state outTxId ->
-    state.commandHistory
-      @?= map
-        (Text.replace "\n" " ")
-        [ [text|
-            cardano-cli query utxo
-            --address ${addr1}
-            --mainnet
-            |]
+    assertCommandHistory
+      state
+      [
+        ( 0
         , [text|
-            cardano-cli transaction build --alonzo-era
-            --tx-in ${inTxId}#0
-            --tx-in-collateral ${inTxId}#0
-            --tx-out ${addr2}+1000
-            --change-address ${addr1}
-            --required-signer signing-keys/signing-key-${pkh1'}.skey
-            --required-signer signing-keys/signing-key-${pkh3'}.skey
-            --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          cardano-cli query utxo
+          --address ${addr1}
+          --mainnet
           |]
+        )
+      ,
+        ( 1
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000
+          --change-address ${addr1}
+          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --required-signer signing-keys/signing-key-${pkh3'}.skey
+          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          |]
+        )
+      ,
+        ( 2
         , [text| 
-            cardano-cli transaction sign
-            --tx-body-file txs/tx-${outTxId}.raw
-            --signing-key-file signing-keys/signing-key-${pkh1'}.skey
-            --signing-key-file signing-keys/signing-key-${pkh3'}.skey
-            --out-file txs/tx-${outTxId}.signed
+          cardano-cli transaction sign
+          --tx-body-file txs/tx-${outTxId}.raw
+          --signing-key-file signing-keys/signing-key-${pkh1'}.skey
+          --signing-key-file signing-keys/signing-key-${pkh3'}.skey
+          --out-file txs/tx-${outTxId}.signed
           |]
-        ]
+        )
+      ]
 
 sendTokens :: Assertion
 sendTokens = do
@@ -160,20 +176,22 @@ sendTokens = do
         submitTx constraints
 
   assertContractWithTxId contract initState $ \state outTxId ->
-    (state.commandHistory !! 1)
-      @?= Text.replace
-        "\n"
-        " "
-        [text|
-        cardano-cli transaction build --alonzo-era
-        --tx-in ${inTxId}#0
-        --tx-in-collateral ${inTxId}#0
-        --tx-out ${addr1}+50 + 95 abcd1234.testToken
-        --tx-out ${addr2}+1000 + 5 abcd1234.testToken
-        --change-address ${addr1}
-        --required-signer signing-keys/signing-key-${pkh1'}.skey
-        --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
-      |]
+    assertCommandHistory
+      state
+      [
+        ( 1
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+50 + 95 abcd1234.testToken
+          --tx-out ${addr2}+1000 + 5 abcd1234.testToken
+          --change-address ${addr1}
+          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+        |]
+        )
+      ]
 
 sendTokensWithoutName :: Assertion
 sendTokensWithoutName = do
@@ -195,11 +213,11 @@ sendTokensWithoutName = do
         submitTx constraints
 
   assertContractWithTxId contract initState $ \state outTxId ->
-    (state.commandHistory !! 1)
-      @?= Text.replace
-        "\n"
-        " "
-        [text|
+    assertCommandHistory
+      state
+      [
+        ( 1
+        , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${txId}#0
           --tx-in-collateral ${txId}#0
@@ -208,7 +226,9 @@ sendTokensWithoutName = do
           --change-address ${addr1}
           --required-signer signing-keys/signing-key-${pkh1'}.skey
           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
-        |]
+          |]
+        )
+      ]
 
 mintTokens :: Assertion
 mintTokens = do
@@ -244,21 +264,24 @@ mintTokens = do
         submitTxConstraintsWith @Void lookups constraints
 
   assertContractWithTxId contract initState $ \state outTxId -> do
-    (state.commandHistory !! 1)
-      @?= Text.replace
-        "\n"
-        " "
-        [text| cardano-cli transaction build --alonzo-era
-           --tx-in ${inTxId}#0
-           --tx-in-collateral ${inTxId}#0
-           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.testToken
-           --mint-script-file result-scripts/policy-${curSymbol'}.plutus
-           --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
-           --mint 5 ${curSymbol'}.testToken
-           --change-address ${addr1}
-           --required-signer signing-keys/signing-key-${pkh1'}.skey
-           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+    assertCommandHistory
+      state
+      [
+        ( 1
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000 + 5 ${curSymbol'}.testToken
+          --mint-script-file result-scripts/policy-${curSymbol'}.plutus
+          --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+          --mint 5 ${curSymbol'}.testToken
+          --change-address ${addr1}
+          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
           |]
+        )
+      ]
 
     assertFiles
       state
@@ -321,21 +344,24 @@ redeemFromValidator = do
         submitTxConstraintsWith @Void lookups constraints
 
   assertContractWithTxId contract initState $ \state outTxId -> do
-    (state.commandHistory !! 1)
-      @?= Text.replace
-        "\n"
-        " "
-        [text| cardano-cli transaction build --alonzo-era
-           --tx-in ${inTxId}#1
-           --tx-in-script-file result-scripts/validator-${valHash'}.plutus
-           --tx-in-datum-file result-scripts/datum-${datumHash'}.json
-           --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
-           --tx-in-collateral ${inTxId}#0
-           --tx-out ${addr2}+500
-           --change-address ${addr1}
-           --required-signer signing-keys/signing-key-${pkh1'}.skey
-           --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+    assertCommandHistory
+      state
+      [
+        ( 1
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#1
+          --tx-in-script-file result-scripts/validator-${valHash'}.plutus
+          --tx-in-datum-file result-scripts/datum-${datumHash'}.json
+          --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+500
+          --change-address ${addr1}
+          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
           |]
+        )
+      ]
 
     assertFiles
       state
@@ -407,3 +433,10 @@ assertContractWithTxId contract initState assertion = do
     Right tx ->
       let outTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txId tx
        in assertion state outTxId
+
+assertCommandHistory :: MockContractState -> [(Int, Text)] -> Assertion
+assertCommandHistory state =
+  mapM_
+    ( \(idx, expectedCmd) ->
+        state.commandHistory !! idx @?= Text.replace "\n" " " expectedCmd
+    )
