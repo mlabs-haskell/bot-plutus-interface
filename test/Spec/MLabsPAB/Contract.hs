@@ -4,6 +4,7 @@
 
 module Spec.MLabsPAB.Contract (tests) where
 
+import Control.Lens (ix, (&), (.~), (^.), (^?))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
 import Data.Kind (Type)
@@ -30,12 +31,15 @@ import Spec.MockContract (
   MockContractState (..),
   addr1,
   addr2,
+  commandHistory,
+  files,
   pkh1,
   pkh1',
   pkh2,
   pkh3,
   pkh3',
   runContractPure,
+  utxos,
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
@@ -62,7 +66,7 @@ sendAda :: Assertion
 sendAda = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
-      initState = def {_utxos = [(txOutRef, txOut)]}
+      initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text Tx
@@ -109,7 +113,7 @@ multisigSupport :: Assertion
 multisigSupport = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
-      initState = def {_utxos = [(txOutRef, txOut)]}
+      initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract Text (Endpoint "SendAda" ()) Text Tx
@@ -164,7 +168,7 @@ sendTokens = do
           (Ledger.pubKeyHashAddress pkh1)
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "testToken" 100)
           Nothing
-      initState = def {_utxos = [(txOutRef, txOut)]}
+      initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text Tx
@@ -201,7 +205,7 @@ sendTokensWithoutName = do
           (Ledger.pubKeyHashAddress pkh1)
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "" 100)
           Nothing
-      initState = def {_utxos = [(txOutRef, txOut)]}
+      initState = def & utxos .~ [(txOutRef, txOut)]
       txId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text Tx
@@ -234,7 +238,7 @@ mintTokens :: Assertion
 mintTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
-      initState = def {_utxos = [(txOutRef, txOut)]}
+      initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       mintingPolicy :: Scripts.MintingPolicy
@@ -298,7 +302,7 @@ redeemFromValidator = do
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 100) Nothing
       txOutRef' = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut' = TxOut valAddr (Ada.lovelaceValueOf 1250) (Just datumHash)
-      initState = def {_utxos = [(txOutRef, txOut), (txOutRef', txOut')]}
+      initState = def & utxos .~ [(txOutRef, txOut), (txOutRef', txOut')]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       validator :: Scripts.Validator
@@ -333,11 +337,11 @@ redeemFromValidator = do
 
       contract :: Contract () (Endpoint "SendAda" ()) Text Tx
       contract = do
-        utxos <- utxosAt valAddr
+        utxos' <- utxosAt valAddr
         let lookups =
               Constraints.otherScript validator
                 <> Constraints.otherData datum
-                <> Constraints.unspentOutputs utxos
+                <> Constraints.unspentOutputs utxos'
         let constraints =
               Constraints.mustSpendScriptOutput txOutRef' Ledger.unitRedeemer
                 <> Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 500)
@@ -377,7 +381,7 @@ multiTx :: Assertion
 multiTx = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
-      initState = def {_utxos = [(txOutRef, txOut)]}
+      initState = def & utxos .~ [(txOutRef, txOut)]
 
       contract :: Contract () (Endpoint "SendAda" ()) Text [Tx]
       contract = do
@@ -406,16 +410,16 @@ multiTx = do
     Right _ -> assertFailure "Wrong number of txs"
 
 assertFiles :: MockContractState -> [Text] -> Assertion
-assertFiles state files =
+assertFiles state expectedFiles =
   assertBool errorMsg $
-    Set.fromList (map Text.unpack files) `Set.isSubsetOf` Map.keysSet state._files
+    Set.fromList (map Text.unpack expectedFiles) `Set.isSubsetOf` Map.keysSet (state ^. files)
   where
     errorMsg =
       unlines
         [ "expected (at least):"
-        , show files
+        , show expectedFiles
         , "got:"
-        , show (Map.keys state._files)
+        , show (Map.keys (state ^. files))
         ]
 
 assertContractWithTxId ::
@@ -438,5 +442,5 @@ assertCommandHistory :: MockContractState -> [(Int, Text)] -> Assertion
 assertCommandHistory state =
   mapM_
     ( \(idx, expectedCmd) ->
-        state._commandHistory !! idx @?= Text.replace "\n" " " expectedCmd
+        (state ^? commandHistory . ix idx) @?= Just (Text.replace "\n" " " expectedCmd)
     )

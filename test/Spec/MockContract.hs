@@ -44,7 +44,7 @@ import Cardano.Api (
  )
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
-import Control.Lens (at, (%~), (<|), (?~))
+import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
 import Control.Monad.Freer (Eff, reinterpret3, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
@@ -175,7 +175,7 @@ runContractPure ::
   (Either Text a, MockContractState, [String])
 runContractPure contract initContractState =
   let ((res, st), logs) = runContractPure' contract initContractState
-   in (fst =<< res, st {_commandHistory = reverse st._commandHistory}, logs)
+   in (fst =<< res, st & commandHistory %~ reverse, logs)
 
 runContractPure' ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
@@ -184,7 +184,7 @@ runContractPure' ::
   MockContractState ->
   ((Either Text (Either Text a, w), MockContractState), [String])
 runContractPure' (Contract effs) initContractState =
-  runPABEffectPure initContractState $ handleContract initContractState._contractEnv effs
+  runPABEffectPure initContractState $ handleContract (initContractState ^. contractEnv) effs
 
 runPABEffectPure ::
   forall (a :: Type).
@@ -241,12 +241,12 @@ mockQueryUtxo :: Text -> MockContract String
 mockQueryUtxo addr = do
   state <- get @MockContractState
 
-  let network = state._contractEnv.cePABConfig.pcNetwork
+  let network = (state ^. contractEnv).cePABConfig.pcNetwork
   pure $
     mockQueryUtxoOut $
       filter
         ((==) addr . unsafeSerialiseAddress network . Ledger.txOutAddress . snd)
-        state._utxos
+        (state ^. utxos)
 
 mockQueryUtxoOut :: [(TxOutRef, TxOut)] -> String
 mockQueryUtxoOut utxos' =
@@ -308,7 +308,7 @@ mockReadFileTextEnvelope ttoken filepath = do
   state <- get @MockContractState
 
   pure $
-    case Map.lookup filepath state._files of
+    case state ^. files . at filepath of
       Nothing -> Left $ FileIOError filepath (IOError Nothing NoSuchThing "" "No such file in the MockContractState" Nothing Nothing)
       Just (TextEnvelopeFile te) ->
         mapLeft (FileError filepath) $ deserialiseFromTextEnvelope ttoken te
@@ -337,7 +337,7 @@ mockWriteFileTextEnvelope filepath descr content = do
 mockListDirectory :: FilePath -> MockContract [FilePath]
 mockListDirectory filepath = do
   state <- get @MockContractState
-  pure $ map (drop (length filepath + 1)) $ filter (filepath `isPrefixOf`) $ Map.keys state._files
+  pure $ map (drop (length filepath + 1)) $ filter (filepath `isPrefixOf`) $ Map.keys (state ^. files)
 
 mockUploadDir :: Text -> MockContract ()
 mockUploadDir _ = pure ()
@@ -361,7 +361,7 @@ mockQueryChainIndex = \case
     throwError @Text "RedeemerFromHash is unimplemented"
   TxOutFromRef txOutRef -> do
     state <- get @MockContractState
-    pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef state._utxos
+    pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
   TxFromTxId _ ->
     -- pure $ TxIdResponse Nothing
     throwError @Text "TxFromTxId is unimplemented"
@@ -369,6 +369,10 @@ mockQueryChainIndex = \case
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress _ -> do
     state <- get @MockContractState
-    pure $ UtxoSetAtResponse (state._tip, Page (PageSize 100) 1 1 (map fst state._utxos))
+    pure $
+      UtxoSetAtResponse
+        ( state ^. tip
+        , Page (PageSize 100) 1 1 (state ^. utxos ^.. traverse . _1)
+        )
   GetTip ->
     throwError @Text "GetTip is unimplemented"
