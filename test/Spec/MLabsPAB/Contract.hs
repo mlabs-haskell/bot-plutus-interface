@@ -62,7 +62,7 @@ sendAda :: Assertion
 sendAda = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
-      initState = def {utxos = [(txOutRef, txOut)]}
+      initState = def {_utxos = [(txOutRef, txOut)]}
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text Tx
@@ -109,7 +109,7 @@ multisigSupport :: Assertion
 multisigSupport = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
-      initState = def {utxos = [(txOutRef, txOut)]}
+      initState = def {_utxos = [(txOutRef, txOut)]}
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract Text (Endpoint "SendAda" ()) Text Tx
@@ -164,7 +164,7 @@ sendTokens = do
           (Ledger.pubKeyHashAddress pkh1)
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "testToken" 100)
           Nothing
-      initState = def {utxos = [(txOutRef, txOut)]}
+      initState = def {_utxos = [(txOutRef, txOut)]}
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text Tx
@@ -201,7 +201,7 @@ sendTokensWithoutName = do
           (Ledger.pubKeyHashAddress pkh1)
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "" 100)
           Nothing
-      initState = def {utxos = [(txOutRef, txOut)]}
+      initState = def {_utxos = [(txOutRef, txOut)]}
       txId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text Tx
@@ -234,7 +234,7 @@ mintTokens :: Assertion
 mintTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
-      initState = def {utxos = [(txOutRef, txOut)]}
+      initState = def {_utxos = [(txOutRef, txOut)]}
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       mintingPolicy :: Scripts.MintingPolicy
@@ -298,7 +298,7 @@ redeemFromValidator = do
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 100) Nothing
       txOutRef' = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut' = TxOut valAddr (Ada.lovelaceValueOf 1250) (Just datumHash)
-      initState = def {utxos = [(txOutRef, txOut), (txOutRef', txOut')]}
+      initState = def {_utxos = [(txOutRef, txOut), (txOutRef', txOut')]}
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       validator :: Scripts.Validator
@@ -377,7 +377,7 @@ multiTx :: Assertion
 multiTx = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
-      initState = def {utxos = [(txOutRef, txOut)]}
+      initState = def {_utxos = [(txOutRef, txOut)]}
 
       contract :: Contract () (Endpoint "SendAda" ()) Text [Tx]
       contract = do
@@ -408,14 +408,14 @@ multiTx = do
 assertFiles :: MockContractState -> [Text] -> Assertion
 assertFiles state files =
   assertBool errorMsg $
-    Set.fromList (map Text.unpack files) `Set.isSubsetOf` Map.keysSet state.files
+    Set.fromList (map Text.unpack files) `Set.isSubsetOf` Map.keysSet state._files
   where
     errorMsg =
       unlines
         [ "expected (at least):"
         , show files
         , "got:"
-        , show (Map.keys state.files)
+        , show (Map.keys state._files)
         ]
 
 assertContractWithTxId ::
@@ -438,5 +438,5 @@ assertCommandHistory :: MockContractState -> [(Int, Text)] -> Assertion
 assertCommandHistory state =
   mapM_
     ( \(idx, expectedCmd) ->
-        state.commandHistory !! idx @?= Text.replace "\n" " " expectedCmd
+        state._commandHistory !! idx @?= Text.replace "\n" " " expectedCmd
     )
