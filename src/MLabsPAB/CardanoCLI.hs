@@ -138,9 +138,9 @@ calculateMinFee ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
-  UnbalancedTx ->
+  Tx ->
   Eff effs (Either Text Integer)
-calculateMinFee pabConf UnbalancedTx {unBalancedTxRequiredSignatories, unBalancedTxTx} =
+calculateMinFee pabConf tx =
   callCommand
     ShellArgs
       { cmdName = "cardano-cli"
@@ -148,9 +148,9 @@ calculateMinFee pabConf UnbalancedTx {unBalancedTxRequiredSignatories, unBalance
           mconcat
             [ ["transaction", "calculate-min-fee"]
             , ["--tx-body-file", "tx.raw"]
-            , ["--tx-in-count", showText $ length $ txInputs unBalancedTxTx]
-            , ["--tx-out-count", showText $ length $ txOutputs unBalancedTxTx]
-            , ["--witness-count", showText $ length $ Map.keys unBalancedTxRequiredSignatories]
+            , ["--tx-in-count", showText $ length $ txInputs tx]
+            , ["--tx-out-count", showText $ length $ txOutputs tx]
+            , ["--witness-count", showText $ length $ txSignatures tx]
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             , networkOpt pabConf
             ]
