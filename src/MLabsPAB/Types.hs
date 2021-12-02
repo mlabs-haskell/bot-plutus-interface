@@ -4,8 +4,6 @@ module MLabsPAB.Types (
   LogLevel (..),
   ContractEnvironment (..),
   HasDefinitions (..),
-  FormSchema,
-  FunctionSchema,
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
 ) where
@@ -15,13 +13,11 @@ import Cardano.Api.Shelley (ProtocolParameters)
 import Data.Default (Default (def))
 import Data.Text (Text)
 import Ledger (PubKey)
-import Playground.Types (FunctionSchema)
 import Plutus.PAB.Effects.Contract.Builtin (
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
-import Schema (FormSchema)
 import Wallet.Emulator (Wallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude

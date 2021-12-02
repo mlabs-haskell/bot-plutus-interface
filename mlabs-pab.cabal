@@ -90,15 +90,11 @@ library
 
   build-depends:
     , aeson               ^>=1.5.0.0
-    , aeson-casing
-    , ansi-terminal
     , attoparsec          >=0.13.2.2
     , bytestring          ^>=0.10.12.0
     , cardano-api
     , cardano-crypto
-    , cardano-prelude
     , containers
-    , cryptonite
     , data-default
     , data-default-class
     , directory
@@ -119,7 +115,6 @@ library
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
-    , prettyprinter
     , process
     , row-types
     , serialise
@@ -131,7 +126,6 @@ library
     , stm
     , text                ^>=1.2.4.0
     , uuid
-    , vector              ^>=0.12.1.2
     , wai
     , warp
     , websockets
@@ -156,8 +150,6 @@ test-suite mlabs-pab-test
     , bytestring            ^>=0.10.12.0
     , cardano-api
     , cardano-crypto-class
-    , cardano-ledger-core
-    , cardano-prelude
     , containers
     , data-default
     , data-default-class
@@ -166,10 +158,8 @@ test-suite mlabs-pab-test
     , freer-extras
     , freer-simple
     , generic-arbitrary
-    , lens
     , mlabs-pab
     , neat-interpolation
-    , playground-common
     , plutus-chain-index
     , plutus-contract
     , plutus-core
@@ -178,21 +168,14 @@ test-suite mlabs-pab-test
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
-    , prettyprinter
     , QuickCheck
     , quickcheck-instances
     , row-types
     , serialise
-    , servant
-    , servant-client
-    , servant-server
     , tasty
     , tasty-hunit
     , tasty-quickcheck
     , text                  ^>=1.2.4.0
     , uuid
-    , vector                ^>=0.12.1.2
-    , wai
-    , warp
 
   hs-source-dirs: test
