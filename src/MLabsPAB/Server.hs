@@ -141,9 +141,6 @@ handleContract pabConf wallet state contract = liftIO $ do
           { cePABConfig = pabConf
           , ceWallet = wallet
           , ceContractInstanceId = contractInstanceID
-          , ceMinLovelaces = 45
-          , -- Fees are added by the cli, but we need to include enought tx inputs to cover these fees
-            ceFees = 70921796
           , ceOwnPubKey = "5842d469074913a4a0e8e3ec3b4d46eded2076c186735135d1f5e6ef592984d7"
           }
   void $

@@ -1,4 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -80,12 +79,35 @@ sendAda = do
             --mainnet
            |]
       , [text|
+            cardano-cli transaction calculate-min-required-utxo --alonzo-era
+            --tx-out ${addr2}+1000
+            --protocol-params-file ./protocol.json
+          |]
+      , [text|
+            cardano-cli transaction build-raw --alonzo-era
+            --tx-in ${txId}#0
+            --tx-in-collateral ${txId}#0
+            --tx-out ${addr2}+1000
+            --required-signer signing-keys/signing-key-${pkh1'}.skey
+            --fee 0
+            --protocol-params-file ./protocol.json --out-file tx.raw
+          |]
+      , [text|
+            cardano-cli transaction calculate-min-fee
+            --tx-body-file tx.raw
+            --tx-in-count 1
+            --tx-out-count 1
+            --witness-count 1
+            --protocol-params-file ./protocol.json
+            --mainnet
+          |]
+      , [text|
             cardano-cli transaction build --alonzo-era
             --tx-in ${txId}#0
             --tx-in-collateral ${txId}#0
             --tx-out ${addr2}+1000
-            --change-address ${addr1}
             --required-signer signing-keys/signing-key-${pkh1'}.skey
+            --change-address ${addr1}
             --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
           |]
       , [text|
@@ -113,12 +135,16 @@ multisigSupport = do
       (result, state, _) = runContractPure contract initState
   -- Building and siging the tx includes both signing keys
   result @?= Right ()
-  state.commandHistory
+  drop 3 state.commandHistory
     @?= map
       (Text.replace "\n" " ")
       [ [text|
-          cardano-cli query utxo
-          --address ${addr1}
+          cardano-cli transaction calculate-min-fee
+          --tx-body-file tx.raw
+          --tx-in-count 1
+          --tx-out-count 1
+          --witness-count 2
+          --protocol-params-file ./protocol.json
           --mainnet
           |]
       , [text|
@@ -126,9 +152,9 @@ multisigSupport = do
           --tx-in ${txId}#0
           --tx-in-collateral ${txId}#0
           --tx-out ${addr2}+1000
-          --change-address ${addr1}
           --required-signer signing-keys/signing-key-${pkh1'}.skey
           --required-signer signing-keys/signing-key-${pkh3'}.skey
+          --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
         |]
       , [text| 
@@ -162,7 +188,7 @@ sendTokens = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
-  (state.commandHistory !! 1)
+  (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
       " "
@@ -172,8 +198,8 @@ sendTokens = do
         --tx-in-collateral ${txId}#0
         --tx-out ${addr1}+50 + 95 abcd1234.testToken
         --tx-out ${addr2}+1000 + 5 abcd1234.testToken
-        --change-address ${addr1}
         --required-signer signing-keys/signing-key-${pkh1'}.skey
+        --change-address ${addr1}
         --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
       |]
 
@@ -199,7 +225,7 @@ sendTokensWithoutName = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
-  (state.commandHistory !! 1)
+  (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
       " "
@@ -209,8 +235,8 @@ sendTokensWithoutName = do
         --tx-in-collateral ${txId}#0
         --tx-out ${addr1}+50 + 95 abcd1234
         --tx-out ${addr2}+1000 + 5 abcd1234
-        --change-address ${addr1}
         --required-signer signing-keys/signing-key-${pkh1'}.skey
+        --change-address ${addr1}
         --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
       |]
 
@@ -250,7 +276,25 @@ mintTokens = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
-  (state.commandHistory !! 1)
+
+  (state.commandHistory !! 2)
+    @?= Text.replace
+      "\n"
+      " "
+      [text| cardano-cli transaction build-raw --alonzo-era
+       --tx-in ${txId}#0
+       --tx-in-collateral ${txId}#0
+       --tx-out ${addr2}+1000 + 5 ${curSymbol'}.testToken
+       --mint-script-file result-scripts/policy-${curSymbol'}.plutus
+       --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+       --mint-execution-units (297830,1100)
+       --mint 5 ${curSymbol'}.testToken
+       --required-signer signing-keys/signing-key-${pkh1'}.skey
+       --fee 0
+       --protocol-params-file ./protocol.json --out-file tx.raw
+      |]
+
+  (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
       " "
@@ -261,8 +305,8 @@ mintTokens = do
        --mint-script-file result-scripts/policy-${curSymbol'}.plutus
        --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
        --mint 5 ${curSymbol'}.testToken
-       --change-address ${addr1}
        --required-signer signing-keys/signing-key-${pkh1'}.skey
+       --change-address ${addr1}
        --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
       |]
 
@@ -314,11 +358,11 @@ redeemFromValidator = do
 
       contract :: Contract () (Endpoint "SendAda" ()) Text ()
       contract = do
-        utxos <- utxosAt valAddr
+        utxos' <- utxosAt valAddr
         let lookups =
               Constraints.otherScript validator
                 <> Constraints.otherData datum
-                <> Constraints.unspentOutputs utxos
+                <> Constraints.unspentOutputs utxos'
         let constraints =
               Constraints.mustSpendScriptOutput txOutRef' Ledger.unitRedeemer
                 <> Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 500)
@@ -327,7 +371,24 @@ redeemFromValidator = do
       (result, state, _) = runContractPure contract initState
 
   result @?= Right ()
-  (state.commandHistory !! 1)
+
+  (state.commandHistory !! 2)
+    @?= Text.replace
+      "\n"
+      " "
+      [text| cardano-cli transaction build-raw --alonzo-era
+       --tx-in ${txId}#1
+       --tx-in-script-file result-scripts/validator-${valHash'}.plutus
+       --tx-in-datum-file result-scripts/datum-${datumHash'}.json
+       --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+       --tx-in-execution-units (387149,1400)
+       --tx-in-collateral ${txId}#0
+       --tx-out ${addr2}+500
+       --required-signer signing-keys/signing-key-${pkh1'}.skey
+       --fee 0 --protocol-params-file ./protocol.json --out-file tx.raw
+      |]
+
+  (state.commandHistory !! 4)
     @?= Text.replace
       "\n"
       " "
@@ -338,10 +399,11 @@ redeemFromValidator = do
        --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
        --tx-in-collateral ${txId}#0
        --tx-out ${addr2}+500
-       --change-address ${addr1}
        --required-signer signing-keys/signing-key-${pkh1'}.skey
+       --change-address ${addr1}
        --mainnet --protocol-params-file ./protocol.json --out-file tx.raw
       |]
+
   assertFiles
     state
     [ [text|result-scripts/datum-${datumHash'}.json|]
@@ -351,14 +413,14 @@ redeemFromValidator = do
     ]
 
 assertFiles :: MockContractState -> [Text] -> Assertion
-assertFiles state files =
+assertFiles state requiredFiles =
   assertBool errorMsg $
-    Set.fromList (map Text.unpack files) `Set.isSubsetOf` Map.keysSet state.files
+    Set.fromList (map Text.unpack requiredFiles) `Set.isSubsetOf` Map.keysSet state.files
   where
     errorMsg =
       unlines
         [ "expected (at least):"
-        , show files
+        , show requiredFiles
         , "got:"
         , show (Map.keys state.files)
         ]

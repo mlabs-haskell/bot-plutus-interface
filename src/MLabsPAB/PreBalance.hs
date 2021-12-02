@@ -1,8 +1,12 @@
 module MLabsPAB.PreBalance (
   preBalanceTx,
+  preBalanceTxIO,
 ) where
 
 import Control.Monad (foldM)
+import Control.Monad.Freer (Eff, Member)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
 import Data.List (partition)
@@ -16,6 +20,7 @@ import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
+import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Tx (
   Tx (..),
@@ -27,6 +32,10 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value (Value (Value), getValue)
 import Ledger.Value qualified as Value
+import MLabsPAB.CardanoCLI qualified as CardanoCLI
+import MLabsPAB.Effects (PABEffect, printLog)
+import MLabsPAB.Files qualified as Files
+import MLabsPAB.Types (LogLevel (Debug), PABConfig)
 import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
@@ -38,6 +47,34 @@ import Prelude
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
  assets
 -}
+preBalanceTxIO ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  PubKeyHash ->
+  UnbalancedTx ->
+  Eff effs (Either Text Tx)
+preBalanceTxIO pabConf ownPkh tx =
+  runEitherT $
+    do
+      utxos <- lift $ CardanoCLI.utxosAt pabConf $ Ledger.pubKeyHashAddress ownPkh
+      privKeys <- newEitherT $ Files.readPrivateKeys pabConf
+      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex tx
+          tx' = unBalancedTxTx tx
+          requiredSigs = Map.keys (unBalancedTxRequiredSignatories tx)
+
+      minUtxo <- newEitherT $ CardanoCLI.calculateMinUtxo pabConf tx
+
+      txWithoutFees <-
+        hoistEither $ preBalanceTx minUtxo 0 utxoIndex ownPkh privKeys requiredSigs tx'
+
+      lift $ CardanoCLI.buildTx pabConf ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
+      fees <- newEitherT $ CardanoCLI.calculateMinFee pabConf txWithoutFees
+
+      lift $ printLog Debug $ show utxoIndex
+
+      hoistEither $ preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx'
+
 preBalanceTx ::
   Integer ->
   Integer ->
@@ -47,43 +84,42 @@ preBalanceTx ::
   [PubKeyHash] ->
   Tx ->
   Either Text Tx
-preBalanceTx minLovelaces fees utxos ownPkh privKeys requiredSignatories tx =
+preBalanceTx minUtxo fees utxos ownPkh privKeys requiredSigs tx =
   addTxCollaterals utxos tx
-    >>= balanceTxIns utxos minLovelaces fees
-    >>= Right . balanceNonAdaOuts ownPkh utxos
-    >>= Right . addLovelaces minLovelaces
-    >>= addSignatories ownPkh privKeys requiredSignatories
+    >>= balanceTxIns utxos fees
+    >>= balanceNonAdaOuts ownPkh utxos
+    >>= Right . addLovelaces minUtxo
+    >>= balanceTxIns utxos fees -- Adding more inputs if required
+    >>= balanceNonAdaOuts ownPkh utxos
+    >>= addSignatories ownPkh privKeys requiredSigs
 
 -- | Getting the necessary utxos to cover the fees for the transaction
 collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
-collectTxIns txIns utxos value =
-  if isSufficient inputs
-    then Right inputs
+collectTxIns originalTxIns utxos value =
+  if isSufficient updatedInputs
+    then Right updatedInputs
     else
       Left $
         Text.unlines
           [ "Insufficient tx inputs, needed: "
           , showText (Value.flattenValue value)
           , "got:"
-          , showText (Value.flattenValue (txInsValue inputs))
+          , showText (Value.flattenValue (txInsValue updatedInputs))
           ]
   where
-    inputs = txIns <> otherInputs
-
-    otherInputs =
+    updatedInputs =
       foldl
         ( \acc txIn ->
             if isSufficient acc
               then acc
               else Set.insert txIn acc
         )
-        Set.empty
-        $ filter (not . (`Set.member` txIns)) $
-          mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
+        originalTxIns
+        $ mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
 
     isSufficient :: Set TxIn -> Bool
     isSufficient txIns' =
-      txInsValue (txIns <> txIns') `Value.geq` value
+      txInsValue txIns' `Value.geq` value
 
     txInsValue :: Set TxIn -> Value
     txInsValue txIns' =
@@ -112,18 +148,17 @@ addLovelaces minLovelaces tx =
           $ txOutputs tx
    in tx {txOutputs = lovelacesAdded}
 
-balanceTxIns :: Map TxOutRef TxOut -> Integer -> Integer -> Tx -> Either Text Tx
-balanceTxIns utxos minLovelaces fees tx = do
+balanceTxIns :: Map TxOutRef TxOut -> Integer -> Tx -> Either Text Tx
+balanceTxIns utxos fees tx = do
   let txOuts = Tx.txOutputs tx
       nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
       minSpending =
         mconcat
-          [ Ada.lovelaceValueOf (minLovelaces * fromIntegral (length txOuts))
-          , Ada.lovelaceValueOf fees
+          [ Ada.lovelaceValueOf fees
           , nonMintedValue
           ]
   txIns <- collectTxIns (txInputs tx) utxos minSpending
-  pure $ tx {txInputs = txIns}
+  pure $ tx {txInputs = txIns <> txInputs tx}
 
 {- | Pick a collateral from the utxo map and add it to the unbalanced transaction
  (suboptimally we just pick a random utxo from the tx inputs)
@@ -141,7 +176,7 @@ addTxCollaterals utxos tx = do
       _ -> Left "There are no utxos to be used as collateral"
 
 -- | We need to balance non ada values, as the cardano-cli is unable to balance them (as of 2021/09/24)
-balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Tx
+balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
 balanceNonAdaOuts ownPkh utxos tx =
   let changeAddr = Ledger.pubKeyHashAddress ownPkh
       txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
@@ -160,9 +195,9 @@ balanceNonAdaOuts ownPkh utxos tx =
             txOuts
           (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
             txOut {txOutValue = v <> nonAdaChange} : (txOuts <> txOuts')
-   in if Value.isZero nonAdaChange
-        then tx
-        else tx {txOutputs = outputs}
+   in if isValueNat nonAdaChange
+        then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
+        else Left "Not enough inputs to balance tokens."
 
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
@@ -197,3 +232,7 @@ minus x y =
 unflattenValue :: (CurrencySymbol, TokenName, Integer) -> Value
 unflattenValue (curSymbol, tokenName, amount) =
   Value.assetClassValue (Value.assetClass curSymbol tokenName) amount
+
+isValueNat :: Value -> Bool
+isValueNat =
+  all (\(_, _, a) -> a >= 0) . Value.flattenValue

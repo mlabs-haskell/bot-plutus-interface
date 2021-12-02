@@ -1,4 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 
 module MLabsPAB.Contract (runContract, handleContract) where
@@ -143,9 +142,7 @@ balanceTx ::
   ContractEnvironment ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBalancedTxRequiredSignatories} = do
-  -- TODO: getting own address from pub key
-  let ownPkh = Ledger.pubKeyHash contractEnv.ceOwnPubKey
+balanceTx contractEnv unbalancedTx = do
   -- TODO: Handle paging
   -- (_, Page {pageItems}) <-
   --   chainIndexQueryMany $
@@ -156,22 +153,11 @@ balanceTx contractEnv UnbalancedTx {unBalancedTxTx, unBalancedTxUtxoIndex, unBal
   --       Map.fromList $
   --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
 
-  utxos <- CardanoCLI.utxosAt contractEnv.cePABConfig $ Ledger.pubKeyHashAddress ownPkh
-  privKeys <-
-    either (error . Text.unpack) id
-      <$> Files.readPrivateKeys contractEnv.cePABConfig
-
-  let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex
-  printLog Debug $ show utxoIndex
-  let eitherPreBalancedTx =
-        PreBalance.preBalanceTx
-          contractEnv.ceMinLovelaces
-          contractEnv.ceFees
-          utxoIndex
-          ownPkh
-          privKeys
-          (Map.keys unBalancedTxRequiredSignatories)
-          unBalancedTxTx
+  eitherPreBalancedTx <-
+    PreBalance.preBalanceTxIO
+      contractEnv.cePABConfig
+      (Ledger.pubKeyHash contractEnv.ceOwnPubKey)
+      unbalancedTx
 
   case eitherPreBalancedTx of
     Left err -> pure $ BalanceTxFailed (InsufficientFunds err)
@@ -209,11 +195,12 @@ writeBalancedTx contractEnv tx = do
           OtherError $
             "Failed to write script file(s): " <> Text.pack (show err)
     Right _ -> do
+      let ownPkh = Ledger.pubKeyHash contractEnv.ceOwnPubKey
       let requiredSigners = Map.keys $ tx ^. Tx.signatures
 
       CardanoCLI.uploadFiles contractEnv.cePABConfig
 
-      CardanoCLI.buildTx contractEnv.cePABConfig contractEnv.ceOwnPubKey tx
+      CardanoCLI.buildTx contractEnv.cePABConfig ownPkh CardanoCLI.BuildAuto tx
       CardanoCLI.signTx contractEnv.cePABConfig requiredSigners
 
       result <-

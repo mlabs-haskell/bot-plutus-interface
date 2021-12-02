@@ -45,10 +45,6 @@ data ContractEnvironment = ContractEnvironment
   , ceWallet :: Wallet
   , -- | TODO: We should get this from the wallet, once the integration works
     ceOwnPubKey :: PubKey
-  , -- | TODO: We should be able to calculate this
-    ceFees :: Integer
-  , -- | TODO: We should be able to calculate this
-    ceMinLovelaces :: Integer
   }
   deriving stock (Show, Eq)
 
