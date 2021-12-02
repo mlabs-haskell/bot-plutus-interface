@@ -3,6 +3,7 @@ module MLabsPAB.Files (
   validatorScriptFilePath,
   readPrivateKeys,
   signingKeyFilePath,
+  txFilePath,
   readPrivateKey,
   writeAll,
   writePolicyScriptFile,
@@ -45,6 +46,8 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Crypto (PrivateKey, PubKeyHash (PubKeyHash))
+import Ledger.Tx qualified as Tx
+import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
 import MLabsPAB.Effects (
   PABEffect,
@@ -96,6 +99,11 @@ signingKeyFilePath :: PABConfig -> PubKeyHash -> Text
 signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
   let h = encodeByteString $ fromBuiltin pubKeyHash
    in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
+
+txFilePath :: PABConfig -> Text -> Tx.Tx -> Text
+txFilePath pabConf ext tx =
+  let txId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txId tx
+   in pabConf.pcTxFileDir <> "/tx-" <> txId <> "." <> ext
 
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile ::

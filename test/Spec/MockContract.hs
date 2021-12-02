@@ -22,6 +22,11 @@ module Spec.MockContract (
   addr1,
   addr2,
   addr3,
+  commandHistory,
+  contractEnv,
+  files,
+  tip,
+  utxos,
 ) where
 
 import Cardano.Api (
@@ -39,6 +44,8 @@ import Cardano.Api (
  )
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
+import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
+import Control.Lens.TH (makeLenses)
 import Control.Monad.Freer (Eff, reinterpret3, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.State (State, get, modify, runState)
@@ -114,32 +121,35 @@ toSigningKeyFile signingKeyFileDir sKey =
   , TextEnvelopeFile $ serialiseToTextEnvelope Nothing sKey
   )
 
-data MockContractState = MockContractState
-  { files :: Map FilePath MockFile
-  , commandHistory :: [Text]
-  , contractEnv :: ContractEnvironment
-  , utxos :: [(TxOutRef, TxOut)]
-  , tip :: Tip
-  }
-  deriving stock (Show, Eq)
-
 data MockFile
   = TextEnvelopeFile TextEnvelope
   | JsonFile JSON.Value
+  | OtherFile Text
   deriving stock (Show, Eq)
+
+data MockContractState = MockContractState
+  { _files :: Map FilePath MockFile
+  , _commandHistory :: [Text]
+  , _contractEnv :: ContractEnvironment
+  , _utxos :: [(TxOutRef, TxOut)]
+  , _tip :: Tip
+  }
+  deriving stock (Show, Eq)
+
+makeLenses ''MockContractState
 
 instance Default MockContractState where
   def =
     MockContractState
-      { files =
+      { _files =
           Map.fromList $
             map
               (toSigningKeyFile "signing-keys")
               [signingKey1, signingKey2, signingKey3]
-      , commandHistory = mempty
-      , contractEnv = def
-      , utxos = []
-      , tip = Tip 1000 (BlockId "ab12") 4
+      , _commandHistory = mempty
+      , _contractEnv = def
+      , _utxos = []
+      , _tip = Tip 1000 (BlockId "ab12") 4
       }
 
 instance Default ContractEnvironment where
@@ -163,7 +173,7 @@ runContractPure ::
   (Either Text a, MockContractState, [String])
 runContractPure contract initContractState =
   let ((res, st), logs) = runContractPure' contract initContractState
-   in (fst =<< res, st {commandHistory = reverse st.commandHistory}, logs)
+   in (fst =<< res, st & commandHistory %~ reverse, logs)
 
 runContractPure' ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
@@ -172,7 +182,7 @@ runContractPure' ::
   MockContractState ->
   ((Either Text (Either Text a, w), MockContractState), [String])
 runContractPure' (Contract effs) initContractState =
-  runPABEffectPure initContractState $ handleContract initContractState.contractEnv effs
+  runPABEffectPure initContractState $ handleContract (initContractState ^. contractEnv) effs
 
 runPABEffectPure ::
   forall (a :: Type).
@@ -202,20 +212,35 @@ mockCallCommand ::
   MockContract a
 mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
   tell $ map Text.unpack cmdArgs
-  modify (\st -> st {commandHistory = cmdName <> " " <> Text.unwords cmdArgs : st.commandHistory})
+  modify (commandHistory %~ (cmdName <> " " <> Text.unwords cmdArgs <|))
 
   case (cmdName, cmdArgs) of
     ("cardano-cli", "query" : "utxo" : "--address" : addr : _) ->
       cmdOutParser <$> mockQueryUtxo addr
-    ("cardano-cli", "transaction" : "build" : _) ->
-      pure $ cmdOutParser ""
-    ("cardano-cli", "transaction" : "build-raw" : _) ->
-      pure $ cmdOutParser ""
     ("cardano-cli", "transaction" : "calculate-min-required-utxo" : _) ->
       pure $ cmdOutParser "Lovelace 50"
     ("cardano-cli", "transaction" : "calculate-min-fee" : _) ->
       pure $ cmdOutParser "200 Lovelace"
-    ("cardano-cli", "transaction" : "sign" : _) ->
+    ("cardano-cli", "transaction" : "build-raw" : args) -> do
+      case drop 1 $ dropWhile (/= "--out-file") args of
+        filepath : _ ->
+          modify (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
+        _ -> throwError @Text "Out file argument is missing"
+
+      pure $ cmdOutParser ""
+    ("cardano-cli", "transaction" : "build" : args) -> do
+      case drop 1 $ dropWhile (/= "--out-file") args of
+        filepath : _ ->
+          modify (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
+        _ -> throwError @Text "Out file argument is missing"
+
+      pure $ cmdOutParser ""
+    ("cardano-cli", "transaction" : "sign" : args) -> do
+      case drop 1 $ dropWhile (/= "--out-file") args of
+        filepath : _ ->
+          modify (files . at (Text.unpack filepath) ?~ OtherFile "Tx")
+        _ -> throwError @Text "Out file argument is missing"
+
       pure $ cmdOutParser ""
     ("cardano-cli", "transaction" : "submit" : _) ->
       pure $ cmdOutParser ""
@@ -225,15 +250,15 @@ mockQueryUtxo :: Text -> MockContract String
 mockQueryUtxo addr = do
   state <- get @MockContractState
 
-  let network = state.contractEnv.cePABConfig.pcNetwork
+  let network = (state ^. contractEnv).cePABConfig.pcNetwork
   pure $
     mockQueryUtxoOut $
       filter
         ((==) addr . unsafeSerialiseAddress network . Ledger.txOutAddress . snd)
-        state.utxos
+        (state ^. utxos)
 
 mockQueryUtxoOut :: [(TxOutRef, TxOut)] -> String
-mockQueryUtxoOut utxos =
+mockQueryUtxoOut utxos' =
   Text.unpack $
     Text.unlines
       [ "                           TxHash                                 TxIx        Amount"
@@ -250,7 +275,7 @@ mockQueryUtxoOut utxos =
                         "TxDatumHash ScriptDataInAlonzoEra " <> encodeByteString (fromBuiltin dh)
                  in [text|${txId'}     ${txIx'}        ${amts} + ${datumHash'}"|]
             )
-            utxos
+            utxos'
       ]
 
 valueToUtxoOut :: Value.Value -> Text
@@ -292,7 +317,7 @@ mockReadFileTextEnvelope ttoken filepath = do
   state <- get @MockContractState
 
   pure $
-    case Map.lookup filepath state.files of
+    case state ^. files . at filepath of
       Nothing -> Left $ FileIOError filepath (IOError Nothing NoSuchThing "" "No such file in the MockContractState" Nothing Nothing)
       Just (TextEnvelopeFile te) ->
         mapLeft (FileError filepath) $ deserialiseFromTextEnvelope ttoken te
@@ -301,7 +326,7 @@ mockReadFileTextEnvelope ttoken filepath = do
 mockWriteFileJSON :: FilePath -> JSON.Value -> MockContract (Either (FileError ()) ())
 mockWriteFileJSON filepath value = do
   let fileContent = JsonFile value
-  modify (\st -> st {files = Map.insert filepath fileContent st.files})
+  modify (files . at filepath ?~ fileContent)
 
   pure $ Right ()
 
@@ -314,14 +339,14 @@ mockWriteFileTextEnvelope ::
   MockContract (Either (FileError ()) ())
 mockWriteFileTextEnvelope filepath descr content = do
   let fileContent = TextEnvelopeFile (serialiseToTextEnvelope descr content)
-  modify (\st -> st {files = Map.insert filepath fileContent st.files})
+  modify (files . at filepath ?~ fileContent)
 
   pure $ Right ()
 
 mockListDirectory :: FilePath -> MockContract [FilePath]
 mockListDirectory filepath = do
   state <- get @MockContractState
-  pure $ map (drop (length filepath + 1)) $ filter (filepath `isPrefixOf`) $ Map.keys state.files
+  pure $ map (drop (length filepath + 1)) $ filter (filepath `isPrefixOf`) $ Map.keys (state ^. files)
 
 mockUploadDir :: Text -> MockContract ()
 mockUploadDir _ = pure ()
@@ -345,7 +370,7 @@ mockQueryChainIndex = \case
     throwError @Text "RedeemerFromHash is unimplemented"
   TxOutFromRef txOutRef -> do
     state <- get @MockContractState
-    pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef state.utxos
+    pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
   TxFromTxId _ ->
     -- pure $ TxIdResponse Nothing
     throwError @Text "TxFromTxId is unimplemented"
@@ -353,6 +378,10 @@ mockQueryChainIndex = \case
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress _ -> do
     state <- get @MockContractState
-    pure $ UtxoSetAtResponse (state.tip, Page (PageSize 100) 1 1 (map fst state.utxos))
+    pure $
+      UtxoSetAtResponse
+        ( state ^. tip
+        , Page (PageSize 100) 1 1 (state ^. utxos ^.. traverse . _1)
+        )
   GetTip ->
     throwError @Text "GetTip is unimplemented"
