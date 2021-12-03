@@ -5,7 +5,8 @@ import Data.Set qualified as Set
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address)
-import Ledger.Crypto (PubKeyHash, privateKey1)
+import Ledger.CardanoWallet qualified as Wallet
+import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
 import Ledger.Value (CurrencySymbol, TokenName)
 import Ledger.Value qualified as Value
@@ -13,7 +14,6 @@ import MLabsPAB.PreBalance qualified as PreBalance
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 import Test.Tasty.QuickCheck (Positive (..), Property, testProperty, (===))
-import Wallet.Emulator.Types qualified as Wallet
 import Prelude
 
 {- | Tests for 'cardano-cli query utxo' result parsers
@@ -29,9 +29,12 @@ tests =
     , testProperty "Double pre balancing does not change the result" prop_DoublePreBalancing
     ]
 
+privateKey1 :: PrivateKey
+privateKey1 = Wallet.privateKey (Wallet.knownWallet 1)
+
 pkh1, pkh2 :: PubKeyHash
-pkh1 = Ledger.pubKeyHash $ Wallet.walletPubKey (Wallet.knownWallet 1)
-pkh2 = Ledger.pubKeyHash $ Wallet.walletPubKey (Wallet.knownWallet 2)
+pkh1 = Wallet.pubKeyHash (Wallet.knownWallet 1)
+pkh2 = Wallet.pubKeyHash (Wallet.knownWallet 2)
 
 addr1, addr2 :: Address
 addr1 = Ledger.pubKeyHashAddress pkh1

@@ -12,22 +12,18 @@ with import ./nix { };
   # Should try and get the extra cardano dependencies in here...
   additional = ps:
     with ps; [
-      plutus-pab
       plutus-tx
       plutus-tx-plugin
-      plutus-contract
       plutus-ledger-api
       plutus-core
-      playground-common
       prettyprinter-configurable
-      plutus-use-cases
     ];
 
   withHoogle = true;
 
   # Extra haskell tools (arg passed on to mkDerivation)
   # Using the plutus.pkgs to use nixpkgs version from plutus (nixpkgs-unstable, mostly)
-  propagatedBuildInputs = with pkgs; [
+  propagatedBuildInputs = with plutus.pkgs; [
     # Haskell Tools
     stack
     cabal-install

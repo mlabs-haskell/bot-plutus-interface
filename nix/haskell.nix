@@ -40,19 +40,21 @@ in pkgs.haskell-nix.cabalProject rec {
   sha256map = {
     # Enforce we are using the same hash as niv has
     # i.e. this will now fail to nix-build if you bump it but don't bump the `cabal.project`.
-    "https://github.com/input-output-hk/plutus.git"."${sources.plutus.rev}" =
+    "https://github.com/input-output-hk/plutus"."${sources.plutus.rev}" =
       sources.plutus.sha256;
+    "https://github.com/input-output-hk/plutus-apps.git"."${sources.plutus-apps.rev}" =
+      sources.plutus-apps.sha256;
     "https://github.com/Quid2/flat.git"."${sources.flat.rev}" =
       sources.flat.sha256;
-    "https://github.com/shmish111/purescript-bridge.git"."${sources.purescript-bridge.rev}" =
+    "https://github.com/input-output-hk/purescript-bridge.git"."${sources.purescript-bridge.rev}" =
       sources.purescript-bridge.sha256;
-    "https://github.com/shmish111/servant-purescript.git"."${sources.servant-purescript.rev}" =
+    "https://github.com/input-output-hk/servant-purescript.git"."${sources.servant-purescript.rev}" =
       sources.servant-purescript.sha256;
     "https://github.com/input-output-hk/cardano-base"."${sources.cardano-base.rev}" =
       sources.cardano-base.sha256;
     "https://github.com/input-output-hk/cardano-crypto.git"."${sources.cardano-crypto.rev}" =
       sources.cardano-crypto.sha256;
-    "https://github.com/raduom/cardano-ledger-specs"."${sources.cardano-ledger-specs.rev}" =
+    "https://github.com/input-output-hk/cardano-ledger-specs"."${sources.cardano-ledger-specs.rev}" =
       sources.cardano-ledger-specs.sha256;
     "https://github.com/input-output-hk/cardano-prelude"."${sources.cardano-prelude.rev}" =
       sources.cardano-prelude.sha256;
@@ -72,7 +74,7 @@ in pkgs.haskell-nix.cabalProject rec {
       sources.optparse-applicative.sha256;
     "https://github.com/input-output-hk/cardano-addresses"."${sources.cardano-addresses.rev}" =
       sources.cardano-addresses.sha256;
-    "https://github.com/input-output-hk/cardano-wallet"."${sources.cardano-wallet.rev}" =
+    "https://github.com/j-mueller/cardano-wallet"."${sources.cardano-wallet.rev}" =
       sources.cardano-wallet.sha256;
   };
 }

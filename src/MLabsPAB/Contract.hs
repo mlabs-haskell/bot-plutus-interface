@@ -17,7 +17,7 @@ import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
-import Ledger.Tx (Tx)
+import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
 import MLabsPAB.CardanoCLI qualified as CardanoCLI
 import MLabsPAB.Effects (
@@ -30,7 +30,7 @@ import MLabsPAB.Effects (
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.PreBalance qualified as PreBalance
 import MLabsPAB.Types (ContractEnvironment (..), LogLevel (Debug))
-import Plutus.ChainIndex.Types (TxStatus (..), TxValidity (..))
+import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (
   BalanceTxResponse (..),
@@ -107,9 +107,9 @@ handlePABReq contractEnv req = do
     ----------------------
     -- Handled requests --
     ----------------------
-    OwnPublicKeyReq ->
+    OwnPublicKeyHashReq ->
       -- TODO: Should be able to get this from the wallet, hardcoded for now
-      pure $ OwnPublicKeyResp contractEnv.ceOwnPubKey
+      pure $ OwnPublicKeyHashResp $ Ledger.pubKeyHash contractEnv.ceOwnPubKey
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
@@ -125,7 +125,7 @@ handlePABReq contractEnv req = do
     AwaitTimeReq t -> pure $ AwaitTimeResp t
     -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
     -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
-    AwaitTxStatusChangeReq txId -> pure $ AwaitTxStatusChangeResp txId (Committed TxValid)
+    AwaitTxStatusChangeReq txId -> pure $ AwaitTxStatusChangeResp txId (Committed TxValid ())
     -- CurrentSlotReq -> CurrentSlotResp Slot
     -- CurrentTimeReq -> CurrentTimeResp POSIXTime
     -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
@@ -161,16 +161,17 @@ balanceTx contractEnv unbalancedTx = do
 
   case eitherPreBalancedTx of
     Left err -> pure $ BalanceTxFailed (InsufficientFunds err)
-    Right tx -> pure $ BalanceTxSuccess tx
+    Right tx -> pure $ BalanceTxSuccess $ Right tx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   ContractEnvironment ->
-  Tx ->
+  CardanoTx ->
   Eff effs WriteBalancedTxResponse
-writeBalancedTx contractEnv tx = do
+writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
+writeBalancedTx contractEnv (Right tx) = do
   createDirectoryIfMissing False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
 
   let (validatorScripts, redeemers, datums) =
@@ -210,4 +211,4 @@ writeBalancedTx contractEnv tx = do
 
       case result of
         Just err -> pure $ WriteBalancedTxFailed $ OtherError err
-        Nothing -> pure $ WriteBalancedTxSuccess tx
+        Nothing -> pure $ WriteBalancedTxSuccess $ Right tx

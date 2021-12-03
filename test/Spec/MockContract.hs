@@ -48,6 +48,7 @@ import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
 import Control.Monad.Freer (Eff, reinterpret3, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
+import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
 import Control.Monad.Freer.Writer (Writer, runWriter, tell)
 import Data.Aeson qualified as JSON
@@ -60,6 +61,7 @@ import Data.List (isPrefixOf)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Row (Row)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
@@ -79,7 +81,7 @@ import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.Types (ContractEnvironment (..), LogLevel (..), PABConfig (..))
 import NeatInterpolation (text)
-import Plutus.ChainIndex.Types (BlockId (..), Page (..), PageSize (..), Tip (..))
+import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import PlutusTx.Builtins (fromBuiltin)
@@ -376,12 +378,19 @@ mockQueryChainIndex = \case
     throwError @Text "TxFromTxId is unimplemented"
   UtxoSetMembership _ ->
     throwError @Text "UtxoSetMembership is unimplemented"
-  UtxoSetAtAddress _ -> do
+  UtxoSetAtAddress pageQuery _ -> do
     state <- get @MockContractState
     pure $
       UtxoSetAtResponse
         ( state ^. tip
-        , Page (PageSize 100) 1 1 (state ^. utxos ^.. traverse . _1)
+        , pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))
+        )
+  UtxoSetWithCurrency pageQuery _ -> do
+    state <- get @MockContractState
+    pure $
+      UtxoSetAtResponse
+        ( state ^. tip
+        , pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))
         )
   GetTip ->
     throwError @Text "GetTip is unimplemented"
