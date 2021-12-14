@@ -38,6 +38,7 @@ import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Crypto (PubKey, PubKeyHash)
+import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   ChainIndexTxOut,
@@ -128,7 +129,7 @@ calculateMinUtxo pabConf UnbalancedTx {unBalancedTxTx} =
       , cmdArgs =
           mconcat
             [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
-            , txOutOpts pabConf (txOutputs unBalancedTxTx)
+            , txOutOpts pabConf (txData unBalancedTxTx) (txOutputs unBalancedTxTx)
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             ]
       , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
@@ -189,7 +190,7 @@ buildTx pabConf ownPkh buildMode tx =
         [ ["transaction", if isRawBuildMode buildMode then "build-raw" else "build", "--alonzo-era"]
         , txInOpts pabConf buildMode (txInputs tx)
         , txInCollateralOpts (txCollateral tx)
-        , txOutOpts pabConf (txOutputs tx)
+        , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mintOpts pabConf buildMode (txMintScripts tx) (txRedeemers tx) (txMint tx)
         , requiredSigners
         , case buildMode of
@@ -330,17 +331,26 @@ mintOpts pabConf buildMode mintingPolicies redeemers mintValue =
         else []
     ]
 
-txOutOpts :: PABConfig -> [TxOut] -> [Text]
-txOutOpts pabConf =
+txOutOpts :: PABConfig -> Map DatumHash Datum -> [TxOut] -> [Text]
+txOutOpts pabConf datums =
   concatMap
-    ( \TxOut {txOutAddress, txOutValue} ->
-        [ "--tx-out"
-        , Text.intercalate
-            "+"
-            [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
-            , valueToCliArg txOutValue
+    ( \TxOut {txOutAddress, txOutValue, txOutDatumHash} ->
+        mconcat
+          [
+            [ "--tx-out"
+            , Text.intercalate
+                "+"
+                [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
+                , valueToCliArg txOutValue
+                ]
             ]
-        ]
+          , case txOutDatumHash of
+              Nothing -> []
+              Just datumHash@(DatumHash dh) ->
+                if Map.member datumHash datums
+                  then ["--tx-out-datum-embed-file", datumJsonFilePath pabConf datumHash]
+                  else ["--tx-out-datum-hash", encodeByteString $ fromBuiltin dh]
+          ]
     )
 
 networkOpt :: PABConfig -> [Text]
