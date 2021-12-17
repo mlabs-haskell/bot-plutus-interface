@@ -18,6 +18,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
+import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Emulator (Wallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -25,6 +26,7 @@ import Prelude
 data PABConfig = PABConfig
   { -- | Calling the cli through ssh when set to Remote
     pcCliLocation :: !CLILocation
+  , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !(Maybe ProtocolParameters)
   , -- | Directory name of the script and data files
@@ -60,6 +62,7 @@ instance Default PABConfig where
   def =
     PABConfig
       { pcCliLocation = Local
+      , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = Nothing
       , pcScriptFileDir = "result-scripts"

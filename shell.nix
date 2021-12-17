@@ -40,7 +40,7 @@ with import ./nix { };
   ];
 
   buildInputs = (with plutus.pkgs;
-    [ zlib pkg-config libsodium-vrf R ]
+    [ lzma zlib pkg-config libsodium-vrf R ]
     ++ (lib.optionals (!stdenv.isDarwin) [ systemd ]));
 
 })
