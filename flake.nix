@@ -48,10 +48,16 @@
               cardano-crypto-class.components.library.pkgconfig =
                 nixpkgs.lib.mkForce
                 [ [ (import plutus { inherit system; }).pkgs.libsodium-vrf ] ];
-              cardano-wallet-core.components.library.build-tools =
-                [ pkgs.buildPackages.buildPackages.gitMinimal ];
-              cardano-config.components.library.build-tools =
-                [ pkgs.buildPackages.buildPackages.gitMinimal ];
+              cardano-wallet-core.components.library.build-tools = [
+                (import plutus {
+                  inherit system;
+                }).pkgs.buildPackages.buildPackages.gitMinimal
+              ];
+              cardano-config.components.library.build-tools = [
+                (import plutus {
+                  inherit system;
+                }).pkgs.buildPackages.buildPackages.gitMinimal
+              ];
             };
           }];
           shell = {
