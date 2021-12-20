@@ -58,3 +58,4 @@ cabal.project.local*
 geth-node/chaindata/geth/*
 geth-node/chaindata/history
 *.ipc
+.direnv

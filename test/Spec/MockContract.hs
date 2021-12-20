@@ -81,6 +81,7 @@ import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.Types (ContractEnvironment (..), LogLevel (..), PABConfig (..))
 import NeatInterpolation (text)
+import Plutus.ChainIndex.Api (UtxosResponse (UtxosResponse))
 import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
@@ -380,16 +381,16 @@ mockQueryChainIndex = \case
   UtxoSetAtAddress pageQuery _ -> do
     state <- get @MockContractState
     pure $
-      UtxoSetAtResponse
-        ( state ^. tip
-        , pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))
-        )
+      UtxoSetAtResponse $
+        UtxosResponse
+          (state ^. tip)
+          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   UtxoSetWithCurrency pageQuery _ -> do
     state <- get @MockContractState
     pure $
-      UtxoSetAtResponse
-        ( state ^. tip
-        , pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))
-        )
+      UtxoSetAtResponse $
+        UtxosResponse
+          (state ^. tip)
+          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   GetTip ->
     throwError @Text "GetTip is unimplemented"

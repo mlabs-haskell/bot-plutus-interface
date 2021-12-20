@@ -147,11 +147,11 @@ test-suite mlabs-pab-test
     Spec.MockContract
 
   build-depends:
-    , aeson                    ^>=1.5.0.0
+    , aeson                      ^>=1.5.0.0
     , attoparsec
     , base
     , base-compat
-    , bytestring               ^>=0.10.12.0
+    , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto-class
     , containers
@@ -171,6 +171,7 @@ test-suite mlabs-pab-test
     , plutus-core
     , plutus-ledger
     , plutus-ledger-api
+    , plutus-ledger-constraints
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
@@ -181,7 +182,7 @@ test-suite mlabs-pab-test
     , tasty
     , tasty-hunit
     , tasty-quickcheck
-    , text                     ^>=1.2.4.0
+    , text                       ^>=1.2.4.0
     , uuid
 
   hs-source-dirs: test

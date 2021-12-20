@@ -94,6 +94,7 @@
               ps.orphans-deriving-via
               ps.playground-common
               ps.plutus-contract
+              ps.plutus-chain-index
               ps.plutus-core
               ps.plutus-ledger
               ps.plutus-ledger-api
