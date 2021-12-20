@@ -131,6 +131,7 @@ library
     , wai
     , warp
     , websockets
+    , plutus-ledger-constraints
 
   hs-source-dirs:  src
 
