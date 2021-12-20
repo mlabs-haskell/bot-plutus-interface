@@ -109,7 +109,7 @@ handlePABReq contractEnv req = do
     ----------------------
     OwnPublicKeyHashReq ->
       -- TODO: Should be able to get this from the wallet, hardcoded for now
-      pure $ OwnPublicKeyHashResp $ Ledger.pubKeyHash contractEnv.ceOwnPubKey
+      pure $ OwnPublicKeyHashResp $ contractEnv.cePABConfig.pcOwnPubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
@@ -156,7 +156,7 @@ balanceTx contractEnv unbalancedTx = do
   eitherPreBalancedTx <-
     PreBalance.preBalanceTxIO
       contractEnv.cePABConfig
-      (Ledger.pubKeyHash contractEnv.ceOwnPubKey)
+      (contractEnv.cePABConfig.pcOwnPubKeyHash)
       unbalancedTx
 
   case eitherPreBalancedTx of
@@ -196,7 +196,7 @@ writeBalancedTx contractEnv (Right tx) = do
           OtherError $
             "Failed to write script file(s): " <> Text.pack (show err)
     Right _ -> do
-      let ownPkh = Ledger.pubKeyHash contractEnv.ceOwnPubKey
+      let ownPkh = contractEnv.cePABConfig.pcOwnPubKeyHash
       let requiredSigners = Map.keys $ tx ^. Tx.signatures
 
       CardanoCLI.uploadFiles contractEnv.cePABConfig
