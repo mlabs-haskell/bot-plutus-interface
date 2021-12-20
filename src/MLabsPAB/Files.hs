@@ -154,7 +154,7 @@ writeAll pabConf policyScripts validatorScripts datums redeemers = do
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAllForTx ::
   forall (effs :: [Type -> Type]).
-  Member PABEffect ->
+  Member PABEffect effs =>
   PABConfig ->
   Tx ->
   Eff effs (Either (FileError ()) [Text])
