@@ -230,27 +230,27 @@
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "plutus": {
-        "branch": "3f089ccf0ca746b399c99afe51e063b0640af547",
+        "branch": "2721c59fd2302b75c4138456c29fd5b509e8340a",
         "description": "The Plutus language implementation and tools",
         "homepage": "",
         "owner": "input-output-hk",
         "repo": "plutus",
-        "rev": "3f089ccf0ca746b399c99afe51e063b0640af547",
-        "sha256": "1nx8xmdgwmnsla4qg4k67f5md8vm3p1p9i25ndalrqdg40z90486",
+        "rev": "2721c59fd2302b75c4138456c29fd5b509e8340a",
+        "sha256": "02g8pzldyfl4pm8sy22yd3l2fr3zpyhwkvv9x3h9lsf6lfx5wi7k",
         "type": "tarball",
-        "url": "https://github.com/input-output-hk/plutus/archive/3f089ccf0ca746b399c99afe51e063b0640af547.tar.gz",
+        "url": "https://github.com/input-output-hk/plutus/archive/2721c59fd2302b75c4138456c29fd5b509e8340a.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "plutus-apps": {
-        "branch": "7f7aca8500105d3a0830b40627f1821c9ac7b58e",
+        "branch": "46527f2372c459a074a9e7dd1d9615ccd558c504",
         "description": "The Plutus application platform",
         "homepage": null,
         "owner": "input-output-hk",
         "repo": "plutus-apps",
-        "rev": "7f7aca8500105d3a0830b40627f1821c9ac7b58e",
-        "sha256": "1zn8mhwdwk5ya0i4x8pj906glica62y5pi95l26nav4xldwj8zv0",
+        "rev": "46527f2372c459a074a9e7dd1d9615ccd558c504",
+        "sha256": "0v1vs25r4cakfzkfb13jf92i54ls5crx3icpy53cbskpfhd4cjcq",
         "type": "tarball",
-        "url": "https://github.com/input-output-hk/plutus-apps/archive/7f7aca8500105d3a0830b40627f1821c9ac7b58e.tar.gz",
+        "url": "https://github.com/input-output-hk/plutus-apps/archive/46527f2372c459a074a9e7dd1d9615ccd558c504.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "purescript-bridge": {
