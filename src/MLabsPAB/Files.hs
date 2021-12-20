@@ -42,10 +42,12 @@ import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Crypto (PrivateKey, PubKeyHash (PubKeyHash))
+import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
@@ -155,7 +157,7 @@ writeAllForTx ::
   Member PABEffect ->
   PABConfig ->
   Tx ->
-  Eff Effs (Eithes (FileError ()) [Text])
+  Eff effs (Either (FileError ()) [Text])
 writeAllForTx pabConf tx = do
   createDirectoryIfMissing False (Text.unpack pabConf.pcScriptFileDir)
 
