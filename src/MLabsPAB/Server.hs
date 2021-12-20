@@ -141,7 +141,6 @@ handleContract pabConf wallet state contract = liftIO $ do
           { cePABConfig = pabConf
           , ceWallet = wallet
           , ceContractInstanceId = contractInstanceID
-          , ceOwnPubKey = "5842d469074913a4a0e8e3ec3b4d46eded2076c186735135d1f5e6ef592984d7"
           }
   void $
     forkIO $ do
