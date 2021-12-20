@@ -11,11 +11,8 @@ import Control.Monad.Freer.Writer (runWriter)
 import Data.Aeson (Value)
 import Data.Kind (Type)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
 import Data.Row (Row)
-import Data.Set qualified as Set
 import Data.Text qualified as Text
-import Ledger qualified
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
@@ -173,7 +170,7 @@ writeBalancedTx contractEnv (Right tx) = do
   createDirectoryIfMissing False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
 
   fileWriteRes <-
-    Files.writeAllForTx pabConf tx
+    Files.writeAll contractEnv.cePABConfig tx
 
   case fileWriteRes of
     Left err ->

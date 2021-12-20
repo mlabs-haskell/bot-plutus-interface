@@ -30,6 +30,7 @@ import Cardano.Api.Shelley (
   fromPlutusData,
   scriptDataToJson,
  )
+import MLabsPAB.Effects (createDirectoryIfMissing)
 import Cardano.Crypto.Wallet qualified as Crypto
 import Codec.Serialise qualified as Codec
 import Control.Monad.Freer (Eff, Member)
@@ -37,6 +38,7 @@ import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Maybe (mapMaybe)
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
@@ -130,35 +132,15 @@ writeValidatorScriptFile pabConf validatorScript =
       filepath = validatorScriptFilePath pabConf (Ledger.validatorHash validatorScript)
    in fmap (const filepath) <$> writeFileTextEnvelope (Text.unpack filepath) Nothing script
 
-writeAll ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
-  PABConfig ->
-  [MintingPolicy] ->
-  [Validator] ->
-  [Datum] ->
-  [Redeemer] ->
-  Eff effs (Either (FileError ()) [Text])
-writeAll pabConf policyScripts validatorScripts datums redeemers = do
-  results <-
-    sequence $
-      mconcat
-        [ map (writePolicyScriptFile pabConf) policyScripts
-        , map (writeValidatorScriptFile pabConf) validatorScripts
-        , map (writeDatumJsonFile pabConf) datums
-        , map (writeRedeemerJsonFile pabConf) redeemers
-        ]
-
-  pure $ sequence results
 
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
-writeAllForTx ::
+writeAll ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
   Tx ->
   Eff effs (Either (FileError ()) [Text])
-writeAllForTx pabConf tx = do
+writeAll pabConf tx = do
   createDirectoryIfMissing False (Text.unpack pabConf.pcScriptFileDir)
 
   let (validatorScripts, redeemers, datums) =
@@ -168,12 +150,16 @@ writeAllForTx pabConf tx = do
       allDatums = datums <> Map.elems (Tx.txData tx)
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
 
-  writeAll
-    contractEnv.cePABConfig
-    policyScripts
-    validatorScripts
-    allDatums
-    allRedeemers
+  results <-
+    sequence $
+      mconcat
+        [ map (writePolicyScriptFile pabConf) policyScripts
+        , map (writeValidatorScriptFile pabConf) validatorScripts
+        , map (writeDatumJsonFile pabConf) allDatums
+        , map (writeRedeemerJsonFile pabConf) allRedeemers
+        ]
+
+  pure $ sequence results
 
 readPrivateKeys ::
   forall (effs :: [Type -> Type]).
