@@ -157,10 +157,9 @@ instance Default MockContractState where
 instance Default ContractEnvironment where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet}
+      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceWallet = knownWallet 1
-      , ceOwnPubKey = pubKey1
       }
 type MockContract a = Eff '[Error Text, State MockContractState, Writer [String]] a
 
