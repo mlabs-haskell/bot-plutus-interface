@@ -149,6 +149,30 @@ writeAll pabConf policyScripts validatorScripts datums redeemers = do
 
   pure $ sequence results
 
+-- | Write to disk all validator scripts, datums and redemeers appearing in the tx
+writeAllForTx ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect ->
+  PABConfig ->
+  Tx ->
+  Eff Effs (Eithes (FileError ()) [Text])
+writeAllForTx pabConf tx = do
+  createDirectoryIfMissing False (Text.unpack pabConf.pcScriptFileDir)
+
+  let (validatorScripts, redeemers, datums) =
+        unzip3 $ mapMaybe Tx.inScripts $ Set.toList $ Tx.txInputs tx
+
+      policyScripts = Set.toList $ Ledger.txMintScripts tx
+      allDatums = datums <> Map.elems (Tx.txData tx)
+      allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
+
+  writeAll
+    contractEnv.cePABConfig
+    policyScripts
+    validatorScripts
+    allDatums
+    allRedeemers
+
 readPrivateKeys ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
