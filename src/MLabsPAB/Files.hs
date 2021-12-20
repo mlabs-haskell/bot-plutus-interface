@@ -30,7 +30,6 @@ import Cardano.Api.Shelley (
   fromPlutusData,
   scriptDataToJson,
  )
-import MLabsPAB.Effects (createDirectoryIfMissing)
 import Cardano.Crypto.Wallet qualified as Crypto
 import Codec.Serialise qualified as Codec
 import Control.Monad.Freer (Eff, Member)
@@ -38,12 +37,12 @@ import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Lazy qualified as LazyByteString
-import Data.Maybe (mapMaybe)
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -55,6 +54,7 @@ import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
 import MLabsPAB.Effects (
   PABEffect,
+  createDirectoryIfMissing,
   listDirectory,
   readFileTextEnvelope,
   writeFileJSON,
@@ -131,7 +131,6 @@ writeValidatorScriptFile pabConf validatorScript =
   let script = serialiseScript $ Ledger.unValidatorScript validatorScript
       filepath = validatorScriptFilePath pabConf (Ledger.validatorHash validatorScript)
    in fmap (const filepath) <$> writeFileTextEnvelope (Text.unpack filepath) Nothing script
-
 
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
