@@ -174,20 +174,8 @@ writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
 writeBalancedTx contractEnv (Right tx) = do
   createDirectoryIfMissing False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
 
-  let (validatorScripts, redeemers, datums) =
-        unzip3 $ mapMaybe Tx.inScripts $ Set.toList $ Tx.txInputs tx
-
-      policyScripts = Set.toList $ Ledger.txMintScripts tx
-      allDatums = datums <> Map.elems (Tx.txData tx)
-      allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
-
   fileWriteRes <-
-    Files.writeAll
-      contractEnv.cePABConfig
-      policyScripts
-      validatorScripts
-      allDatums
-      allRedeemers
+    Files.writeAllForTx pabConf tx
 
   case fileWriteRes of
     Left err ->

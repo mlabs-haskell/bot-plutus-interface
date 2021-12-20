@@ -69,6 +69,7 @@ preBalanceTxIO pabConf ownPkh tx =
       txWithoutFees <-
         hoistEither $ preBalanceTx minUtxo 0 utxoIndex ownPkh privKeys requiredSigs tx'
 
+      Files.writeAllForTx pabConf txWithoutFees
       lift $ CardanoCLI.buildTx pabConf ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee pabConf txWithoutFees
 
