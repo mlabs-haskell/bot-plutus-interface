@@ -23,6 +23,8 @@ module Spec.MockContract (
   addr2,
   addr3,
   commandHistory,
+  instanceUpdateHistory,
+  logHistory,
   contractEnv,
   files,
   tip,
@@ -48,11 +50,10 @@ import Control.Concurrent.STM (newTVarIO)
 import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (join)
-import Control.Monad.Freer (Eff, reinterpret3, run)
+import Control.Monad.Freer (Eff, reinterpret2, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
-import Control.Monad.Freer.Writer (Writer, runWriter, tell)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
@@ -93,6 +94,7 @@ import NeatInterpolation (text)
 import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
+import Plutus.PAB.Webserver.Types (InstanceStatusToClient)
 import PlutusTx.Builtins (fromBuiltin)
 import System.IO.Unsafe (unsafePerformIO)
 import Wallet.Emulator (knownWallet)
@@ -142,6 +144,8 @@ data MockFile
 data MockContractState = MockContractState
   { _files :: Map FilePath MockFile
   , _commandHistory :: [Text]
+  , _instanceUpdateHistory :: [InstanceStatusToClient]
+  , _logHistory :: [(LogLevel, String)]
   , _contractEnv :: ContractEnvironment
   , _utxos :: [(TxOutRef, TxOut)]
   , _tip :: Tip
@@ -159,6 +163,8 @@ instance Default MockContractState where
               (toSigningKeyFile "signing-keys")
               [signingKey1, signingKey2, signingKey3]
       , _commandHistory = mempty
+      , _instanceUpdateHistory = mempty
+      , _logHistory = mempty
       , _contractEnv = def
       , _utxos = []
       , _tip = Tip 1000 (BlockId "ab12") 4
@@ -173,7 +179,8 @@ instance Default ContractEnvironment where
       , ceWallet = knownWallet 1
       , ceOwnPubKey = pubKey1
       }
-type MockContract a = Eff '[Error Text, State MockContractState, Writer [String]] a
+
+type MockContract a = Eff '[Error Text, State MockContractState] a
 
 {- | Run the contract monad in a pure mock runner, and return a tuple of the contract result and
  the contract state
@@ -183,19 +190,24 @@ runContractPure ::
   (ToJSON w) =>
   Contract w s Text a ->
   MockContractState ->
-  (Either Text a, MockContractState, [String])
+  (Either Text a, MockContractState)
 runContractPure contract initContractState =
-  let ((res, st), logs) = runContractPure' contract initContractState
-   in (res, st & commandHistory %~ reverse, logs)
+  let (res, st) = runContractPure' contract initContractState
+   in ( res
+      , st
+          & commandHistory %~ reverse
+          & instanceUpdateHistory %~ reverse
+          & logHistory %~ reverse
+      )
 
 runContractPure' ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
   (ToJSON w) =>
   Contract w s Text a ->
   MockContractState ->
-  ((Either Text a, MockContractState), [String])
+  (Either Text a, MockContractState)
 runContractPure' (Contract effs) initContractState =
-  first (first join) $
+  first join $
     runPABEffectPure initContractState $
       handleContract (initContractState ^. contractEnv) effs
 
@@ -203,16 +215,16 @@ runPABEffectPure ::
   forall (a :: Type).
   MockContractState ->
   Eff '[PABEffect] a ->
-  ((Either Text a, MockContractState), [String])
+  (Either Text a, MockContractState)
 runPABEffectPure initState req =
-  run (runWriter (runState initState (runError (reinterpret3 go req))))
+  run (runState initState (runError (reinterpret2 go req)))
   where
     go :: PABEffect v -> MockContract v
     go (CallCommand args) = mockCallCommand args
     go (CreateDirectoryIfMissing createParents filePath) =
       mockCreateDirectoryIfMissing createParents filePath
     go (PrintLog logLevel msg) = mockPrintLog logLevel msg
-    go (UpdateInstanceState _) = pure ()
+    go (UpdateInstanceState msg) = mockUpdateInstanceState msg
     go (ThreadDelay microseconds) = mockThreadDelay microseconds
     go (ReadFileTextEnvelope asType filepath) = mockReadFileTextEnvelope asType filepath
     go (WriteFileJSON filepath value) = mockWriteFileJSON filepath value
@@ -227,7 +239,6 @@ mockCallCommand ::
   ShellArgs a ->
   MockContract a
 mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
-  tell $ map Text.unpack cmdArgs
   modify (commandHistory %~ (cmdName <> " " <> Text.unwords cmdArgs <|))
 
   case (cmdName, cmdArgs) of
@@ -318,7 +329,12 @@ mockCreateDirectoryIfMissing :: Bool -> FilePath -> MockContract ()
 mockCreateDirectoryIfMissing _ _ = pure ()
 
 mockPrintLog :: LogLevel -> String -> MockContract ()
-mockPrintLog _ msg = tell [msg]
+mockPrintLog logLevel msg =
+  modify (logHistory %~ ((logLevel, msg) <|))
+
+mockUpdateInstanceState :: InstanceStatusToClient -> MockContract ()
+mockUpdateInstanceState msg =
+  modify (instanceUpdateHistory %~ (msg <|))
 
 mockThreadDelay :: Int -> MockContract ()
 mockThreadDelay _ = pure ()
