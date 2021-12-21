@@ -3,12 +3,12 @@
 module MLabsPAB.Contract (runContract, handleContract) where
 
 import Control.Lens ((^.))
-import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, type (~>))
+import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
-import Control.Monad.Freer.Writer (runWriter)
-import Data.Aeson (Value)
+import Control.Monad.Freer.Writer (Writer (Tell))
+import Data.Aeson (ToJSON, Value, toJSON)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
@@ -26,6 +26,7 @@ import MLabsPAB.Effects (
   handlePABEffect,
   printLog,
   queryChainIndex,
+  updateInstanceState,
  )
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.PreBalance qualified as PreBalance
@@ -40,33 +41,45 @@ import Plutus.Contract.Effects (
  )
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
+import Plutus.PAB.Webserver.Types (InstanceStatusToClient (NewObservableState))
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Wallet.Emulator.Types (Wallet)
 import Prelude
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
-  (Monoid w) =>
+  (ToJSON w) =>
   ContractEnvironment ->
   Wallet ->
   Contract w s e a ->
-  IO (Either e a, w)
+  IO (Either e a)
 runContract contractEnv _ (Contract effs) = do
-  runM $ handlePABEffect contractEnv.cePABConfig $ handleContract contractEnv effs
+  runM $ handlePABEffect contractEnv $ raiseEnd $ handleContract contractEnv effs
 
 handleContract ::
-  forall (w :: Type) (e :: Type) (a :: Type) (effs :: [Type -> Type]).
-  (Monoid w) =>
+  forall (w :: Type) (e :: Type) (a :: Type).
+  ToJSON w =>
   ContractEnvironment ->
   Eff (ContractEffs w e) a ->
-  Eff (PABEffect ': effs) (Either e a, w)
+  Eff '[PABEffect] (Either e a)
 handleContract contractEnv =
-  handleResumable contractEnv
+  subsume
+    . handleResumable contractEnv
     . handleCheckpointIgnore
-    . runWriter
+    . handleWriter
     . handleLogIgnore @Value
     . runError
     . raiseEnd
+
+handleWriter ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  ToJSON w =>
+  (Member PABEffect effs) =>
+  Eff (Writer w ': effs)
+    ~> Eff effs
+handleWriter =
+  interpret
+    (\case Tell msg -> updateInstanceState (NewObservableState (toJSON msg)))
 
 handleResumable ::
   forall (effs :: [Type -> Type]).

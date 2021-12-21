@@ -44,13 +44,16 @@ import Cardano.Api (
  )
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
+import Control.Concurrent.STM (newTVarIO)
 import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
+import Control.Monad (join)
 import Control.Monad.Freer (Eff, reinterpret3, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
 import Control.Monad.Freer.Writer (Writer, runWriter, tell)
+import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
@@ -65,6 +68,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
+import Data.Tuple.Extra (first)
 import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
 import Ledger qualified
@@ -79,12 +83,18 @@ import MLabsPAB.CardanoCLI (unsafeSerialiseAddress)
 import MLabsPAB.Contract (handleContract)
 import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
 import MLabsPAB.Files qualified as Files
-import MLabsPAB.Types (ContractEnvironment (..), LogLevel (..), PABConfig (..))
+import MLabsPAB.Types (
+  ContractEnvironment (..),
+  ContractState (ContractState),
+  LogLevel (..),
+  PABConfig (..),
+ )
 import NeatInterpolation (text)
 import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import PlutusTx.Builtins (fromBuiltin)
+import System.IO.Unsafe (unsafePerformIO)
 import Wallet.Emulator (knownWallet)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
@@ -159,6 +169,7 @@ instance Default ContractEnvironment where
     ContractEnvironment
       { cePABConfig = def {pcNetwork = Mainnet}
       , ceContractInstanceId = ContractInstanceId UUID.nil
+      , ceContractState = ContractState <$> unsafePerformIO $ newTVarIO Map.empty
       , ceWallet = knownWallet 1
       , ceOwnPubKey = pubKey1
       }
@@ -169,22 +180,24 @@ type MockContract a = Eff '[Error Text, State MockContractState, Writer [String]
 -}
 runContractPure ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
-  (Monoid w) =>
+  (ToJSON w) =>
   Contract w s Text a ->
   MockContractState ->
   (Either Text a, MockContractState, [String])
 runContractPure contract initContractState =
   let ((res, st), logs) = runContractPure' contract initContractState
-   in (fst =<< res, st & commandHistory %~ reverse, logs)
+   in (res, st & commandHistory %~ reverse, logs)
 
 runContractPure' ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
-  (Monoid w) =>
+  (ToJSON w) =>
   Contract w s Text a ->
   MockContractState ->
-  ((Either Text (Either Text a, w), MockContractState), [String])
+  ((Either Text a, MockContractState), [String])
 runContractPure' (Contract effs) initContractState =
-  runPABEffectPure initContractState $ handleContract (initContractState ^. contractEnv) effs
+  first (first join) $
+    runPABEffectPure initContractState $
+      handleContract (initContractState ^. contractEnv) effs
 
 runPABEffectPure ::
   forall (a :: Type).
@@ -199,6 +212,7 @@ runPABEffectPure initState req =
     go (CreateDirectoryIfMissing createParents filePath) =
       mockCreateDirectoryIfMissing createParents filePath
     go (PrintLog logLevel msg) = mockPrintLog logLevel msg
+    go (UpdateInstanceState _) = pure ()
     go (ThreadDelay microseconds) = mockThreadDelay microseconds
     go (ReadFileTextEnvelope asType filepath) = mockReadFileTextEnvelope asType filepath
     go (WriteFileJSON filepath value) = mockWriteFileJSON filepath value

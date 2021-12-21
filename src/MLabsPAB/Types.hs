@@ -1,6 +1,7 @@
 module MLabsPAB.Types (
   PABConfig (..),
   CLILocation (..),
+  ContractState (ContractState),
   LogLevel (..),
   ContractEnvironment (..),
   HasDefinitions (..),
@@ -10,7 +11,9 @@ module MLabsPAB.Types (
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.Api.Shelley (ProtocolParameters)
+import Control.Concurrent.STM (TVar)
 import Data.Default (Default (def))
+import Data.Map (Map)
 import Data.Text (Text)
 import Ledger (PubKey)
 import Plutus.PAB.Effects.Contract.Builtin (
@@ -18,6 +21,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
+import Plutus.PAB.Webserver.Types (InstanceStatusToClient)
 import Wallet.Emulator (Wallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -44,11 +48,18 @@ data PABConfig = PABConfig
 data ContractEnvironment = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
+  , ceContractState :: ContractState
   , ceWallet :: Wallet
   , -- | TODO: We should get this from the wallet, once the integration works
     ceOwnPubKey :: PubKey
   }
   deriving stock (Show, Eq)
+
+newtype ContractState = ContractState (TVar (Map ContractInstanceId InstanceStatusToClient))
+  deriving stock (Eq)
+
+instance Show ContractState where
+  show _ = "<ContractState>"
 
 data CLILocation = Local | Remote Text
   deriving stock (Show, Eq)

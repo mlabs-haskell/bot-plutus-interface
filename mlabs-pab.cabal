@@ -177,6 +177,7 @@ test-suite mlabs-pab-test
     , quickcheck-instances
     , row-types
     , serialise
+    , stm
     , tasty
     , tasty-hunit
     , tasty-quickcheck

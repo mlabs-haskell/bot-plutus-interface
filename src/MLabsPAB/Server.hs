@@ -1,22 +1,21 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module MLabsPAB.Server (app, State, initState) where
+module MLabsPAB.Server (app, initState) where
 
 import Control.Concurrent (ThreadId, forkIO)
-import Control.Concurrent.STM (TVar, atomically, modifyTVar, newTVarIO, readTVar, retry)
+import Control.Concurrent.STM (atomically, modifyTVar, newTVarIO, readTVar, retry)
 import Control.Monad (forever, guard, unless, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON (toJSON))
 import Data.Aeson qualified as JSON
 import Data.Either.Combinators (leftToMaybe)
 import Data.Kind (Type)
-import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.UUID.V4 qualified as UUID
 import MLabsPAB.Contract (runContract)
-import MLabsPAB.Types (ContractEnvironment (..), PABConfig)
+import MLabsPAB.Types (ContractEnvironment (..), ContractState (ContractState), PABConfig)
 import Network.WebSockets (
   Connection,
   PendingConnection,
@@ -40,10 +39,8 @@ import Wallet.Emulator (Wallet, knownWallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
-newtype State = State (TVar (Map ContractInstanceId InstanceStatusToClient))
-
-initState :: IO State
-initState = State <$> newTVarIO Map.empty
+initState :: IO ContractState
+initState = ContractState <$> newTVarIO Map.empty
 
 -- | Mock API Schema, stripped endpoints that we don't use in this project
 type API a =
@@ -55,18 +52,18 @@ type API a =
             :> Post '[JSON] ContractInstanceId -- Start a new instance.
          )
 
-server :: HasDefinitions t => PABConfig -> State -> Server (API t)
+server :: HasDefinitions t => PABConfig -> ContractState -> Server (API t)
 server pabConfig state =
   websocketHandler state :<|> activateContractHandler pabConfig state
 
 apiProxy :: forall (t :: Type). Proxy (API t)
 apiProxy = Proxy
 
-app :: forall (t :: Type). (HasDefinitions t, FromJSON t) => PABConfig -> State -> Application
+app :: forall (t :: Type). (HasDefinitions t, FromJSON t) => PABConfig -> ContractState -> Application
 app pabConfig state = serve (apiProxy @t) $ server pabConfig state
 
 -- | Mock websocket handler (can only send ContractFinished message)
-websocketHandler :: State -> PendingConnection -> Handler ()
+websocketHandler :: ContractState -> PendingConnection -> Handler ()
 websocketHandler state pendingConn = liftIO $ do
   conn <- acceptRequest pendingConn
 
@@ -82,8 +79,8 @@ websocketHandler state pendingConn = liftIO $ do
 {- | Create a thread subscribing to state changes on a specific contract instance
  and send a websocket response on each change
 -}
-subscribeToContract :: Connection -> State -> ContractInstanceId -> IO ThreadId
-subscribeToContract conn (State s) contractInstanceID =
+subscribeToContract :: Connection -> ContractState -> ContractInstanceId -> IO ThreadId
+subscribeToContract conn (ContractState s) contractInstanceID =
   forkIO $ do
     putStrLn $ "WebSocket subscribed to " ++ show contractInstanceID
     observeUpdates Nothing
@@ -107,8 +104,8 @@ subscribeToContract conn (State s) contractInstanceID =
     isFinished _ = False
 
 -- | Broadcast a contract update to subscribers
-broadcastContractResult :: State -> ContractInstanceId -> InstanceStatusToClient -> IO ()
-broadcastContractResult (State s) contractInstanceID statusUpdateMsg =
+broadcastContractResult :: ContractState -> ContractInstanceId -> InstanceStatusToClient -> IO ()
+broadcastContractResult (ContractState s) contractInstanceID statusUpdateMsg =
   atomically $
     modifyTVar s $ Map.insert contractInstanceID statusUpdateMsg
 
@@ -116,7 +113,7 @@ broadcastContractResult (State s) contractInstanceID statusUpdateMsg =
 activateContractHandler ::
   HasDefinitions c =>
   PABConfig ->
-  State ->
+  ContractState ->
   ContractActivationArgs c ->
   Handler ContractInstanceId
 activateContractHandler pabConf state (ContractActivationArgs cardMessage maybeWallet) =
@@ -131,7 +128,7 @@ handleContract ::
   ) =>
   PABConfig ->
   Wallet ->
-  State ->
+  ContractState ->
   contract w s e a ->
   Handler ContractInstanceId
 handleContract pabConf wallet state contract = liftIO $ do
@@ -139,6 +136,7 @@ handleContract pabConf wallet state contract = liftIO $ do
   let contractEnv =
         ContractEnvironment
           { cePABConfig = pabConf
+          , ceContractState = state
           , ceWallet = wallet
           , ceContractInstanceId = contractInstanceID
           , ceOwnPubKey = "5842d469074913a4a0e8e3ec3b4d46eded2076c186735135d1f5e6ef592984d7"
@@ -146,7 +144,6 @@ handleContract pabConf wallet state contract = liftIO $ do
   void $
     forkIO $ do
       result <- runContract contractEnv wallet (toContract contract)
-      let maybeErrors = leftToMaybe $ fst result
-      let updateMsg = ContractFinished (toJSON <$> maybeErrors)
+      let updateMsg = ContractFinished (toJSON <$> leftToMaybe result)
       broadcastContractResult state contractInstanceID updateMsg
   pure contractInstanceID

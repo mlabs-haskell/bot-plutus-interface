@@ -8,6 +8,7 @@ module MLabsPAB.Effects (
   listDirectory,
   threadDelay,
   uploadDir,
+  updateInstanceState,
   printLog,
   PABEffect (..),
   ShellArgs (..),
@@ -21,16 +22,24 @@ module MLabsPAB.Effects (
 import Cardano.Api (AsType, FileError, HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
+import Control.Concurrent.STM (atomically, modifyTVar)
 import Control.Monad (void, when)
 import Control.Monad.Freer (Eff, LastMember, interpretM, type (~>))
 import Control.Monad.Freer.TH (makeEffect)
 import Data.Aeson qualified as JSON
 import Data.Kind (Type)
+import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import MLabsPAB.ChainIndex (handleChainIndexReq)
-import MLabsPAB.Types (CLILocation (..), LogLevel (..), PABConfig (..))
+import MLabsPAB.Types (
+  CLILocation (..),
+  ContractEnvironment,
+  ContractState (ContractState),
+  LogLevel (..),
+ )
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
+import Plutus.PAB.Webserver.Types (InstanceStatusToClient)
 import System.Directory qualified as Directory
 import System.Process (readProcess)
 import Prelude hiding (readFile)
@@ -48,6 +57,7 @@ data PABEffect r where
   CallCommand :: ShellArgs a -> PABEffect a
   CreateDirectoryIfMissing :: Bool -> FilePath -> PABEffect ()
   PrintLog :: LogLevel -> String -> PABEffect ()
+  UpdateInstanceState :: InstanceStatusToClient -> PABEffect ()
   ThreadDelay :: Int -> PABEffect ()
   ReadFileTextEnvelope ::
     HasTextEnvelope a =>
@@ -68,18 +78,23 @@ data PABEffect r where
 handlePABEffect ::
   forall (effs :: [Type -> Type]).
   (LastMember IO effs) =>
-  PABConfig ->
+  ContractEnvironment ->
   Eff (PABEffect ': effs) ~> Eff effs
-handlePABEffect pabConf =
+handlePABEffect contractEnv =
   interpretM
     ( \case
         CallCommand shellArgs ->
-          case pabConf.pcCliLocation of
+          case contractEnv.cePABConfig.pcCliLocation of
             Local -> callLocalCommand shellArgs
             Remote ipAddr -> callRemoteCommand ipAddr shellArgs
         CreateDirectoryIfMissing createParents filePath ->
           Directory.createDirectoryIfMissing createParents filePath
-        PrintLog logLevel txt -> printLog' pabConf.pcLogLevel logLevel txt
+        PrintLog logLevel txt -> printLog' contractEnv.cePABConfig.pcLogLevel logLevel txt
+        UpdateInstanceState stateChange ->
+          let ContractState st = contractEnv.ceContractState
+           in atomically $
+                modifyTVar st $
+                  Map.insert contractEnv.ceContractInstanceId stateChange
         ThreadDelay microSeconds -> Concurrent.threadDelay microSeconds
         ReadFileTextEnvelope asType filepath -> Cardano.Api.readFileTextEnvelope asType filepath
         WriteFileJSON filepath value -> Cardano.Api.writeFileJSON filepath value
@@ -87,7 +102,7 @@ handlePABEffect pabConf =
           Cardano.Api.writeFileTextEnvelope filepath envelopeDescr contents
         ListDirectory filepath -> Directory.listDirectory filepath
         UploadDir dir ->
-          case pabConf.pcCliLocation of
+          case contractEnv.cePABConfig.pcCliLocation of
             Local -> pure ()
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""

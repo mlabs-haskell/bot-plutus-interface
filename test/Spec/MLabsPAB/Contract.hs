@@ -4,6 +4,7 @@
 module Spec.MLabsPAB.Contract (tests) where
 
 import Control.Lens (ix, (&), (.~), (^.), (^?))
+import Data.Aeson (ToJSON)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
 import Data.Kind (Type)
@@ -490,7 +491,7 @@ assertFiles state expectedFiles =
 
 assertContractWithTxId ::
   forall (w :: Type) (s :: Row Type).
-  (Monoid w) =>
+  (ToJSON w) =>
   Contract w s Text CardanoTx ->
   MockContractState ->
   (MockContractState -> Text -> Assertion) ->
