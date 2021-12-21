@@ -42,15 +42,19 @@ import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (mapMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Crypto (PrivateKey, PubKeyHash (PubKeyHash))
+import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
 import MLabsPAB.Effects (
   PABEffect,
+  createDirectoryIfMissing,
   listDirectory,
   readFileTextEnvelope,
   writeFileJSON,
@@ -128,23 +132,30 @@ writeValidatorScriptFile pabConf validatorScript =
       filepath = validatorScriptFilePath pabConf (Ledger.validatorHash validatorScript)
    in fmap (const filepath) <$> writeFileTextEnvelope (Text.unpack filepath) Nothing script
 
+-- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
   forall (effs :: [Type -> Type]).
   Member PABEffect effs =>
   PABConfig ->
-  [MintingPolicy] ->
-  [Validator] ->
-  [Datum] ->
-  [Redeemer] ->
+  Tx ->
   Eff effs (Either (FileError ()) [Text])
-writeAll pabConf policyScripts validatorScripts datums redeemers = do
+writeAll pabConf tx = do
+  createDirectoryIfMissing False (Text.unpack pabConf.pcScriptFileDir)
+
+  let (validatorScripts, redeemers, datums) =
+        unzip3 $ mapMaybe Tx.inScripts $ Set.toList $ Tx.txInputs tx
+
+      policyScripts = Set.toList $ Ledger.txMintScripts tx
+      allDatums = datums <> Map.elems (Tx.txData tx)
+      allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
+
   results <-
     sequence $
       mconcat
         [ map (writePolicyScriptFile pabConf) policyScripts
         , map (writeValidatorScriptFile pabConf) validatorScripts
-        , map (writeDatumJsonFile pabConf) datums
-        , map (writeRedeemerJsonFile pabConf) redeemers
+        , map (writeDatumJsonFile pabConf) allDatums
+        , map (writeRedeemerJsonFile pabConf) allRedeemers
         ]
 
   pure $ sequence results

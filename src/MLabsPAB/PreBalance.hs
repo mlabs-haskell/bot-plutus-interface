@@ -3,7 +3,7 @@ module MLabsPAB.PreBalance (
   preBalanceTxIO,
 ) where
 
-import Control.Monad (foldM)
+import Control.Monad (foldM, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
@@ -69,6 +69,7 @@ preBalanceTxIO pabConf ownPkh tx =
       txWithoutFees <-
         hoistEither $ preBalanceTx minUtxo 0 utxoIndex ownPkh privKeys requiredSigs tx'
 
+      void $ lift $ Files.writeAll pabConf txWithoutFees
       lift $ CardanoCLI.buildTx pabConf ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee pabConf txWithoutFees
 
