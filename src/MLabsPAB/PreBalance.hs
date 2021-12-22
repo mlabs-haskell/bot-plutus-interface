@@ -3,7 +3,7 @@ module MLabsPAB.PreBalance (
   preBalanceTxIO,
 ) where
 
-import Control.Monad (foldM)
+import Control.Monad (foldM, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
@@ -12,7 +12,7 @@ import Data.Kind (Type)
 import Data.List (partition)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -54,29 +54,53 @@ preBalanceTxIO ::
   PubKeyHash ->
   UnbalancedTx ->
   Eff effs (Either Text Tx)
-preBalanceTxIO pabConf ownPkh tx =
+preBalanceTxIO pabConf ownPkh unbalancedTx =
   runEitherT $
     do
       utxos <- lift $ CardanoCLI.utxosAt pabConf $ Ledger.pubKeyHashAddress ownPkh
       privKeys <- newEitherT $ Files.readPrivateKeys pabConf
-      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex tx
-          tx' = unBalancedTxTx tx
-          requiredSigs = Map.keys (unBalancedTxRequiredSignatories tx)
+      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+          tx = unBalancedTxTx unbalancedTx
+          requiredSigs = Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
 
-      minUtxo <- newEitherT $ CardanoCLI.calculateMinUtxo pabConf tx
+      lift $ printLog Debug $ show utxoIndex
+
+      loop utxoIndex privKeys requiredSigs [] tx
+  where
+    loop utxoIndex privKeys requiredSigs prevMinUtxos tx = do
+      nextMinUtxos <-
+        newEitherT $
+          calculateMinUtxos pabConf $ filter (`notElem` map fst prevMinUtxos) $ Tx.txOutputs tx
+
+      let minUtxos = prevMinUtxos ++ nextMinUtxos
+
+      lift $ printLog Debug $ "Min utxos: " ++ show minUtxos
 
       txWithoutFees <-
-        hoistEither $ preBalanceTx minUtxo 0 utxoIndex ownPkh privKeys requiredSigs tx'
+        hoistEither $ preBalanceTx minUtxos 0 utxoIndex ownPkh privKeys requiredSigs tx
 
       lift $ CardanoCLI.buildTx pabConf ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee pabConf txWithoutFees
 
-      lift $ printLog Debug $ show utxoIndex
+      lift $ printLog Debug $ "Fees: " ++ show fees
 
-      hoistEither $ preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx'
+      balancedTx <- hoistEither $ preBalanceTx minUtxos fees utxoIndex ownPkh privKeys requiredSigs tx
+
+      if balancedTx == tx
+        then pure balancedTx
+        else loop utxoIndex privKeys requiredSigs minUtxos balancedTx
+
+calculateMinUtxos ::
+  forall (effs :: [Type -> Type]).
+  Member PABEffect effs =>
+  PABConfig ->
+  [TxOut] ->
+  Eff effs (Either Text [(TxOut, Integer)])
+calculateMinUtxos pabConf txOuts =
+  zipWithM (\k -> fmap (k,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo pabConf) txOuts
 
 preBalanceTx ::
-  Integer ->
+  [(TxOut, Integer)] ->
   Integer ->
   Map TxOutRef TxOut ->
   PubKeyHash ->
@@ -84,11 +108,11 @@ preBalanceTx ::
   [PubKeyHash] ->
   Tx ->
   Either Text Tx
-preBalanceTx minUtxo fees utxos ownPkh privKeys requiredSigs tx =
+preBalanceTx minUtxos fees utxos ownPkh privKeys requiredSigs tx =
   addTxCollaterals utxos tx
     >>= balanceTxIns utxos fees
     >>= balanceNonAdaOuts ownPkh utxos
-    >>= Right . addLovelaces minUtxo
+    >>= Right . addLovelaces minUtxos
     >>= balanceTxIns utxos fees -- Adding more inputs if required
     >>= balanceNonAdaOuts ownPkh utxos
     >>= addSignatories ownPkh privKeys requiredSigs
@@ -119,7 +143,7 @@ collectTxIns originalTxIns utxos value =
 
     isSufficient :: Set TxIn -> Bool
     isSufficient txIns' =
-      txInsValue txIns' `Value.geq` value
+      not (Set.null txIns') && txInsValue txIns' `Value.geq` value
 
     txInsValue :: Set TxIn -> Value
     txInsValue txIns' =
@@ -133,16 +157,17 @@ txOutToTxIn (txOutRef, txOut) =
     ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
 
 -- | Add min lovelaces to each tx output
-addLovelaces :: Integer -> Tx -> Tx
+addLovelaces :: [(TxOut, Integer)] -> Tx -> Tx
 addLovelaces minLovelaces tx =
   let lovelacesAdded =
         map
           ( \txOut ->
               let outValue = txOutValue txOut
                   lovelaces = Ada.getLovelace $ Ada.fromValue outValue
+                  minUtxo = fromMaybe 0 $ lookup txOut minLovelaces
                in txOut
                     { txOutValue =
-                        outValue <> Ada.lovelaceValueOf (max 0 (minLovelaces - lovelaces))
+                        outValue <> Ada.lovelaceValueOf (max 0 (minUtxo - lovelaces))
                     }
           )
           $ txOutputs tx
