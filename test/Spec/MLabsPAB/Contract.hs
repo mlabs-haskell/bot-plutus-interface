@@ -9,6 +9,7 @@ import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
 import Data.Kind (Type)
 import Data.Map qualified as Map
+import Data.Monoid (Last (Last))
 import Data.Row (Row)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -485,19 +486,19 @@ useWriter = do
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
 
-      contract :: Contract String (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Contract (Last String) (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
-        tell "Init contract"
+        tell $ Last $ Just "Init contract"
         let constraints =
               Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
         txId <- submitTx constraints
-        tell $ show $ Tx.txId <$> txId
+        tell $ Last $ Just $ show $ Tx.txId <$> txId
         pure txId
 
   assertContractWithTxId contract initState $ \state outTxId ->
     (state ^. instanceUpdateHistory)
-      @?= [ NewObservableState "Init contract"
-          , NewObservableState $ toJSON $ "Right " <> outTxId
+      @?= [ NewObservableState $ toJSON @(Last String) $ Last $ Just "Init contract"
+          , NewObservableState $ toJSON @(Last String) $ Last $ Just $ "Right " <> outTxId
           ]
 
 assertFiles :: MockContractState -> [Text] -> Assertion
