@@ -159,9 +159,7 @@ balanceTx contractEnv unbalancedTx = do
       (Ledger.pubKeyHash contractEnv.ceOwnPubKey)
       unbalancedTx
 
-  case eitherPreBalancedTx of
-    Left err -> pure $ BalanceTxFailed (InsufficientFunds err)
-    Right tx -> pure $ BalanceTxSuccess $ Right tx
+  pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -209,6 +207,4 @@ writeBalancedTx contractEnv (Right tx) = do
           then pure Nothing
           else CardanoCLI.submitTx contractEnv.cePABConfig tx
 
-      case result of
-        Just err -> pure $ WriteBalancedTxFailed $ OtherError err
-        Nothing -> pure $ WriteBalancedTxSuccess $ Right tx
+      pure $ maybe (WriteBalancedTxSuccess (Right tx)) (WriteBalancedTxFailed . OtherError) result
