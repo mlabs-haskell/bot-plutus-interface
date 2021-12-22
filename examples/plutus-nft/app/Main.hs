@@ -49,10 +49,10 @@ main = do
   let pabConf =
         PABConfig
           { pcCliLocation = Local
-          , pcNetwork = Testnet (NetworkMagic 42)
+          , pcNetwork = Testnet (NetworkMagic 1097911063)
           , pcProtocolParams = protocolParams
           , pcScriptFileDir = "./scripts"
-          , pcSigningKeyFileDir = "./keys"
+          , pcSigningKeyFileDir = "./signing-keys"
           , pcTxFileDir = "./txs"
           , pcDryRun = True
           , pcLogLevel = Debug
