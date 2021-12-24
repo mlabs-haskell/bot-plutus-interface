@@ -5,6 +5,7 @@ module MLabsPAB.ChainIndex (handleChainIndexReq) where
 import Data.Kind (Type)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types (Status (statusCode))
+import Plutus.ChainIndex.Api (UtxoAtAddressRequest (UtxoAtAddressRequest), UtxoWithCurrencyRequest (UtxoWithCurrencyRequest))
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Servant.Client (
@@ -40,8 +41,14 @@ handleChainIndexReq = \case
     TxIdResponse <$> chainIndexQueryOne (ChainIndexClient.getTx txId)
   UtxoSetMembership txOutRef ->
     UtxoSetMembershipResponse <$> chainIndexQueryMany (ChainIndexClient.getIsUtxo txOutRef)
-  UtxoSetAtAddress credential -> do
-    UtxoSetAtResponse <$> chainIndexQueryMany (ChainIndexClient.getUtxoAtAddress credential)
+  UtxoSetAtAddress page credential ->
+    UtxoSetAtResponse
+      <$> chainIndexQueryMany
+        (ChainIndexClient.getUtxoSetAtAddress (UtxoAtAddressRequest (Just page) credential))
+  UtxoSetWithCurrency page assetClass ->
+    UtxoSetAtResponse
+      <$> chainIndexQueryMany
+        (ChainIndexClient.getUtxoSetWithCurrency (UtxoWithCurrencyRequest (Just page) assetClass))
   GetTip ->
     GetTipResponse <$> chainIndexQueryMany ChainIndexClient.getTip
 

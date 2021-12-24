@@ -18,7 +18,7 @@ import Ledger.Ada qualified as Ada
 import Ledger.Address qualified as Address
 import Ledger.Constraints qualified as Constraints
 import Ledger.Scripts qualified as Scripts
-import Ledger.Tx (Tx, TxOut (TxOut), TxOutRef (TxOutRef))
+import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
@@ -68,7 +68,7 @@ sendAda = do
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text Tx
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
@@ -147,7 +147,7 @@ multisigSupport = do
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract Text (Endpoint "SendAda" ()) Text Tx
+      contract :: Contract Text (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
@@ -206,7 +206,7 @@ sendTokens = do
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text Tx
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
@@ -243,7 +243,7 @@ sendTokensWithoutName = do
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text Tx
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
@@ -291,7 +291,7 @@ mintTokens = do
         let (Scripts.RedeemerHash rh) = Ledger.redeemerHash Ledger.unitRedeemer
          in encodeByteString $ fromBuiltin rh
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text Tx
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let lookups =
               Constraints.mintingPolicy mintingPolicy
@@ -386,7 +386,7 @@ redeemFromValidator = do
         let (Scripts.RedeemerHash rh) = Ledger.redeemerHash Ledger.unitRedeemer
          in encodeByteString $ fromBuiltin rh
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text Tx
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         utxos' <- utxosAt valAddr
         let lookups =
@@ -449,7 +449,7 @@ multiTx = do
       txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text [Tx]
+      contract :: Contract () (Endpoint "SendAda" ()) Text [CardanoTx]
       contract = do
         let constraints =
               Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
@@ -463,8 +463,8 @@ multiTx = do
   case result of
     Left errMsg -> assertFailure (show errMsg)
     Right [tx1, tx2] ->
-      let outTxId1 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txId tx1
-          outTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txId tx2
+      let outTxId1 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx1
+          outTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx2
        in assertFiles
             state
             [ [text|signing-keys/signing-key-${pkh1'}.skey|]
@@ -491,7 +491,7 @@ assertFiles state expectedFiles =
 assertContractWithTxId ::
   forall (w :: Type) (s :: Row Type).
   (Monoid w) =>
-  Contract w s Text Tx ->
+  Contract w s Text CardanoTx ->
   MockContractState ->
   (MockContractState -> Text -> Assertion) ->
   Assertion
@@ -501,7 +501,7 @@ assertContractWithTxId contract initState assertion = do
   case result of
     Left errMsg -> assertFailure (show errMsg)
     Right tx ->
-      let outTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txId tx
+      let outTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx
        in assertion state outTxId
 
 assertCommandHistory :: MockContractState -> [(Int, Text)] -> Assertion
