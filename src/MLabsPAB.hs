@@ -15,4 +15,4 @@ runPAB pabConf = do
   putStrLn "Starting MLabsPAB server"
   state <- Server.initState
 
-  run 9080 (Server.app @t pabConf state)
+  run pabConf.pcPort (Server.app @t pabConf state)
