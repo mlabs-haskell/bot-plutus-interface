@@ -6,10 +6,10 @@ module MLabsPAB.PreBalance (
 import Control.Monad (foldM, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List (partition)
+import Data.List (partition, (\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -67,10 +67,17 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
 
       loop utxoIndex privKeys requiredSigs [] tx
   where
+    loop ::
+      Map TxOutRef TxOut ->
+      Map PubKeyHash PrivateKey ->
+      [PubKeyHash] ->
+      [(TxOut, Integer)] ->
+      Tx ->
+      EitherT Text (Eff effs) Tx
     loop utxoIndex privKeys requiredSigs prevMinUtxos tx = do
       nextMinUtxos <-
         newEitherT $
-          calculateMinUtxos pabConf $ filter (`notElem` map fst prevMinUtxos) $ Tx.txOutputs tx
+          calculateMinUtxos pabConf $ Tx.txOutputs tx \\ map fst prevMinUtxos
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
@@ -97,7 +104,7 @@ calculateMinUtxos ::
   [TxOut] ->
   Eff effs (Either Text [(TxOut, Integer)])
 calculateMinUtxos pabConf txOuts =
-  zipWithM (\k -> fmap (k,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo pabConf) txOuts
+  zipWithM (fmap . (,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo pabConf) txOuts
 
 preBalanceTx ::
   [(TxOut, Integer)] ->
