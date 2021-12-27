@@ -29,6 +29,7 @@ import Ledger.Tx (
   TxOut (..),
   TxOutRef (..),
  )
+import Plutus.V1.Ledger.Ada (lovelaceValueOf)
 import Ledger.Tx qualified as Tx
 import Ledger.Value (Value (Value), getValue)
 import Ledger.Value qualified as Value
@@ -64,7 +65,9 @@ preBalanceTxIO pabConf ownPkh tx =
           tx' = unBalancedTxTx tx
           requiredSigs = Map.keys (unBalancedTxRequiredSignatories tx)
 
-      minUtxo <- newEitherT $ CardanoCLI.calculateMinUtxo pabConf tx
+      -- force set min required Ada to 2
+      -- minUtxo <- newEitherT $ CardanoCLI.calculateMinUtxo pabConf tx
+      let minUtxo = 2000000
 
       txWithoutFees <-
         hoistEither $ preBalanceTx minUtxo 0 utxoIndex ownPkh privKeys requiredSigs tx'
@@ -121,7 +124,9 @@ collectTxIns originalTxIns utxos value =
 
     isSufficient :: Set TxIn -> Bool
     isSufficient txIns' =
-      txInsValue txIns' `Value.geq` value
+      txInsValue txIns' `Value.geq` correctedValue
+
+    correctedValue = value <> lovelaceValueOf 5000000
 
     txInsValue :: Set TxIn -> Value
     txInsValue txIns' =
@@ -167,7 +172,10 @@ balanceTxIns utxos fees tx = do
 -}
 addTxCollaterals :: Map TxOutRef TxOut -> Tx -> Either Text Tx
 addTxCollaterals utxos tx = do
-  let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
+  let txIns = mapMaybe (rightToMaybe . txOutToTxIn)
+              . filter (isAdaOnly . txOutValue  . snd) 
+              . Map.toList 
+              $ utxos
   txIn <- findPubKeyTxIn txIns
   pure $ tx {txCollateral = Set.singleton txIn}
   where
@@ -238,3 +246,8 @@ unflattenValue (curSymbol, tokenName, amount) =
 isValueNat :: Value -> Bool
 isValueNat =
   all (\(_, _, a) -> a >= 0) . Value.flattenValue
+
+isAdaOnly :: Value -> Bool
+isAdaOnly v = case Value.flattenValue v of
+  [("", "", _)] -> True
+  _ -> False

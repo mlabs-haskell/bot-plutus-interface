@@ -147,5 +147,11 @@ handleContract pabConf wallet state contract = liftIO $ do
       result <- runContract contractEnv wallet (toContract contract)
       let maybeErrors = leftToMaybe $ fst result
       let updateMsg = ContractFinished (toJSON <$> maybeErrors)
+      liftIO . logErrors $ toJSON <$> maybeErrors
       broadcastContractResult state contractInstanceID updateMsg
   pure contractInstanceID
+  where
+    logErrors =   
+      maybe 
+        (putStrLn "Contract executed") 
+        (putStrLn . ("Execution ERROR: " <>) . show)

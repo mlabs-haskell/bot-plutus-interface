@@ -50,6 +50,8 @@ import Ledger.Tx (
   TxOut (..),
   TxOutRef (..),
  )
+
+ 
 import Ledger.TxId (TxId (..))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
@@ -77,6 +79,9 @@ import Plutus.V1.Ledger.Api (
 import Plutus.V1.Ledger.Api qualified as Plutus
 import PlutusTx.Builtins (fromBuiltin)
 import Prelude
+
+
+import Debug.Trace
 
 -- | Upload script files to remote server
 uploadFiles ::
@@ -122,17 +127,18 @@ calculateMinUtxo ::
   UnbalancedTx ->
   Eff effs (Either Text Integer)
 calculateMinUtxo pabConf UnbalancedTx {unBalancedTxTx} =
-  callCommand
-    ShellArgs
-      { cmdName = "cardano-cli"
-      , cmdArgs =
-          mconcat
-            [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
-            , txOutOpts pabConf (txOutputs unBalancedTxTx)
-            , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            ]
-      , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
-      }
+  error "Min UTXO hardcoded to 2 Ada"
+  -- callCommand
+  --   ShellArgs
+  --     { cmdName = "cardano-cli"
+  --     , cmdArgs =
+  --         mconcat
+  --           [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
+  --           , txOutOpts pabConf (txOutputs unBalancedTxTx)
+  --           , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+  --           ]
+  --     , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
+  --     }
 
 -- | Calculating fee for an unbalanced transaction
 calculateMinFee ::
@@ -332,16 +338,19 @@ mintOpts pabConf buildMode mintingPolicies redeemers mintValue =
 
 txOutOpts :: PABConfig -> [TxOut] -> [Text]
 txOutOpts pabConf =
-  concatMap
-    ( \TxOut {txOutAddress, txOutValue} ->
+  concatMap mkOpt
+  where
+    mkOpt TxOut {txOutAddress, txOutValue, txOutDatumHash} =
         [ "--tx-out"
-        , Text.intercalate
+          , Text.intercalate
             "+"
             [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
             , valueToCliArg txOutValue
             ]
-        ]
-    )
+        ] ++ embedDatumOrEmpty txOutDatumHash
+    embedDatumOrEmpty = \case
+      Nothing -> []
+      Just dh -> ["--tx-out-datum-embed-file", datumJsonFilePath pabConf dh]
 
 networkOpt :: PABConfig -> [Text]
 networkOpt pabConf = case pabConf.pcNetwork of
@@ -360,7 +369,7 @@ flatValueToCliArg (curSymbol, name, amount)
   where
     amountStr = showText amount
     curSymbolStr = encodeByteString $ fromBuiltin $ unCurrencySymbol curSymbol
-    tokenNameStr = decodeUtf8 $ fromBuiltin $ unTokenName name
+    tokenNameStr = decodeUtf8 $ fromBuiltin $ unTokenName $ (trace $ "TN: " ++ show name)  $ name
 
 valueToCliArg :: Value -> Text
 valueToCliArg val =
