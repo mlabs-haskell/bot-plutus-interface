@@ -173,8 +173,8 @@ balanceTxIns utxos fees tx = do
 addTxCollaterals :: Map TxOutRef TxOut -> Tx -> Either Text Tx
 addTxCollaterals utxos tx = do
   let txIns = mapMaybe (rightToMaybe . txOutToTxIn)
-              . filter (isAdaOnly . txOutValue  . snd) 
               . Map.toList 
+              . Map.filter (isAdaOnly . txOutValue) 
               $ utxos
   txIn <- findPubKeyTxIn txIns
   pure $ tx {txCollateral = Set.singleton txIn}
