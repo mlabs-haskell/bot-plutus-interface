@@ -13,6 +13,7 @@ import Cardano.Api.Shelley (ProtocolParameters)
 import Data.Default (Default (def))
 import Data.Text (Text)
 import Ledger (PubKey)
+import Network.Wai.Handler.Warp (Port)
 import Plutus.PAB.Effects.Contract.Builtin (
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
@@ -38,6 +39,7 @@ data PABConfig = PABConfig
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
+  , pcPort :: !Port
   }
   deriving stock (Show, Eq)
 
@@ -62,10 +64,11 @@ instance Default PABConfig where
       { pcCliLocation = Local
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = Nothing
-      , pcScriptFileDir = "result-scripts"
-      , pcSigningKeyFileDir = "signing-keys"
-      , pcTxFileDir = "txs"
+      , pcScriptFileDir = "./result-scripts"
+      , pcSigningKeyFileDir = "./signing-keys"
+      , pcTxFileDir = "./txs"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
+      , pcPort = 9080
       }
