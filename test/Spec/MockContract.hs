@@ -146,7 +146,7 @@ instance Default MockContractState where
       { _files =
           Map.fromList $
             map
-              (toSigningKeyFile "signing-keys")
+              (toSigningKeyFile "./signing-keys")
               [signingKey1, signingKey2, signingKey3]
       , _commandHistory = mempty
       , _contractEnv = def

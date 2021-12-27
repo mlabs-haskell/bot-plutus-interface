@@ -13,11 +13,13 @@ import Cardano.Api.Shelley (ProtocolParameters)
 import Data.Default (Default (def))
 import Data.Text (Text)
 import Ledger (PubKeyHash)
+import Network.Wai.Handler.Warp (Port)
 import Plutus.PAB.Effects.Contract.Builtin (
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
+import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Emulator (Wallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -25,6 +27,7 @@ import Prelude
 data PABConfig = PABConfig
   { -- | Calling the cli through ssh when set to Remote
     pcCliLocation :: !CLILocation
+  , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !(Maybe ProtocolParameters)
   , -- | Directory name of the script and data files
@@ -39,6 +42,7 @@ data PABConfig = PABConfig
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
   , pcOwnPubKeyHash :: PubKeyHash
+  , pcPort :: !Port
   }
   deriving stock (Show, Eq)
 
@@ -59,13 +63,15 @@ instance Default PABConfig where
   def =
     PABConfig
       { pcCliLocation = Local
+      , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = Nothing
-      , pcScriptFileDir = "result-scripts"
-      , pcSigningKeyFileDir = "signing-keys"
-      , pcTxFileDir = "txs"
+      , pcScriptFileDir = "./result-scripts"
+      , pcSigningKeyFileDir = "./signing-keys"
+      , pcTxFileDir = "./txs"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
       , pcOwnPubKeyHash = ""
+      , pcPort = 9080
       }

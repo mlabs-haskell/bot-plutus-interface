@@ -92,7 +92,7 @@ handlePABEffect pabConf =
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
-          handleChainIndexReq query
+          handleChainIndexReq pabConf query
     )
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
