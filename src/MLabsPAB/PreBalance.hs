@@ -125,9 +125,12 @@ collectTxIns originalTxIns utxos value =
     isSufficient :: Set TxIn -> Bool
     isSufficient txIns' =
       txInsValue txIns' `Value.geq` correctedValue
-
-    correctedValue = value <> lovelaceValueOf 5000000
-
+    
+    -- to (hopefully) fix situation when there is not enough Ada for change out
+    -- and it leads to transaction failure coz of "not enough Ada" in change out
+    tweakValue = lovelaceValueOf 5000000
+    correctedValue = value <> tweakValue
+    
     txInsValue :: Set TxIn -> Value
     txInsValue txIns' =
       mconcat $ map Tx.txOutValue $ mapMaybe ((`Map.lookup` utxos) . Tx.txInRef) $ Set.toList txIns'
