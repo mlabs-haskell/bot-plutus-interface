@@ -12,7 +12,7 @@ import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.Api.Shelley (ProtocolParameters)
 import Data.Default (Default (def))
 import Data.Text (Text)
-import Ledger (PubKey)
+import Ledger (PubKeyHash)
 import Network.Wai.Handler.Warp (Port)
 import Plutus.PAB.Effects.Contract.Builtin (
   HasDefinitions (..),
@@ -41,6 +41,7 @@ data PABConfig = PABConfig
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
+  , pcOwnPubKeyHash :: PubKeyHash
   , pcPort :: !Port
   }
   deriving stock (Show, Eq)
@@ -49,8 +50,6 @@ data ContractEnvironment = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceWallet :: Wallet
-  , -- | TODO: We should get this from the wallet, once the integration works
-    ceOwnPubKey :: PubKey
   }
   deriving stock (Show, Eq)
 
@@ -73,5 +72,6 @@ instance Default PABConfig where
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
+      , pcOwnPubKeyHash = ""
       , pcPort = 9080
       }
