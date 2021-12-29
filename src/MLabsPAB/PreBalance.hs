@@ -165,7 +165,7 @@ balanceTxIns utxos fees tx = do
 -}
 addTxCollaterals :: Map TxOutRef TxOut -> Tx -> Either Text Tx
 addTxCollaterals utxos tx = do
-  let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
+  let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
   txIn <- findPubKeyTxIn txIns
   pure $ tx {txCollateral = Set.singleton txIn}
   where
@@ -174,6 +174,7 @@ addTxCollaterals utxos tx = do
       x@(TxIn _ Nothing) : _ -> Right x
       _ : xs -> findPubKeyTxIn xs
       _ -> Left "There are no utxos to be used as collateral"
+    filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
 
 -- | We need to balance non ada values, as the cardano-cli is unable to balance them (as of 2021/09/24)
 balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
@@ -236,3 +237,9 @@ unflattenValue (curSymbol, tokenName, amount) =
 isValueNat :: Value -> Bool
 isValueNat =
   all (\(_, _, a) -> a >= 0) . Value.flattenValue
+
+isAdaOnly :: Value -> Bool
+isAdaOnly v =
+  case Value.flattenValue v of
+    [("", "", _)] -> True
+    _ -> False
