@@ -21,13 +21,15 @@ import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
-import Ledger (PubKey)
+import Ledger (PubKeyHash)
+import Network.Wai.Handler.Warp (Port)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import Plutus.PAB.Effects.Contract.Builtin (
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
+import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Emulator (Wallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -35,6 +37,7 @@ import Prelude
 data PABConfig = PABConfig
   { -- | Calling the cli through ssh when set to Remote
     pcCliLocation :: !CLILocation
+  , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !(Maybe ProtocolParameters)
   , -- | Directory name of the script and data files
@@ -48,6 +51,8 @@ data PABConfig = PABConfig
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
+  , pcOwnPubKeyHash :: PubKeyHash
+  , pcPort :: !Port
   }
   deriving stock (Show, Eq)
 
@@ -56,8 +61,6 @@ data ContractEnvironment w = ContractEnvironment
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
   , ceWallet :: Wallet
-  , -- | TODO: We should get this from the wallet, once the integration works
-    ceOwnPubKey :: PubKey
   }
   deriving stock (Show)
 
@@ -88,12 +91,15 @@ instance Default PABConfig where
   def =
     PABConfig
       { pcCliLocation = Local
+      , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = Nothing
-      , pcScriptFileDir = "result-scripts"
-      , pcSigningKeyFileDir = "signing-keys"
-      , pcTxFileDir = "txs"
+      , pcScriptFileDir = "./result-scripts"
+      , pcSigningKeyFileDir = "./signing-keys"
+      , pcTxFileDir = "./txs"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
+      , pcOwnPubKeyHash = ""
+      , pcPort = 9080
       }

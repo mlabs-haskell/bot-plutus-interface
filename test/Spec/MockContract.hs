@@ -162,7 +162,7 @@ instance Monoid w => Default (MockContractState w) where
       { _files =
           Map.fromList $
             map
-              (toSigningKeyFile "signing-keys")
+              (toSigningKeyFile "./signing-keys")
               [signingKey1, signingKey2, signingKey3]
       , _commandHistory = mempty
       , _instanceUpdateHistory = mempty
@@ -176,11 +176,10 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet}
+      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceWallet = knownWallet 1
-      , ceOwnPubKey = pubKey1
       }
 
 instance Monoid w => Default (ContractState w) where

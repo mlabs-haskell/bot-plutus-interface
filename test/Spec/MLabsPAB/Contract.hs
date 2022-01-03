@@ -104,16 +104,16 @@ sendAda = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
-          --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ,
         ( 3
         , [text|
           cardano-cli transaction calculate-min-fee
-          --tx-body-file txs/tx-${outTxId}.raw
+          --tx-body-file ./txs/tx-${outTxId}.raw
           --tx-in-count 1
           --tx-out-count 1
           --witness-count 1
@@ -128,18 +128,18 @@ sendAda = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
         |]
         )
       ,
         ( 5
         , [text|
           cardano-cli transaction sign
-          --tx-body-file txs/tx-${outTxId}.raw
-          --signing-key-file signing-keys/signing-key-${pkh1'}.skey
-          --out-file txs/tx-${outTxId}.signed
+          --tx-body-file ./txs/tx-${outTxId}.raw
+          --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
+          --out-file ./txs/tx-${outTxId}.signed
         |]
         )
       ]
@@ -166,7 +166,7 @@ multisigSupport = do
         ( 3
         , [text|
           cardano-cli transaction calculate-min-fee
-          --tx-body-file txs/tx-${outTxId}.raw
+          --tx-body-file ./txs/tx-${outTxId}.raw
           --tx-in-count 1
           --tx-out-count 1
           --witness-count 2
@@ -181,20 +181,20 @@ multisigSupport = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
-          --required-signer signing-keys/signing-key-${pkh3'}.skey
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer ./signing-keys/signing-key-${pkh3'}.skey
           --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ,
         ( 5
         , [text| 
           cardano-cli transaction sign
-          --tx-body-file txs/tx-${outTxId}.raw
-          --signing-key-file signing-keys/signing-key-${pkh1'}.skey
-          --signing-key-file signing-keys/signing-key-${pkh3'}.skey
-          --out-file txs/tx-${outTxId}.signed
+          --tx-body-file ./txs/tx-${outTxId}.raw
+          --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
+          --signing-key-file ./signing-keys/signing-key-${pkh3'}.skey
+          --out-file ./txs/tx-${outTxId}.signed
           |]
         )
       ]
@@ -229,9 +229,9 @@ sendTokens = do
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+50 + 95 abcd1234.testToken
           --tx-out ${addr2}+1000 + 5 abcd1234.testToken
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
         |]
         )
       ]
@@ -266,9 +266,9 @@ sendTokensWithoutName = do
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+50 + 95 abcd1234
           --tx-out ${addr2}+1000 + 5 abcd1234
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]
@@ -316,13 +316,13 @@ mintTokens = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.testToken
-          --mint-script-file result-scripts/policy-${curSymbol'}.plutus
-          --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+          --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
+          --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --mint-execution-units (297830,1100)
           --mint 5 ${curSymbol'}.testToken
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
-          --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
       |]
         )
       ,
@@ -332,23 +332,23 @@ mintTokens = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.testToken
-          --mint-script-file result-scripts/policy-${curSymbol'}.plutus
-          --mint-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+          --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
+          --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --mint 5 ${curSymbol'}.testToken
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]
 
     assertFiles
       state
-      [ [text|result-scripts/policy-${curSymbol'}.plutus|]
-      , [text|result-scripts/redeemer-${redeemerHash}.json|]
-      , [text|signing-keys/signing-key-${pkh1'}.skey|]
-      , [text|txs/tx-${outTxId}.raw|]
-      , [text|txs/tx-${outTxId}.signed|]
+      [ [text|./result-scripts/policy-${curSymbol'}.plutus|]
+      , [text|./result-scripts/redeemer-${redeemerHash}.json|]
+      , [text|./signing-keys/signing-key-${pkh1'}.skey|]
+      , [text|./txs/tx-${outTxId}.raw|]
+      , [text|./txs/tx-${outTxId}.signed|]
       ]
 
 redeemFromValidator :: Assertion
@@ -410,14 +410,14 @@ redeemFromValidator = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#1
-          --tx-in-script-file result-scripts/validator-${valHash'}.plutus
-          --tx-in-datum-file result-scripts/datum-${datumHash'}.json
-          --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+          --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
+          --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
+          --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --tx-in-execution-units (387149,1400)
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+500
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
-          --fee 0 --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --fee 0 --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
       |]
         )
       ,
@@ -425,26 +425,26 @@ redeemFromValidator = do
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#1
-          --tx-in-script-file result-scripts/validator-${valHash'}.plutus
-          --tx-in-datum-file result-scripts/datum-${datumHash'}.json
-          --tx-in-redeemer-file result-scripts/redeemer-${redeemerHash}.json
+          --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
+          --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
+          --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+500
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]
 
     assertFiles
       state
-      [ [text|result-scripts/datum-${datumHash'}.json|]
-      , [text|result-scripts/redeemer-${redeemerHash}.json|]
-      , [text|result-scripts/validator-${valHash'}.plutus|]
-      , [text|signing-keys/signing-key-${pkh1'}.skey|]
-      , [text|txs/tx-${outTxId}.raw|]
-      , [text|txs/tx-${outTxId}.signed|]
+      [ [text|./result-scripts/datum-${datumHash'}.json|]
+      , [text|./result-scripts/redeemer-${redeemerHash}.json|]
+      , [text|./result-scripts/validator-${valHash'}.plutus|]
+      , [text|./signing-keys/signing-key-${pkh1'}.skey|]
+      , [text|./txs/tx-${outTxId}.raw|]
+      , [text|./txs/tx-${outTxId}.signed|]
       ]
 
 multiTx :: Assertion
@@ -471,11 +471,11 @@ multiTx = do
           outTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx2
        in assertFiles
             state
-            [ [text|signing-keys/signing-key-${pkh1'}.skey|]
-            , [text|txs/tx-${outTxId1}.raw|]
-            , [text|txs/tx-${outTxId2}.raw|]
-            , [text|txs/tx-${outTxId1}.signed|]
-            , [text|txs/tx-${outTxId2}.signed|]
+            [ [text|./signing-keys/signing-key-${pkh1'}.skey|]
+            , [text|./txs/tx-${outTxId1}.raw|]
+            , [text|./txs/tx-${outTxId2}.raw|]
+            , [text|./txs/tx-${outTxId1}.signed|]
+            , [text|./txs/tx-${outTxId2}.signed|]
             ]
     Right _ -> assertFailure "Wrong number of txs"
 

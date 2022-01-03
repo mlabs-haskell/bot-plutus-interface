@@ -112,7 +112,7 @@ handlePABEffect contractEnv =
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
-          handleChainIndexReq query
+          handleChainIndexReq contractEnv.cePABConfig query
     )
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()

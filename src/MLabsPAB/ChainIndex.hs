@@ -3,67 +3,68 @@
 module MLabsPAB.ChainIndex (handleChainIndexReq) where
 
 import Data.Kind (Type)
+import MLabsPAB.Types (PABConfig)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Api (UtxoAtAddressRequest (UtxoAtAddressRequest), UtxoWithCurrencyRequest (UtxoWithCurrencyRequest))
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Servant.Client (
-  BaseUrl (..),
   ClientError (FailureResponse),
   ClientM,
   ResponseF (Response, responseStatusCode),
-  Scheme (Http),
   mkClientEnv,
   runClientM,
  )
 import Prelude
 
-handleChainIndexReq :: ChainIndexQuery -> IO ChainIndexResponse
-handleChainIndexReq = \case
+handleChainIndexReq :: PABConfig -> ChainIndexQuery -> IO ChainIndexResponse
+handleChainIndexReq pabConf = \case
   DatumFromHash datumHash ->
-    DatumHashResponse <$> chainIndexQueryOne (ChainIndexClient.getDatum datumHash)
+    DatumHashResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getDatum datumHash)
   ValidatorFromHash validatorHash ->
-    ValidatorHashResponse <$> chainIndexQueryOne (ChainIndexClient.getValidator validatorHash)
+    ValidatorHashResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getValidator validatorHash)
   MintingPolicyFromHash mintingPolicyHash ->
     MintingPolicyHashResponse
-      <$> chainIndexQueryOne (ChainIndexClient.getMintingPolicy mintingPolicyHash)
+      <$> chainIndexQueryOne pabConf (ChainIndexClient.getMintingPolicy mintingPolicyHash)
   StakeValidatorFromHash stakeValidatorHash ->
     StakeValidatorHashResponse
-      <$> chainIndexQueryOne (ChainIndexClient.getStakeValidator stakeValidatorHash)
+      <$> chainIndexQueryOne pabConf (ChainIndexClient.getStakeValidator stakeValidatorHash)
   RedeemerFromHash _ ->
     pure $ RedeemerHashResponse Nothing
   -- RedeemerFromHash redeemerHash ->
   --   pure $ RedeemerHashResponse (Maybe Redeemer)
   TxOutFromRef txOutRef ->
-    TxOutRefResponse <$> chainIndexQueryOne (ChainIndexClient.getTxOut txOutRef)
+    TxOutRefResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTxOut txOutRef)
   TxFromTxId txId ->
-    TxIdResponse <$> chainIndexQueryOne (ChainIndexClient.getTx txId)
+    TxIdResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTx txId)
   UtxoSetMembership txOutRef ->
-    UtxoSetMembershipResponse <$> chainIndexQueryMany (ChainIndexClient.getIsUtxo txOutRef)
+    UtxoSetMembershipResponse <$> chainIndexQueryMany pabConf (ChainIndexClient.getIsUtxo txOutRef)
   UtxoSetAtAddress page credential ->
     UtxoSetAtResponse
       <$> chainIndexQueryMany
+        pabConf
         (ChainIndexClient.getUtxoSetAtAddress (UtxoAtAddressRequest (Just page) credential))
   UtxoSetWithCurrency page assetClass ->
     UtxoSetAtResponse
       <$> chainIndexQueryMany
+        pabConf
         (ChainIndexClient.getUtxoSetWithCurrency (UtxoWithCurrencyRequest (Just page) assetClass))
   GetTip ->
-    GetTipResponse <$> chainIndexQueryMany ChainIndexClient.getTip
+    GetTipResponse <$> chainIndexQueryMany pabConf ChainIndexClient.getTip
 
-chainIndexQuery' :: forall (a :: Type). ClientM a -> IO (Either ClientError a)
-chainIndexQuery' endpoint = do
+chainIndexQuery' :: forall (a :: Type). PABConfig -> ClientM a -> IO (Either ClientError a)
+chainIndexQuery' pabConf endpoint = do
   manager' <- newManager defaultManagerSettings
-  runClientM endpoint $ mkClientEnv manager' $ BaseUrl Http "localhost" 9083 ""
+  runClientM endpoint $ mkClientEnv manager' pabConf.pcChainIndexUrl
 
-chainIndexQueryMany :: forall (a :: Type). ClientM a -> IO a
-chainIndexQueryMany endpoint =
-  either (error . show) id <$> chainIndexQuery' endpoint
+chainIndexQueryMany :: forall (a :: Type). PABConfig -> ClientM a -> IO a
+chainIndexQueryMany pabConf endpoint =
+  either (error . show) id <$> chainIndexQuery' pabConf endpoint
 
-chainIndexQueryOne :: forall (a :: Type). ClientM a -> IO (Maybe a)
-chainIndexQueryOne endpoint = do
-  res <- chainIndexQuery' endpoint
+chainIndexQueryOne :: forall (a :: Type). PABConfig -> ClientM a -> IO (Maybe a)
+chainIndexQueryOne pabConf endpoint = do
+  res <- chainIndexQuery' pabConf endpoint
   case res of
     Right result -> pure $ Just result
     Left failureResp@(FailureResponse _ Response {responseStatusCode})
