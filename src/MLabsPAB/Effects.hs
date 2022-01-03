@@ -1,8 +1,11 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module MLabsPAB.Effects (
+  PABEffect (..),
+  ShellArgs (..),
+  handlePABEffect,
   createDirectoryIfMissing,
   queryChainIndex,
   listDirectory,
@@ -10,9 +13,7 @@ module MLabsPAB.Effects (
   uploadDir,
   updateInstanceState,
   printLog,
-  PABEffect (..),
-  ShellArgs (..),
-  handlePABEffect,
+  logToContract,
   readFileTextEnvelope,
   writeFileJSON,
   writeFileTextEnvelope,
@@ -24,11 +25,10 @@ import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM (atomically, modifyTVar)
 import Control.Monad (void, when)
-import Control.Monad.Freer (Eff, LastMember, interpretM, type (~>))
-import Control.Monad.Freer.TH (makeEffect)
+import Control.Monad.Freer (Eff, LastMember, Member, interpretM, send, type (~>))
+import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Kind (Type)
-import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import MLabsPAB.ChainIndex (handleChainIndexReq)
@@ -39,7 +39,7 @@ import MLabsPAB.Types (
   LogLevel (..),
  )
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
-import Plutus.PAB.Webserver.Types (InstanceStatusToClient)
+import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import System.Directory qualified as Directory
 import System.Process (readProcess)
 import Prelude hiding (readFile)
@@ -53,33 +53,35 @@ data ShellArgs a = ShellArgs
 instance Show (ShellArgs a) where
   show ShellArgs {cmdName, cmdArgs} = Text.unpack $ cmdName <> mconcat cmdArgs
 
-data PABEffect r where
-  CallCommand :: ShellArgs a -> PABEffect a
-  CreateDirectoryIfMissing :: Bool -> FilePath -> PABEffect ()
-  PrintLog :: LogLevel -> String -> PABEffect ()
-  UpdateInstanceState :: InstanceStatusToClient -> PABEffect ()
-  ThreadDelay :: Int -> PABEffect ()
+data PABEffect (w :: Type) (r :: Type) where
+  CallCommand :: ShellArgs a -> PABEffect w a
+  CreateDirectoryIfMissing :: Bool -> FilePath -> PABEffect w ()
+  PrintLog :: LogLevel -> String -> PABEffect w ()
+  UpdateInstanceState :: Activity -> PABEffect w ()
+  LogToContract :: (ToJSON w, Monoid w) => w -> PABEffect w ()
+  ThreadDelay :: Int -> PABEffect w ()
   ReadFileTextEnvelope ::
     HasTextEnvelope a =>
     AsType a ->
     FilePath ->
-    PABEffect (Either (FileError TextEnvelopeError) a)
-  WriteFileJSON :: FilePath -> JSON.Value -> PABEffect (Either (FileError ()) ())
+    PABEffect w (Either (FileError TextEnvelopeError) a)
+  WriteFileJSON :: FilePath -> JSON.Value -> PABEffect w (Either (FileError ()) ())
   WriteFileTextEnvelope ::
     HasTextEnvelope a =>
     FilePath ->
     Maybe TextEnvelopeDescr ->
     a ->
-    PABEffect (Either (FileError ()) ())
-  ListDirectory :: FilePath -> PABEffect [FilePath]
-  UploadDir :: Text -> PABEffect ()
-  QueryChainIndex :: ChainIndexQuery -> PABEffect ChainIndexResponse
+    PABEffect w (Either (FileError ()) ())
+  ListDirectory :: FilePath -> PABEffect w [FilePath]
+  UploadDir :: Text -> PABEffect w ()
+  QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
 
 handlePABEffect ::
-  forall (effs :: [Type -> Type]).
-  (LastMember IO effs) =>
-  ContractEnvironment ->
-  Eff (PABEffect ': effs) ~> Eff effs
+  forall (w :: Type) (effs :: [Type -> Type]).
+  LastMember IO effs =>
+  (Monoid w) =>
+  ContractEnvironment w ->
+  Eff (PABEffect w ': effs) ~> Eff effs
 handlePABEffect contractEnv =
   interpretM
     ( \case
@@ -90,11 +92,14 @@ handlePABEffect contractEnv =
         CreateDirectoryIfMissing createParents filePath ->
           Directory.createDirectoryIfMissing createParents filePath
         PrintLog logLevel txt -> printLog' contractEnv.cePABConfig.pcLogLevel logLevel txt
-        UpdateInstanceState stateChange ->
-          let ContractState st = contractEnv.ceContractState
-           in atomically $
-                modifyTVar st $
-                  Map.insert contractEnv.ceContractInstanceId stateChange
+        UpdateInstanceState s -> do
+          atomically $
+            modifyTVar contractEnv.ceContractState $
+              \(ContractState _ w) -> ContractState s w
+        LogToContract w -> do
+          atomically $
+            modifyTVar contractEnv.ceContractState $
+              \(ContractState s w') -> ContractState s (w' <> w)
         ThreadDelay microSeconds -> Concurrent.threadDelay microSeconds
         ReadFileTextEnvelope asType filepath -> Cardano.Api.readFileTextEnvelope asType filepath
         WriteFileJSON filepath value -> Cardano.Api.writeFileJSON filepath value
@@ -128,4 +133,87 @@ callRemoteCommand ipAddr ShellArgs {cmdName, cmdArgs, cmdOutParser} =
 quotes :: Text -> Text
 quotes str = "\"" <> str <> "\""
 
-makeEffect ''PABEffect
+-- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
+-- For some reason, we need to manually propagate the @w@ type variable to @send@
+
+callCommand ::
+  forall (w :: Type) (a :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ShellArgs a ->
+  Eff effs a
+callCommand = send @(PABEffect w) . CallCommand
+
+createDirectoryIfMissing ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Bool ->
+  FilePath ->
+  Eff effs ()
+createDirectoryIfMissing createParents path = send @(PABEffect w) $ CreateDirectoryIfMissing createParents path
+
+printLog ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  LogLevel ->
+  String ->
+  Eff effs ()
+printLog logLevel msg = send @(PABEffect w) $ PrintLog logLevel msg
+
+updateInstanceState ::
+  forall (w :: Type) (effs :: [Type -> Type]). Member (PABEffect w) effs => Activity -> Eff effs ()
+updateInstanceState = send @(PABEffect w) . UpdateInstanceState
+
+logToContract ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  (Member (PABEffect w) effs, ToJSON w, Monoid w) =>
+  w ->
+  Eff effs ()
+logToContract = send @(PABEffect w) . LogToContract
+
+threadDelay ::
+  forall (w :: Type) (effs :: [Type -> Type]). Member (PABEffect w) effs => Int -> Eff effs ()
+threadDelay = send @(PABEffect w) . ThreadDelay
+
+readFileTextEnvelope ::
+  forall (w :: Type) (a :: Type) (effs :: [Type -> Type]).
+  (Member (PABEffect w) effs, HasTextEnvelope a) =>
+  AsType a ->
+  FilePath ->
+  Eff effs (Either (FileError TextEnvelopeError) a)
+readFileTextEnvelope teType path = send @(PABEffect w) $ ReadFileTextEnvelope teType path
+
+writeFileJSON ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  FilePath ->
+  JSON.Value ->
+  Eff effs (Either (FileError ()) ())
+writeFileJSON path val = send @(PABEffect w) $ WriteFileJSON path val
+
+writeFileTextEnvelope ::
+  forall (w :: Type) (a :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  HasTextEnvelope a =>
+  FilePath ->
+  Maybe TextEnvelopeDescr ->
+  a ->
+  Eff effs (Either (FileError ()) ())
+writeFileTextEnvelope path teDesc content = send @(PABEffect w) $ WriteFileTextEnvelope path teDesc content
+
+listDirectory ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  FilePath ->
+  Eff effs [FilePath]
+listDirectory = send @(PABEffect w) . ListDirectory
+
+uploadDir ::
+  forall (w :: Type) (effs :: [Type -> Type]). Member (PABEffect w) effs => Text -> Eff effs ()
+uploadDir = send @(PABEffect w) . UploadDir
+
+queryChainIndex ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ChainIndexQuery ->
+  Eff effs ChainIndexResponse
+queryChainIndex = send @(PABEffect w) . QueryChainIndex

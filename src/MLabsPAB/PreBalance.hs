@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module MLabsPAB.PreBalance (
   preBalanceTx,
   preBalanceTxIO,
@@ -48,8 +50,8 @@ import Prelude
  assets
 -}
 preBalanceTxIO ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
@@ -57,21 +59,21 @@ preBalanceTxIO ::
 preBalanceTxIO pabConf ownPkh tx =
   runEitherT $
     do
-      utxos <- lift $ CardanoCLI.utxosAt pabConf $ Ledger.pubKeyHashAddress ownPkh
-      privKeys <- newEitherT $ Files.readPrivateKeys pabConf
+      utxos <- lift $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress ownPkh
+      privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex tx
           tx' = unBalancedTxTx tx
           requiredSigs = Map.keys (unBalancedTxRequiredSignatories tx)
 
-      minUtxo <- newEitherT $ CardanoCLI.calculateMinUtxo pabConf tx
+      minUtxo <- newEitherT $ CardanoCLI.calculateMinUtxo @w pabConf tx
 
       txWithoutFees <-
         hoistEither $ preBalanceTx minUtxo 0 utxoIndex ownPkh privKeys requiredSigs tx'
 
-      lift $ CardanoCLI.buildTx pabConf ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
-      fees <- newEitherT $ CardanoCLI.calculateMinFee pabConf txWithoutFees
+      lift $ CardanoCLI.buildTx @w pabConf ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
+      fees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
-      lift $ printLog Debug $ show utxoIndex
+      lift $ printLog @w Debug $ show utxoIndex
 
       hoistEither $ preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx'
 

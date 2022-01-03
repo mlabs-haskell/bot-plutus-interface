@@ -1,9 +1,13 @@
+{-# LANGUAGE RankNTypes #-}
+
 module MLabsPAB.Types (
   PABConfig (..),
   CLILocation (..),
-  ContractState (ContractState),
+  AppState (AppState),
   LogLevel (..),
   ContractEnvironment (..),
+  ContractState (..),
+  SomeContractState (SomeContractState),
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
@@ -12,16 +16,18 @@ module MLabsPAB.Types (
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
+import Data.Aeson (ToJSON)
 import Data.Default (Default (def))
+import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
 import Ledger (PubKey)
+import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import Plutus.PAB.Effects.Contract.Builtin (
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
-import Plutus.PAB.Webserver.Types (InstanceStatusToClient)
 import Wallet.Emulator (Wallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -45,21 +51,32 @@ data PABConfig = PABConfig
   }
   deriving stock (Show, Eq)
 
-data ContractEnvironment = ContractEnvironment
+data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
-  , ceContractState :: ContractState
+  , ceContractState :: TVar (ContractState w)
   , ceWallet :: Wallet
   , -- | TODO: We should get this from the wallet, once the integration works
     ceOwnPubKey :: PubKey
   }
-  deriving stock (Show, Eq)
+  deriving stock (Show)
 
-newtype ContractState = ContractState (TVar (Map ContractInstanceId InstanceStatusToClient))
-  deriving stock (Eq)
-
-instance Show ContractState where
+instance Show (TVar (ContractState w)) where
   show _ = "<ContractState>"
+
+newtype AppState = AppState (TVar (Map ContractInstanceId SomeContractState))
+
+{- | This type is wrapping a ContractState in a TVar and existentially quantifying the @w@
+ type variable, so we can store different contracts in the AppState
+-}
+data SomeContractState
+  = forall (w :: Type). (ToJSON w) => SomeContractState (TVar (ContractState w))
+
+data ContractState w = ContractState
+  { cisActivity :: Activity
+  , cisObservableState :: w
+  }
+  deriving stock (Show, Eq)
 
 data CLILocation = Local | Remote Text
   deriving stock (Show, Eq)
