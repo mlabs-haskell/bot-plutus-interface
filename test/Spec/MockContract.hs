@@ -47,7 +47,6 @@ import Cardano.Api (
  )
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
-import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import Control.Concurrent.STM (newTVarIO)
 import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
@@ -96,6 +95,7 @@ import NeatInterpolation (text)
 import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
+import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import PlutusTx.Builtins (fromBuiltin)
 import System.IO.Unsafe (unsafePerformIO)
 import Wallet.Emulator (knownWallet)
@@ -183,7 +183,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       }
 
 instance Monoid w => Default (ContractState w) where
-  def = ContractState {cisActivity = Active, cisObservableState = mempty }
+  def = ContractState {cisActivity = Active, cisObservableState = mempty}
 
 type MockContract w a = Eff '[Error Text, State (MockContractState w)] a
 
