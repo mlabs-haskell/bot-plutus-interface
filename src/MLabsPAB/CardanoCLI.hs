@@ -37,7 +37,6 @@ import Data.Text.Encoding (decodeUtf8)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
-import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Crypto (PubKey, PubKeyHash)
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
@@ -120,16 +119,16 @@ calculateMinUtxo ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
-  UnbalancedTx ->
+  TxOut ->
   Eff effs (Either Text Integer)
-calculateMinUtxo pabConf UnbalancedTx {unBalancedTxTx} =
+calculateMinUtxo pabConf txOut =
   callCommand @w
     ShellArgs
       { cmdName = "cardano-cli"
       , cmdArgs =
           mconcat
             [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
-            , txOutOpts pabConf (txOutputs unBalancedTxTx)
+            , txOutOpts pabConf [txOut]
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             ]
       , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack

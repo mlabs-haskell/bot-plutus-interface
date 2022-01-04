@@ -122,7 +122,7 @@ sendAda = do
           |]
         )
       ,
-        ( 4
+        ( 6
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
@@ -134,7 +134,7 @@ sendAda = do
         |]
         )
       ,
-        ( 5
+        ( 7
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-${outTxId}.raw
@@ -175,7 +175,7 @@ multisigSupport = do
           |]
         )
       ,
-        ( 4
+        ( 6
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
@@ -188,7 +188,7 @@ multisigSupport = do
           |]
         )
       ,
-        ( 5
+        ( 7
         , [text| 
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-${outTxId}.raw
@@ -222,7 +222,7 @@ sendTokens = do
     assertCommandHistory
       state
       [
-        ( 4
+        ( 10
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
@@ -259,7 +259,7 @@ sendTokensWithoutName = do
     assertCommandHistory
       state
       [
-        ( 4
+        ( 10
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
@@ -326,7 +326,7 @@ mintTokens = do
       |]
         )
       ,
-        ( 4
+        ( 6
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
@@ -421,7 +421,7 @@ redeemFromValidator = do
       |]
         )
       ,
-        ( 4
+        ( 6
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#1
