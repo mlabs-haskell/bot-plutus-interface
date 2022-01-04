@@ -1,14 +1,15 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
 
 module MLabsPAB.Contract (runContract, handleContract) where
 
 import Control.Lens ((^.))
-import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, type (~>))
+import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
-import Control.Monad.Freer.Writer (runWriter)
-import Data.Aeson (Value)
+import Control.Monad.Freer.Writer (Writer (Tell))
+import Data.Aeson (ToJSON, Value)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
@@ -21,6 +22,7 @@ import MLabsPAB.Effects (
   PABEffect,
   createDirectoryIfMissing,
   handlePABEffect,
+  logToContract,
   printLog,
   queryChainIndex,
  )
@@ -43,36 +45,47 @@ import Prelude
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
-  (Monoid w) =>
-  ContractEnvironment ->
+  (ToJSON w, Monoid w) =>
+  ContractEnvironment w ->
   Wallet ->
   Contract w s e a ->
-  IO (Either e a, w)
+  IO (Either e a)
 runContract contractEnv _ (Contract effs) = do
-  runM $ handlePABEffect contractEnv.cePABConfig $ handleContract contractEnv effs
+  runM $ handlePABEffect @w contractEnv $ raiseEnd $ handleContract contractEnv effs
 
 handleContract ::
-  forall (w :: Type) (e :: Type) (a :: Type) (effs :: [Type -> Type]).
-  (Monoid w) =>
-  ContractEnvironment ->
+  forall (w :: Type) (e :: Type) (a :: Type).
+  (ToJSON w, Monoid w) =>
+  ContractEnvironment w ->
   Eff (ContractEffs w e) a ->
-  Eff (PABEffect ': effs) (Either e a, w)
+  Eff '[PABEffect w] (Either e a)
 handleContract contractEnv =
-  handleResumable contractEnv
+  subsume @(PABEffect w)
+    . handleResumable contractEnv
     . handleCheckpointIgnore
-    . runWriter
+    . handleWriter
     . handleLogIgnore @Value
     . runError
     . raiseEnd
 
+handleWriter ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  (ToJSON w, Monoid w) =>
+  (Member (PABEffect w) effs) =>
+  Eff (Writer w ': effs)
+    ~> Eff effs
+handleWriter =
+  interpret
+    (\case Tell msg -> logToContract msg)
+
 handleResumable ::
-  forall (effs :: [Type -> Type]).
-  ContractEnvironment ->
-  Eff (Resumable PABResp PABReq ': effs) ~> Eff (PABEffect ': effs)
+  forall (w :: Type) (effs :: [Type -> Type]).
+  ContractEnvironment w ->
+  Eff (Resumable PABResp PABReq ': effs) ~> Eff (PABEffect w ': effs)
 handleResumable contractEnv =
   reinterpret
     ( \case
-        RRequest o -> handlePABReq contractEnv o
+        RRequest o -> handlePABReq @w contractEnv o
         RSelect -> pure True
         RZero -> undefined
     )
@@ -93,13 +106,13 @@ handleCheckpointIgnore =
  type system happy
 -}
 handlePABReq ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
-  ContractEnvironment ->
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
   PABReq ->
   Eff effs PABResp
 handlePABReq contractEnv req = do
-  printLog Debug $ show req
+  printLog @w Debug $ show req
   resp <- case req of
     ----------------------
     -- Handled requests --
@@ -110,11 +123,11 @@ handlePABReq contractEnv req = do
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
-      ChainIndexQueryResp <$> queryChainIndex query
+      ChainIndexQueryResp <$> queryChainIndex @w query
     BalanceTxReq unbalancedTx ->
-      BalanceTxResp <$> balanceTx contractEnv unbalancedTx
+      BalanceTxResp <$> balanceTx @w contractEnv unbalancedTx
     WriteBalancedTxReq tx ->
-      WriteBalancedTxResp <$> writeBalancedTx contractEnv tx
+      WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -129,14 +142,14 @@ handlePABReq contractEnv req = do
     -- PosixTimeRangeToContainedSlotRangeReq POSIXTimeRange -> PosixTimeRangeToContainedSlotRangeResp (Either SlotConversionError SlotRange)
     _ -> pure $ OwnContractInstanceIdResp contractEnv.ceContractInstanceId
 
-  printLog Debug $ show resp
+  printLog @w Debug $ show resp
   pure resp
 
 -- | This is not identical to the real balancing, we only do a pre-balance at this stage
 balanceTx ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
-  ContractEnvironment ->
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
 balanceTx contractEnv unbalancedTx = do
@@ -151,7 +164,7 @@ balanceTx contractEnv unbalancedTx = do
   --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
 
   eitherPreBalancedTx <-
-    PreBalance.preBalanceTxIO
+    PreBalance.preBalanceTxIO @w
       contractEnv.cePABConfig
       (contractEnv.cePABConfig.pcOwnPubKeyHash)
       unbalancedTx
@@ -160,17 +173,17 @@ balanceTx contractEnv unbalancedTx = do
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
-  ContractEnvironment ->
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
   CardanoTx ->
   Eff effs WriteBalancedTxResponse
 writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
 writeBalancedTx contractEnv (Right tx) = do
-  createDirectoryIfMissing False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
+  createDirectoryIfMissing @w False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
 
   fileWriteRes <-
-    Files.writeAll contractEnv.cePABConfig tx
+    Files.writeAll @w contractEnv.cePABConfig tx
 
   case fileWriteRes of
     Left err ->
@@ -182,14 +195,14 @@ writeBalancedTx contractEnv (Right tx) = do
       let ownPkh = contractEnv.cePABConfig.pcOwnPubKeyHash
       let requiredSigners = Map.keys $ tx ^. Tx.signatures
 
-      CardanoCLI.uploadFiles contractEnv.cePABConfig
+      CardanoCLI.uploadFiles @w contractEnv.cePABConfig
 
-      CardanoCLI.buildTx contractEnv.cePABConfig ownPkh CardanoCLI.BuildAuto tx
-      CardanoCLI.signTx contractEnv.cePABConfig tx requiredSigners
+      CardanoCLI.buildTx @w contractEnv.cePABConfig ownPkh CardanoCLI.BuildAuto tx
+      CardanoCLI.signTx @w contractEnv.cePABConfig tx requiredSigners
 
       result <-
         if contractEnv.cePABConfig.pcDryRun
           then pure Nothing
-          else CardanoCLI.submitTx contractEnv.cePABConfig tx
+          else CardanoCLI.submitTx @w contractEnv.cePABConfig tx
 
       pure $ maybe (WriteBalancedTxSuccess (Right tx)) (WriteBalancedTxFailed . OtherError) result

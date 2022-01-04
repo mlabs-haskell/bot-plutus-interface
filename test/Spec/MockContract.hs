@@ -23,7 +23,10 @@ module Spec.MockContract (
   addr2,
   addr3,
   commandHistory,
+  instanceUpdateHistory,
+  logHistory,
   contractEnv,
+  observableState,
   files,
   tip,
   utxos,
@@ -44,13 +47,15 @@ import Cardano.Api (
  )
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
+import Control.Concurrent.STM (newTVarIO)
 import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
-import Control.Monad.Freer (Eff, reinterpret3, run)
+import Control.Monad (join)
+import Control.Monad.Freer (Eff, reinterpret2, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
-import Control.Monad.Freer.Writer (Writer, runWriter, tell)
+import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
@@ -65,6 +70,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
+import Data.Tuple.Extra (first)
 import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
 import Ledger qualified
@@ -79,12 +85,19 @@ import MLabsPAB.CardanoCLI (unsafeSerialiseAddress)
 import MLabsPAB.Contract (handleContract)
 import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
 import MLabsPAB.Files qualified as Files
-import MLabsPAB.Types (ContractEnvironment (..), LogLevel (..), PABConfig (..))
+import MLabsPAB.Types (
+  ContractEnvironment (..),
+  ContractState (ContractState, cisActivity, cisObservableState),
+  LogLevel (..),
+  PABConfig (..),
+ )
 import NeatInterpolation (text)
 import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
+import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import PlutusTx.Builtins (fromBuiltin)
+import System.IO.Unsafe (unsafePerformIO)
 import Wallet.Emulator (knownWallet)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
@@ -129,75 +142,95 @@ data MockFile
   | OtherFile Text
   deriving stock (Show, Eq)
 
-data MockContractState = MockContractState
+data MockContractState w = MockContractState
   { _files :: Map FilePath MockFile
   , _commandHistory :: [Text]
-  , _contractEnv :: ContractEnvironment
+  , _instanceUpdateHistory :: [Activity]
+  , _observableState :: w
+  , _logHistory :: [(LogLevel, String)]
+  , _contractEnv :: ContractEnvironment w
   , _utxos :: [(TxOutRef, TxOut)]
   , _tip :: Tip
   }
-  deriving stock (Show, Eq)
+  deriving stock (Show)
 
 makeLenses ''MockContractState
 
-instance Default MockContractState where
+instance Monoid w => Default (MockContractState w) where
   def =
     MockContractState
       { _files =
           Map.fromList $
             map
-              (toSigningKeyFile "signing-keys")
+              (toSigningKeyFile "./signing-keys")
               [signingKey1, signingKey2, signingKey3]
       , _commandHistory = mempty
+      , _instanceUpdateHistory = mempty
+      , _observableState = mempty
+      , _logHistory = mempty
       , _contractEnv = def
       , _utxos = []
       , _tip = Tip 1000 (BlockId "ab12") 4
       }
 
-instance Default ContractEnvironment where
+instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
       { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
+      , ceContractState = unsafePerformIO $ newTVarIO def
       , ceWallet = knownWallet 1
       }
-type MockContract a = Eff '[Error Text, State MockContractState, Writer [String]] a
+
+instance Monoid w => Default (ContractState w) where
+  def = ContractState {cisActivity = Active, cisObservableState = mempty}
+
+type MockContract w a = Eff '[Error Text, State (MockContractState w)] a
 
 {- | Run the contract monad in a pure mock runner, and return a tuple of the contract result and
  the contract state
 -}
 runContractPure ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
-  (Monoid w) =>
+  (ToJSON w, Monoid w) =>
   Contract w s Text a ->
-  MockContractState ->
-  (Either Text a, MockContractState, [String])
+  MockContractState w ->
+  (Either Text a, MockContractState w)
 runContractPure contract initContractState =
-  let ((res, st), logs) = runContractPure' contract initContractState
-   in (fst =<< res, st & commandHistory %~ reverse, logs)
+  let (res, st) = runContractPure' contract initContractState
+   in ( res
+      , st
+          & commandHistory %~ reverse
+          & instanceUpdateHistory %~ reverse
+          & logHistory %~ reverse
+      )
 
 runContractPure' ::
   forall (w :: Type) (s :: Row Type) (a :: Type).
-  (Monoid w) =>
+  (ToJSON w, Monoid w) =>
   Contract w s Text a ->
-  MockContractState ->
-  ((Either Text (Either Text a, w), MockContractState), [String])
+  MockContractState w ->
+  (Either Text a, MockContractState w)
 runContractPure' (Contract effs) initContractState =
-  runPABEffectPure initContractState $ handleContract (initContractState ^. contractEnv) effs
+  first join $
+    runPABEffectPure initContractState $
+      handleContract (initContractState ^. contractEnv) effs
 
 runPABEffectPure ::
-  forall (a :: Type).
-  MockContractState ->
-  Eff '[PABEffect] a ->
-  ((Either Text a, MockContractState), [String])
+  forall (a :: Type) (w :: Type).
+  MockContractState w ->
+  Eff '[PABEffect w] a ->
+  (Either Text a, MockContractState w)
 runPABEffectPure initState req =
-  run (runWriter (runState initState (runError (reinterpret3 go req))))
+  run (runState initState (runError (reinterpret2 go req)))
   where
-    go :: PABEffect v -> MockContract v
+    go :: forall (v :: Type). PABEffect w v -> MockContract w v
     go (CallCommand args) = mockCallCommand args
     go (CreateDirectoryIfMissing createParents filePath) =
       mockCreateDirectoryIfMissing createParents filePath
     go (PrintLog logLevel msg) = mockPrintLog logLevel msg
+    go (UpdateInstanceState msg) = mockUpdateInstanceState msg
+    go (LogToContract msg) = mockLogToContract msg
     go (ThreadDelay microseconds) = mockThreadDelay microseconds
     go (ReadFileTextEnvelope asType filepath) = mockReadFileTextEnvelope asType filepath
     go (WriteFileJSON filepath value) = mockWriteFileJSON filepath value
@@ -208,12 +241,11 @@ runPABEffectPure initState req =
     go (QueryChainIndex query) = mockQueryChainIndex query
 
 mockCallCommand ::
-  forall (a :: Type).
+  forall (w :: Type) (a :: Type).
   ShellArgs a ->
-  MockContract a
+  MockContract w a
 mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
-  tell $ map Text.unpack cmdArgs
-  modify (commandHistory %~ (cmdName <> " " <> Text.unwords cmdArgs <|))
+  modify @(MockContractState w) (commandHistory %~ (cmdName <> " " <> Text.unwords cmdArgs <|))
 
   case (cmdName, cmdArgs) of
     ("cardano-cli", "query" : "utxo" : "--address" : addr : _) ->
@@ -225,21 +257,21 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
     ("cardano-cli", "transaction" : "build-raw" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ cmdOutParser ""
     ("cardano-cli", "transaction" : "build" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ cmdOutParser ""
     ("cardano-cli", "transaction" : "sign" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify (files . at (Text.unpack filepath) ?~ OtherFile "Tx")
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "Tx")
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ cmdOutParser ""
@@ -247,9 +279,9 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
       pure $ cmdOutParser ""
     _ -> throwError @Text "Unknown command"
 
-mockQueryUtxo :: Text -> MockContract String
+mockQueryUtxo :: forall (w :: Type). Text -> MockContract w String
 mockQueryUtxo addr = do
-  state <- get @MockContractState
+  state <- get @(MockContractState w)
 
   let network = (state ^. contractEnv).cePABConfig.pcNetwork
   pure $
@@ -299,23 +331,32 @@ valueToUtxoOut =
                       else [text|${curSymbol'}.${tokenName'}|]
        in Text.pack (show tAmt) <> " " <> token
 
-mockCreateDirectoryIfMissing :: Bool -> FilePath -> MockContract ()
+mockCreateDirectoryIfMissing :: forall (w :: Type). Bool -> FilePath -> MockContract w ()
 mockCreateDirectoryIfMissing _ _ = pure ()
 
-mockPrintLog :: LogLevel -> String -> MockContract ()
-mockPrintLog _ msg = tell [msg]
+mockPrintLog :: forall (w :: Type). LogLevel -> String -> MockContract w ()
+mockPrintLog logLevel msg =
+  modify @(MockContractState w) (logHistory %~ ((logLevel, msg) <|))
 
-mockThreadDelay :: Int -> MockContract ()
+mockUpdateInstanceState :: forall (w :: Type). Activity -> MockContract w ()
+mockUpdateInstanceState msg =
+  modify @(MockContractState w) (instanceUpdateHistory %~ (msg <|))
+
+mockLogToContract :: forall (w :: Type). (Monoid w) => w -> MockContract w ()
+mockLogToContract msg =
+  modify (observableState %~ (<> msg))
+
+mockThreadDelay :: forall (w :: Type). Int -> MockContract w ()
 mockThreadDelay _ = pure ()
 
 mockReadFileTextEnvelope ::
-  forall (a :: Type).
+  forall (w :: Type) (a :: Type).
   HasTextEnvelope a =>
   AsType a ->
   FilePath ->
-  MockContract (Either (FileError TextEnvelopeError) a)
+  MockContract w (Either (FileError TextEnvelopeError) a)
 mockReadFileTextEnvelope ttoken filepath = do
-  state <- get @MockContractState
+  state <- get @(MockContractState w)
 
   pure $
     case state ^. files . at filepath of
@@ -324,35 +365,35 @@ mockReadFileTextEnvelope ttoken filepath = do
         mapLeft (FileError filepath) $ deserialiseFromTextEnvelope ttoken te
       Just _ -> Left $ FileError filepath $ TextEnvelopeAesonDecodeError "Invalid format."
 
-mockWriteFileJSON :: FilePath -> JSON.Value -> MockContract (Either (FileError ()) ())
+mockWriteFileJSON :: forall (w :: Type). FilePath -> JSON.Value -> MockContract w (Either (FileError ()) ())
 mockWriteFileJSON filepath value = do
   let fileContent = JsonFile value
-  modify (files . at filepath ?~ fileContent)
+  modify @(MockContractState w) (files . at filepath ?~ fileContent)
 
   pure $ Right ()
 
 mockWriteFileTextEnvelope ::
-  forall (a :: Type).
+  forall (w :: Type) (a :: Type).
   HasTextEnvelope a =>
   FilePath ->
   Maybe TextEnvelopeDescr ->
   a ->
-  MockContract (Either (FileError ()) ())
+  MockContract w (Either (FileError ()) ())
 mockWriteFileTextEnvelope filepath descr content = do
   let fileContent = TextEnvelopeFile (serialiseToTextEnvelope descr content)
-  modify (files . at filepath ?~ fileContent)
+  modify @(MockContractState w) (files . at filepath ?~ fileContent)
 
   pure $ Right ()
 
-mockListDirectory :: FilePath -> MockContract [FilePath]
+mockListDirectory :: forall (w :: Type). FilePath -> MockContract w [FilePath]
 mockListDirectory filepath = do
-  state <- get @MockContractState
+  state <- get @(MockContractState w)
   pure $ map (drop (length filepath + 1)) $ filter (filepath `isPrefixOf`) $ Map.keys (state ^. files)
 
-mockUploadDir :: Text -> MockContract ()
+mockUploadDir :: forall (w :: Type). Text -> MockContract w ()
 mockUploadDir _ = pure ()
 
-mockQueryChainIndex :: ChainIndexQuery -> MockContract ChainIndexResponse
+mockQueryChainIndex :: forall (w :: Type). ChainIndexQuery -> MockContract w ChainIndexResponse
 mockQueryChainIndex = \case
   DatumFromHash _ ->
     -- pure $ DatumHashResponse Nothing
@@ -370,7 +411,7 @@ mockQueryChainIndex = \case
     -- pure $ RedeemerHashResponse Nothing
     throwError @Text "RedeemerFromHash is unimplemented"
   TxOutFromRef txOutRef -> do
-    state <- get @MockContractState
+    state <- get @(MockContractState w)
     pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
   TxFromTxId _ ->
     -- pure $ TxIdResponse Nothing
@@ -378,14 +419,14 @@ mockQueryChainIndex = \case
   UtxoSetMembership _ ->
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress pageQuery _ -> do
-    state <- get @MockContractState
+    state <- get @(MockContractState w)
     pure $
       UtxoSetAtResponse
         ( state ^. tip
         , pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))
         )
   UtxoSetWithCurrency pageQuery _ -> do
-    state <- get @MockContractState
+    state <- get @(MockContractState w)
     pure $
       UtxoSetAtResponse
         ( state ^. tip

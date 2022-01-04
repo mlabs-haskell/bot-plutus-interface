@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
 module MLabsPAB.CardanoCLI (
@@ -79,26 +80,26 @@ import Prelude
 
 -- | Upload script files to remote server
 uploadFiles ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   Eff effs ()
 uploadFiles pabConf =
   mapM_
-    uploadDir
+    (uploadDir @w)
     [ pabConf.pcScriptFileDir
     , pabConf.pcSigningKeyFileDir
     ]
 
 -- | Getting all available UTXOs at an address (all utxos are assumed to be PublicKeyChainIndexTxOut)
 utxosAt ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   Address ->
   Eff effs (Map TxOutRef ChainIndexTxOut)
 utxosAt pabConf address =
-  callCommand
+  callCommand @w
     ShellArgs
       { cmdName = "cardano-cli"
       , cmdArgs =
@@ -115,13 +116,13 @@ utxosAt pabConf address =
       }
 
 calculateMinUtxo ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   TxOut ->
   Eff effs (Either Text Integer)
 calculateMinUtxo pabConf txOut =
-  callCommand
+  callCommand @w
     ShellArgs
       { cmdName = "cardano-cli"
       , cmdArgs =
@@ -135,13 +136,13 @@ calculateMinUtxo pabConf txOut =
 
 -- | Calculating fee for an unbalanced transaction
 calculateMinFee ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   Tx ->
   Eff effs (Either Text Integer)
 calculateMinFee pabConf tx =
-  callCommand
+  callCommand @w
     ShellArgs
       { cmdName = "cardano-cli"
       , cmdArgs =
@@ -168,15 +169,15 @@ isRawBuildMode _ = False
  If a fee if specified, it uses the build-raw command
 -}
 buildTx ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   PubKeyHash ->
   BuildMode ->
   Tx ->
   Eff effs ()
 buildTx pabConf ownPkh buildMode tx =
-  callCommand $ ShellArgs "cardano-cli" opts (const ())
+  callCommand @w $ ShellArgs "cardano-cli" opts (const ())
   where
     ownAddr = Ledger.pubKeyHashAddress ownPkh
     requiredSigners =
@@ -206,14 +207,14 @@ buildTx pabConf ownPkh buildMode tx =
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
 signTx ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   Tx ->
   [PubKey] ->
   Eff effs ()
 signTx pabConf tx pubKeys =
-  callCommand $
+  callCommand @w $
     ShellArgs
       "cardano-cli"
       ( mconcat
@@ -232,13 +233,13 @@ signTx pabConf tx pubKeys =
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
 submitTx ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   Tx ->
   Eff effs (Maybe Text)
 submitTx pabConf tx =
-  callCommand $
+  callCommand @w $
     ShellArgs
       "cardano-cli"
       ( mconcat
