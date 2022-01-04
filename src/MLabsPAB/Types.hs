@@ -76,8 +76,8 @@ data SomeContractState
   = forall (w :: Type). (ToJSON w) => SomeContractState (TVar (ContractState w))
 
 data ContractState w = ContractState
-  { cisActivity :: Activity
-  , cisObservableState :: w
+  { csActivity :: Activity
+  , csObservableState :: w
   }
   deriving stock (Show, Eq)
 
