@@ -3,6 +3,7 @@
 
 module Spec.MLabsPAB.Contract (tests) where
 
+import Cardano.Api (NetworkId (Mainnet))
 import Control.Lens (ix, (&), (.~), (^.), (^?))
 import Data.Aeson (ToJSON)
 import Data.Aeson.Extras (encodeByteString)
@@ -24,6 +25,7 @@ import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
+import MLabsPAB.CardanoCLI (unsafeSerialiseAddress)
 import NeatInterpolation (text)
 import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith, tell, utxosAt)
 import PlutusTx qualified
@@ -60,6 +62,7 @@ tests =
     , testCase "Send native tokens" sendTokens
     , testCase "Send native tokens (without token name)" sendTokensWithoutName
     , testCase "Mint native tokens" mintTokens
+    , testCase "Spend to validator script" spendToValidator
     , testCase "Redeem from validator script" redeemFromValidator
     , testCase "Multiple txs in a contract" multiTx
     , testCase "Use Writer in a contract" useWriter
@@ -360,6 +363,92 @@ mintTokens = do
       state
       [ [text|./result-scripts/policy-${curSymbol'}.plutus|]
       , [text|./result-scripts/redeemer-${redeemerHash}.json|]
+      , [text|./signing-keys/signing-key-${pkh1'}.skey|]
+      , [text|./txs/tx-${outTxId}.raw|]
+      , [text|./txs/tx-${outTxId}.signed|]
+      ]
+
+spendToValidator :: Assertion
+spendToValidator = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1000) Nothing
+      initState = def & utxos .~ [(txOutRef, txOut)]
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+
+      validator :: Scripts.Validator
+      validator =
+        Scripts.mkValidatorScript
+          $$(PlutusTx.compile [||(\_ _ _ -> ())||])
+
+      valHash :: Ledger.ValidatorHash
+      valHash = Ledger.validatorHash validator
+
+      valAddr :: Ledger.Address
+      valAddr = Address.scriptAddress validator
+
+      valAddr' :: Text
+      valAddr' = unsafeSerialiseAddress Mainnet valAddr
+
+      valHash' :: Text
+      valHash' =
+        let (Ledger.ValidatorHash vh) = valHash
+         in encodeByteString $ fromBuiltin vh
+
+      datum :: Ledger.Datum
+      datum = Ledger.Datum $ PlutusTx.toBuiltinData (11 :: Integer)
+
+      datumHash :: Scripts.DatumHash
+      datumHash = Ledger.datumHash datum
+
+      datumHash' =
+        let (Scripts.DatumHash dh) = datumHash
+         in encodeByteString $ fromBuiltin dh
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract = do
+        utxos' <- utxosAt valAddr
+        let lookups =
+              Constraints.otherScript validator
+                <> Constraints.otherData datum
+                <> Constraints.unspentOutputs utxos'
+        let constraints =
+              Constraints.mustPayToOtherScript valHash datum (Ada.lovelaceValueOf 500)
+        submitTxConstraintsWith @Void lookups constraints
+
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    assertCommandHistory
+      state
+      [
+        ( 2
+        , [text|
+          cardano-cli transaction build-raw --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${valAddr'}+500
+          --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --fee 0 --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+      |]
+        )
+      ,
+        ( 6
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${valAddr'}+500
+          --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          |]
+        )
+      ]
+    --tx-out-datum-file result-scripts/datum-${datumHash'}.json
+
+    assertFiles
+      state
+      [ [text|./result-scripts/datum-${datumHash'}.json|]
       , [text|./signing-keys/signing-key-${pkh1'}.skey|]
       , [text|./txs/tx-${outTxId}.raw|]
       , [text|./txs/tx-${outTxId}.signed|]
