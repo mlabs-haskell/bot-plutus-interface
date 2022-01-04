@@ -8,10 +8,10 @@ module MLabsPAB.PreBalance (
 import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List (partition)
+import Data.List (partition, (\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -69,10 +69,17 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
 
       loop utxoIndex privKeys requiredSigs [] tx
   where
+    loop ::
+      Map TxOutRef TxOut ->
+      Map PubKeyHash PrivateKey ->
+      [PubKeyHash] ->
+      [(TxOut, Integer)] ->
+      Tx ->
+      EitherT Text (Eff effs) Tx
     loop utxoIndex privKeys requiredSigs prevMinUtxos tx = do
       nextMinUtxos <-
         newEitherT $
-          calculateMinUtxos @w pabConf $ filter (`notElem` map fst prevMinUtxos) $ Tx.txOutputs tx
+          calculateMinUtxos @w pabConf $ Tx.txOutputs tx \\ map fst prevMinUtxos
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
@@ -100,7 +107,7 @@ calculateMinUtxos ::
   [TxOut] ->
   Eff effs (Either Text [(TxOut, Integer)])
 calculateMinUtxos pabConf txOuts =
-  zipWithM (\k -> fmap (k,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo @w pabConf) txOuts
+  zipWithM (fmap . (,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo @w pabConf) txOuts
 
 preBalanceTx ::
   [(TxOut, Integer)] ->
@@ -193,7 +200,7 @@ balanceTxIns utxos fees tx = do
 -}
 addTxCollaterals :: Map TxOutRef TxOut -> Tx -> Either Text Tx
 addTxCollaterals utxos tx = do
-  let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
+  let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
   txIn <- findPubKeyTxIn txIns
   pure $ tx {txCollateral = Set.singleton txIn}
   where
@@ -202,6 +209,7 @@ addTxCollaterals utxos tx = do
       x@(TxIn _ Nothing) : _ -> Right x
       _ : xs -> findPubKeyTxIn xs
       _ -> Left "There are no utxos to be used as collateral"
+    filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
 
 -- | We need to balance non ada values, as the cardano-cli is unable to balance them (as of 2021/09/24)
 balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
@@ -264,3 +272,9 @@ unflattenValue (curSymbol, tokenName, amount) =
 isValueNat :: Value -> Bool
 isValueNat =
   all (\(_, _, a) -> a >= 0) . Value.flattenValue
+
+isAdaOnly :: Value -> Bool
+isAdaOnly v =
+  case Value.flattenValue v of
+    [("", "", _)] -> True
+    _ -> False

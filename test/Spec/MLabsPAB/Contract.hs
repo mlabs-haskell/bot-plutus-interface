@@ -201,14 +201,21 @@ multisigSupport = do
 
 sendTokens :: Assertion
 sendTokens = do
-  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut =
+  let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
+      txOut1 =
         TxOut
           (Ledger.pubKeyHashAddress pkh1)
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "testToken" 100)
           Nothing
-      initState = def & utxos .~ [(txOutRef, txOut)]
-      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+      txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
+      txOut2 =
+        TxOut
+          (Ledger.pubKeyHashAddress pkh1)
+          (Ada.lovelaceValueOf 1250)
+          Nothing
+      initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
+      inTxId1 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef1
+      inTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef2
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
@@ -225,8 +232,8 @@ sendTokens = do
         ( 10
         , [text|
           cardano-cli transaction build --alonzo-era
-          --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
+          --tx-in ${inTxId1}#0
+          --tx-in-collateral ${inTxId2}#1
           --tx-out ${addr1}+50 + 95 abcd1234.testToken
           --tx-out ${addr2}+1000 + 5 abcd1234.testToken
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -238,14 +245,21 @@ sendTokens = do
 
 sendTokensWithoutName :: Assertion
 sendTokensWithoutName = do
-  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut =
+  let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
+      txOut1 =
         TxOut
           (Ledger.pubKeyHashAddress pkh1)
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "" 100)
           Nothing
-      initState = def & utxos .~ [(txOutRef, txOut)]
-      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+      txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
+      txOut2 =
+        TxOut
+          (Ledger.pubKeyHashAddress pkh1)
+          (Ada.lovelaceValueOf 1250)
+          Nothing
+      initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
+      inTxId1 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef1
+      inTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef2
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
@@ -262,8 +276,8 @@ sendTokensWithoutName = do
         ( 10
         , [text|
           cardano-cli transaction build --alonzo-era
-          --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
+          --tx-in ${inTxId1}#0
+          --tx-in-collateral ${inTxId2}#1
           --tx-out ${addr1}+50 + 95 abcd1234
           --tx-out ${addr2}+1000 + 5 abcd1234
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey

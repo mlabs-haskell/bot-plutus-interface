@@ -306,7 +306,7 @@ mockQueryUtxoOut utxos' =
                       Nothing -> "TxOutDatumNone"
                       Just (DatumHash dh) ->
                         "TxDatumHash ScriptDataInAlonzoEra " <> encodeByteString (fromBuiltin dh)
-                 in [text|${txId'}     ${txIx'}        ${amts} + ${datumHash'}"|]
+                 in [text|${txId'}     ${txIx'}        ${amts} + ${datumHash'}|]
             )
             utxos'
       ]

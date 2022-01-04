@@ -111,7 +111,6 @@ subscribeToContract conn (AppState s) contractInstanceID =
         guard (not (null msgs))
         pure (result, msgs)
 
-      mapM_ print msgs
       mapM_ (sendTextData conn . JSON.encode) msgs
 
       unless (isFinished lastStatus) $ observeUpdates contractState (Just lastStatus)
