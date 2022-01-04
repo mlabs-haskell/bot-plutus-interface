@@ -19,7 +19,7 @@ import MLabsPAB.Contract (runContract)
 import MLabsPAB.Types (
   AppState (AppState),
   ContractEnvironment (..),
-  ContractState (ContractState),
+  ContractState (ContractState, csActivity, csObservableState),
   PABConfig,
   SomeContractState (SomeContractState),
  )
@@ -99,21 +99,22 @@ subscribeToContract conn (AppState s) contractInstanceID =
     SomeContractState contractState <- atomically $ do
       instances <- readTVar s
       maybe retry pure $ Map.lookup contractInstanceID instances
+    putStrLn "Found instance"
     observeUpdates contractState Nothing
   where
     observeUpdates :: forall (w :: Type). ToJSON w => TVar (ContractState w) -> Maybe (ContractState w) -> IO ()
     observeUpdates contractState prevHandled = do
-      statusUpdate <- atomically $ do
+      (lastStatus, msgs) <- atomically $ do
         result <- readTVar contractState
 
         let msgs = handleContractActivityChange contractInstanceID prevHandled result
         guard (not (null msgs))
-        pure result
+        pure (result, msgs)
 
-      mapM_ (sendTextData conn . JSON.encode) $
-        handleContractActivityChange contractInstanceID prevHandled statusUpdate
+      mapM_ print msgs
+      mapM_ (sendTextData conn . JSON.encode) msgs
 
-      unless (isFinished statusUpdate) $ observeUpdates contractState (Just statusUpdate)
+      unless (isFinished lastStatus) $ observeUpdates contractState (Just lastStatus)
 
     isFinished (ContractState (Done _) _) = True
     isFinished _ = False
@@ -126,25 +127,24 @@ handleContractActivityChange ::
   Maybe (ContractState w) ->
   ContractState w ->
   [CombinedWSStreamToClient]
-handleContractActivityChange
-  contractInstanceID
-  (Just (ContractState prevA prevW))
-  (ContractState a w) =
-    catMaybes [activityChange, observableStateChange]
-    where
-      activityChange =
-        if prevA /= a
-          then case a of
-            Done maybeError -> do
-              Just $ InstanceUpdate contractInstanceID $ ContractFinished maybeError
-            _ -> Nothing
-          else Nothing
+handleContractActivityChange contractInstanceID prevState currentState =
+  catMaybes [activityChange, observableStateChange]
+  where
+    activityChange =
+      if (csActivity <$> prevState) /= Just currentState.csActivity
+        then case currentState.csActivity of
+          Done maybeError -> do
+            Just $ InstanceUpdate contractInstanceID $ ContractFinished maybeError
+          _ -> Nothing
+        else Nothing
 
-      observableStateChange =
-        if toJSON prevW /= toJSON w
-          then Just $ InstanceUpdate contractInstanceID $ NewObservableState (toJSON w)
-          else Nothing
-handleContractActivityChange _ _ _ = []
+    observableStateChange =
+      if (toJSON . csObservableState <$> prevState) /= Just (toJSON currentState.csObservableState)
+        then
+          Just $
+            InstanceUpdate contractInstanceID $
+              NewObservableState (toJSON currentState.csObservableState)
+        else Nothing
 
 -- | Broadcast a contract update to subscribers
 broadcastContractResult ::

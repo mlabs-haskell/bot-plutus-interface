@@ -87,7 +87,7 @@ import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.Types (
   ContractEnvironment (..),
-  ContractState (ContractState, cisActivity, cisObservableState),
+  ContractState (ContractState, csActivity, csObservableState),
   LogLevel (..),
   PABConfig (..),
  )
@@ -183,7 +183,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       }
 
 instance Monoid w => Default (ContractState w) where
-  def = ContractState {cisActivity = Active, cisObservableState = mempty}
+  def = ContractState {csActivity = Active, csObservableState = mempty}
 
 type MockContract w a = Eff '[Error Text, State (MockContractState w)] a
 
