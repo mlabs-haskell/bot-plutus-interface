@@ -24,6 +24,7 @@ import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Crypto (PrivateKey, PubKeyHash)
+import Ledger.Scripts (Datum, DatumHash)
 import Ledger.Tx (
   Tx (..),
   TxIn (..),
@@ -79,7 +80,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
     loop utxoIndex privKeys requiredSigs prevMinUtxos tx = do
       nextMinUtxos <-
         newEitherT $
-          calculateMinUtxos @w pabConf $ Tx.txOutputs tx \\ map fst prevMinUtxos
+          calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
@@ -103,10 +104,11 @@ calculateMinUtxos ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
+  Map DatumHash Datum ->
   [TxOut] ->
   Eff effs (Either Text [(TxOut, Integer)])
-calculateMinUtxos pabConf txOuts =
-  zipWithM (fmap . (,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo @w pabConf) txOuts
+calculateMinUtxos pabConf datums txOuts =
+  zipWithM (fmap . (,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo @w pabConf datums) txOuts
 
 preBalanceTx ::
   [(TxOut, Integer)] ->

@@ -120,16 +120,17 @@ calculateMinUtxo ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
+  Map DatumHash Datum ->
   TxOut ->
   Eff effs (Either Text Integer)
-calculateMinUtxo pabConf txOut =
+calculateMinUtxo pabConf datums txOut =
   callCommand @w
     ShellArgs
       { cmdName = "cardano-cli"
       , cmdArgs =
           mconcat
             [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
-            , txOutOpts pabConf (txData unBalancedTxTx) [txOut]
+            , txOutOpts pabConf datums [txOut]
             , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             ]
       , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack

@@ -404,7 +404,7 @@ spendToValidator = do
         let (Scripts.DatumHash dh) = datumHash
          in encodeByteString $ fromBuiltin dh
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text Tx
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         utxos' <- utxosAt valAddr
         let lookups =
@@ -425,22 +425,22 @@ spendToValidator = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${valAddr'}+500
-          --tx-out-datum-embed-file result-scripts/datum-${datumHash'}.json
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
-          --fee 0 --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --fee 0 --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
       |]
         )
       ,
-        ( 4
+        ( 6
         , [text|
           cardano-cli transaction build --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${valAddr'}+500
-          --tx-out-datum-embed-file result-scripts/datum-${datumHash'}.json
-          --required-signer signing-keys/signing-key-${pkh1'}.skey
+          --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file txs/tx-${outTxId}.raw
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]
@@ -448,10 +448,10 @@ spendToValidator = do
 
     assertFiles
       state
-      [ [text|result-scripts/datum-${datumHash'}.json|]
-      , [text|signing-keys/signing-key-${pkh1'}.skey|]
-      , [text|txs/tx-${outTxId}.raw|]
-      , [text|txs/tx-${outTxId}.signed|]
+      [ [text|./result-scripts/datum-${datumHash'}.json|]
+      , [text|./signing-keys/signing-key-${pkh1'}.skey|]
+      , [text|./txs/tx-${outTxId}.raw|]
+      , [text|./txs/tx-${outTxId}.signed|]
       ]
 
 redeemFromValidator :: Assertion
