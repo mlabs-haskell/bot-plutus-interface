@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module MLabsPAB.Files (
   policyScriptFilePath,
   validatorScriptFilePath,
@@ -107,30 +109,31 @@ txFilePath pabConf ext tx =
 
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   MintingPolicy ->
   Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
   let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
       filepath = policyScriptFilePath pabConf (Ledger.scriptCurrencySymbol mintingPolicy)
-   in fmap (const filepath) <$> writeFileTextEnvelope (Text.unpack filepath) Nothing script
+   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
 -- | Compiles and writes a script file under the given folder
 writeValidatorScriptFile ::
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   Validator ->
   Eff effs (Either (FileError ()) Text)
 writeValidatorScriptFile pabConf validatorScript =
   let script = serialiseScript $ Ledger.unValidatorScript validatorScript
       filepath = validatorScriptFilePath pabConf (Ledger.validatorHash validatorScript)
-   in fmap (const filepath) <$> writeFileTextEnvelope (Text.unpack filepath) Nothing script
+   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
 writeAll ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   [MintingPolicy] ->
   [Validator] ->
@@ -141,25 +144,25 @@ writeAll pabConf policyScripts validatorScripts datums redeemers = do
   results <-
     sequence $
       mconcat
-        [ map (writePolicyScriptFile pabConf) policyScripts
-        , map (writeValidatorScriptFile pabConf) validatorScripts
-        , map (writeDatumJsonFile pabConf) datums
-        , map (writeRedeemerJsonFile pabConf) redeemers
+        [ map (writePolicyScriptFile @w pabConf) policyScripts
+        , map (writeValidatorScriptFile @w pabConf) validatorScripts
+        , map (writeDatumJsonFile @w pabConf) datums
+        , map (writeRedeemerJsonFile @w pabConf) redeemers
         ]
 
   pure $ sequence results
 
 readPrivateKeys ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   Eff effs (Either Text (Map PubKeyHash PrivateKey))
 readPrivateKeys pabConf = do
-  files <- listDirectory $ Text.unpack pabConf.pcSigningKeyFileDir
+  files <- listDirectory @w $ Text.unpack pabConf.pcSigningKeyFileDir
   let sKeyFiles =
         map (\filename -> Text.unpack pabConf.pcSigningKeyFileDir ++ "/" ++ filename) $
           filter ("skey" `isExtensionOf`) files
-  privKeys <- mapM readPrivateKey sKeyFiles
+  privKeys <- mapM (readPrivateKey @w) sKeyFiles
   pure $ toPrivKeyMap <$> sequence privKeys
   where
     toPrivKeyMap :: [PrivateKey] -> Map PubKeyHash PrivateKey
@@ -172,12 +175,12 @@ readPrivateKeys pabConf = do
         Map.empty
 
 readPrivateKey ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   FilePath ->
   Eff effs (Either Text PrivateKey)
 readPrivateKey filePath = do
-  pKey <- mapLeft (Text.pack . show) <$> readFileTextEnvelope (AsSigningKey AsPaymentKey) filePath
+  pKey <- mapLeft (Text.pack . show) <$> readFileTextEnvelope @w (AsSigningKey AsPaymentKey) filePath
   pure $ fromCardanoPaymentKey =<< pKey
 
 {- | Warning! This implementation is not correct!
@@ -206,26 +209,26 @@ serialiseScript =
     . Codec.serialise
 
 writeDatumJsonFile ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   Datum ->
   Eff effs (Either (FileError ()) Text)
 writeDatumJsonFile pabConf datum =
   let json = dataToJson $ getDatum datum
       filepath = datumJsonFilePath pabConf (Ledger.datumHash datum)
-   in fmap (const filepath) <$> writeFileJSON (Text.unpack filepath) json
+   in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
 
 writeRedeemerJsonFile ::
-  forall (effs :: [Type -> Type]).
-  Member PABEffect effs =>
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   PABConfig ->
   Redeemer ->
   Eff effs (Either (FileError ()) Text)
 writeRedeemerJsonFile pabConf redeemer =
   let json = dataToJson $ getRedeemer redeemer
       filepath = redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
-   in fmap (const filepath) <$> writeFileJSON (Text.unpack filepath) json
+   in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
 
 dataToJson :: forall (a :: Type). ToData a => a -> JSON.Value
 dataToJson =

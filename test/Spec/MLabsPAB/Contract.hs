@@ -4,10 +4,12 @@
 module Spec.MLabsPAB.Contract (tests) where
 
 import Control.Lens (ix, (&), (.~), (^.), (^?))
+import Data.Aeson (ToJSON)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
 import Data.Kind (Type)
 import Data.Map qualified as Map
+import Data.Monoid (Last (Last))
 import Data.Row (Row)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -23,7 +25,7 @@ import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith, utxosAt)
+import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith, tell, utxosAt)
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import Spec.MockContract (
@@ -32,6 +34,7 @@ import Spec.MockContract (
   addr2,
   commandHistory,
   files,
+  observableState,
   pkh1,
   pkh1',
   pkh2,
@@ -59,6 +62,7 @@ tests =
     , testCase "Mint native tokens" mintTokens
     , testCase "Redeem from validator script" redeemFromValidator
     , testCase "Multiple txs in a contract" multiTx
+    , testCase "Use Writer in a contract" useWriter
     ]
 
 sendAda :: Assertion
@@ -472,7 +476,7 @@ multiTx = do
 
         pure [tx1, tx2]
 
-      (result, state, _) = runContractPure contract initState
+      (result, state) = runContractPure contract initState
 
   case result of
     Left errMsg -> assertFailure (show errMsg)
@@ -489,7 +493,26 @@ multiTx = do
             ]
     Right _ -> assertFailure "Wrong number of txs"
 
-assertFiles :: MockContractState -> [Text] -> Assertion
+useWriter :: Assertion
+useWriter = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      initState = def & utxos .~ [(txOutRef, txOut)]
+
+      contract :: Contract (Last Text) (Endpoint "SendAda" ()) Text CardanoTx
+      contract = do
+        tell $ Last $ Just "Init contract"
+        let constraints =
+              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
+        txId <- submitTx constraints
+        tell $ Last $ Just $ Text.pack $ show $ Tx.txId <$> txId
+        pure txId
+
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    (state ^. observableState)
+      @?= Last (Just ("Right " <> outTxId))
+
+assertFiles :: forall (w :: Type). MockContractState w -> [Text] -> Assertion
 assertFiles state expectedFiles =
   assertBool errorMsg $
     Set.fromList (map Text.unpack expectedFiles) `Set.isSubsetOf` Map.keysSet (state ^. files)
@@ -504,13 +527,13 @@ assertFiles state expectedFiles =
 
 assertContractWithTxId ::
   forall (w :: Type) (s :: Row Type).
-  (Monoid w) =>
+  (ToJSON w, Monoid w) =>
   Contract w s Text CardanoTx ->
-  MockContractState ->
-  (MockContractState -> Text -> Assertion) ->
+  MockContractState w ->
+  (MockContractState w -> Text -> Assertion) ->
   Assertion
 assertContractWithTxId contract initState assertion = do
-  let (result, state, _) = runContractPure contract initState
+  let (result, state) = runContractPure contract initState
 
   case result of
     Left errMsg -> assertFailure (show errMsg)
@@ -518,7 +541,7 @@ assertContractWithTxId contract initState assertion = do
       let outTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx
        in assertion state outTxId
 
-assertCommandHistory :: MockContractState -> [(Int, Text)] -> Assertion
+assertCommandHistory :: forall (w :: Type). MockContractState w -> [(Int, Text)] -> Assertion
 assertCommandHistory state =
   mapM_
     ( \(idx, expectedCmd) ->

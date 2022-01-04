@@ -1,8 +1,13 @@
+{-# LANGUAGE RankNTypes #-}
+
 module MLabsPAB.Types (
   PABConfig (..),
   CLILocation (..),
+  AppState (AppState),
   LogLevel (..),
   ContractEnvironment (..),
+  ContractState (..),
+  SomeContractState (SomeContractState),
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
@@ -10,10 +15,15 @@ module MLabsPAB.Types (
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.Api.Shelley (ProtocolParameters)
+import Control.Concurrent.STM (TVar)
+import Data.Aeson (ToJSON)
 import Data.Default (Default (def))
+import Data.Kind (Type)
+import Data.Map (Map)
 import Data.Text (Text)
 import Ledger (PubKeyHash)
 import Network.Wai.Handler.Warp (Port)
+import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import Plutus.PAB.Effects.Contract.Builtin (
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
@@ -46,10 +56,28 @@ data PABConfig = PABConfig
   }
   deriving stock (Show, Eq)
 
-data ContractEnvironment = ContractEnvironment
+data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
+  , ceContractState :: TVar (ContractState w)
   , ceWallet :: Wallet
+  }
+  deriving stock (Show)
+
+instance Show (TVar (ContractState w)) where
+  show _ = "<ContractState>"
+
+newtype AppState = AppState (TVar (Map ContractInstanceId SomeContractState))
+
+{- | This type is wrapping a ContractState in a TVar and existentially quantifying the @w@
+ type variable, so we can store different contracts in the AppState
+-}
+data SomeContractState
+  = forall (w :: Type). (ToJSON w) => SomeContractState (TVar (ContractState w))
+
+data ContractState w = ContractState
+  { csActivity :: Activity
+  , csObservableState :: w
   }
   deriving stock (Show, Eq)
 
