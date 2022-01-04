@@ -8,13 +8,15 @@ import Control.Monad hiding (fmap)
 import Data.ByteString.Lazy qualified as LBS
 import Data.ByteString.Short qualified as SBS
 import Data.Map qualified as Map
+import Data.Monoid (Last (Last))
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Data.Void (Void)
 import Ledger hiding (singleton)
 import Ledger.Constraints as Constraints
 import Ledger.Typed.Scripts (wrapMintingPolicy)
 import Ledger.Value as Value
-import Plutus.Contract (Contract, Endpoint, submitTxConstraintsWith, utxosAt)
+import Plutus.Contract (Contract, Endpoint, submitTxConstraintsWith, tell, utxosAt)
 import Plutus.Contract qualified as Contract
 import Plutus.V1.Ledger.Scripts qualified as Scripts
 import PlutusTx qualified
@@ -61,15 +63,18 @@ curSymbol oref tn = scriptCurrencySymbol $ policy oref tn
 type NFTSchema =
   Endpoint "mint" TokenName
 
-mintNft :: TokenName -> Contract Text NFTSchema Text ()
+mintNft :: TokenName -> Contract (Last Text) NFTSchema Text ()
 mintNft tn = do
   pkh <- Contract.ownPubKeyHash
   utxos <- utxosAt (pubKeyHashAddress pkh)
+  tell $ Last $ Just "Contract started with "
   case Map.keys utxos of
     [] -> Contract.logError @String "no utxo found"
     oref : _ -> do
+      tell $ Last $ Just $ "Using oref:" <> Text.pack (show oref)
       let val = Value.singleton (curSymbol oref tn) tn 1
           lookups = Constraints.mintingPolicy (policy oref tn) <> Constraints.unspentOutputs utxos
           tx = Constraints.mustMintValue val <> Constraints.mustSpendPubKeyOutput oref
       void $ submitTxConstraintsWith @Void lookups tx
       Contract.logInfo @String $ printf "forged %s" (show val)
+      tell $ Last $ Just "Finished"

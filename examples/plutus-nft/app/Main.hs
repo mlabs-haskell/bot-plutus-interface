@@ -23,6 +23,7 @@ import MLabsPAB.Types (
  )
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
+import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
 import Prelude
 
 instance HasDefinitions MintNFTContracts where
@@ -50,7 +51,10 @@ main = do
         PABConfig
           { pcCliLocation = Local
           , pcNetwork = Testnet (NetworkMagic 1097911063)
+          , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
+          , pcPort = 9080
           , pcProtocolParams = protocolParams
+          , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
           , pcScriptFileDir = "./scripts"
           , pcSigningKeyFileDir = "./signing-keys"
           , pcTxFileDir = "./txs"

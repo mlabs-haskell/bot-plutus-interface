@@ -124,13 +124,14 @@ library
 executable plutus-nft-pab
   import:         common-lang
   build-depends:
-    , aeson              ^>=1.5.0.0
+    , aeson                ^>=1.5.0.0
     , bytestring
     , cardano-api
     , mlabs-pab
     , playground-common
     , plutus-ledger
     , plutus-nft
+    , servant-client-core
 
   main-is:        Main.hs
   hs-source-dirs: app
