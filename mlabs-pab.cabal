@@ -87,9 +87,9 @@ library
 
   other-modules:   MLabsPAB.Server
   build-depends:
-    , aeson                  ^>=1.5.0.0
-    , attoparsec             >=0.13.2.2
-    , bytestring             ^>=0.10.12.0
+    , aeson                    ^>=1.5.0.0
+    , attoparsec               >=0.13.2.2
+    , bytestring               ^>=0.10.12.0
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
@@ -107,6 +107,7 @@ library
     , memory
     , playground-common
     , plutus-chain-index
+    , plutus-chain-index-core
     , plutus-contract
     , plutus-core
     , plutus-ledger
@@ -123,7 +124,7 @@ library
     , servant-websockets
     , split
     , stm
-    , text                   ^>=1.2.4.0
+    , text                     ^>=1.2.4.0
     , transformers
     , transformers-either
     , uuid
@@ -145,11 +146,11 @@ test-suite mlabs-pab-test
     Spec.MockContract
 
   build-depends:
-    , aeson                 ^>=1.5.0.0
+    , aeson                    ^>=1.5.0.0
     , attoparsec
     , base
     , base-compat
-    , bytestring            ^>=0.10.12.0
+    , bytestring               ^>=0.10.12.0
     , cardano-api
     , cardano-crypto-class
     , containers
@@ -164,6 +165,7 @@ test-suite mlabs-pab-test
     , mlabs-pab
     , neat-interpolation
     , plutus-chain-index
+    , plutus-chain-index-core
     , plutus-contract
     , plutus-core
     , plutus-ledger
@@ -175,10 +177,11 @@ test-suite mlabs-pab-test
     , quickcheck-instances
     , row-types
     , serialise
+    , stm
     , tasty
     , tasty-hunit
     , tasty-quickcheck
-    , text                  ^>=1.2.4.0
+    , text                     ^>=1.2.4.0
     , uuid
 
   hs-source-dirs: test

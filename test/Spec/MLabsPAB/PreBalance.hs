@@ -5,7 +5,8 @@ import Data.Set qualified as Set
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address)
-import Ledger.Crypto (PubKeyHash, privateKey1)
+import Ledger.CardanoWallet qualified as Wallet
+import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
 import Ledger.Value (CurrencySymbol, TokenName)
 import Ledger.Value qualified as Value
@@ -13,7 +14,6 @@ import MLabsPAB.PreBalance qualified as PreBalance
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 import Test.Tasty.QuickCheck (Positive (..), Property, testProperty, (===))
-import Wallet.Emulator.Types qualified as Wallet
 import Prelude
 
 {- | Tests for 'cardano-cli query utxo' result parsers
@@ -29,9 +29,12 @@ tests =
     , testProperty "Double pre balancing does not change the result" prop_DoublePreBalancing
     ]
 
+privateKey1 :: PrivateKey
+privateKey1 = Wallet.privateKey (Wallet.knownWallet 1)
+
 pkh1, pkh2 :: PubKeyHash
-pkh1 = Ledger.pubKeyHash $ Wallet.walletPubKey (Wallet.knownWallet 1)
-pkh2 = Ledger.pubKeyHash $ Wallet.walletPubKey (Wallet.knownWallet 2)
+pkh1 = Wallet.pubKeyHash (Wallet.knownWallet 1)
+pkh2 = Wallet.pubKeyHash (Wallet.knownWallet 2)
 
 addr1, addr2 :: Address
 addr1 = Ledger.pubKeyHashAddress pkh1
@@ -57,8 +60,9 @@ utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton 
 
 addUtxosForFees :: Assertion
 addUtxosForFees = do
-  let tx = mempty {txOutputs = [TxOut addr2 (Ada.lovelaceValueOf 1_000_000) Nothing]}
-      minUtxo = 1_000_000
+  let txout = TxOut addr2 (Ada.lovelaceValueOf 1_000_000) Nothing
+      tx = mempty {txOutputs = [txout]}
+      minUtxo = [(txout, 1_000_000)]
       fees = 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       privKeys = Map.fromList [(pkh1, privateKey1)]
@@ -70,8 +74,9 @@ addUtxosForFees = do
 
 addUtxosForNativeTokens :: Assertion
 addUtxosForNativeTokens = do
-  let tx = mempty {txOutputs = [TxOut addr2 (Value.singleton "11223344" "Token" 123) Nothing]}
-      minUtxo = 1_000_000
+  let txout = TxOut addr2 (Value.singleton "11223344" "Token" 123) Nothing
+      tx = mempty {txOutputs = [txout]}
+      minUtxo = [(txout, 1_000_000)]
       fees = 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       privKeys = Map.fromList [(pkh1, privateKey1)]
@@ -89,20 +94,21 @@ prop_DoublePreBalancing ::
   Property
 prop_DoublePreBalancing curSymbol tokenName (Positive mintAmt) spend =
   let assetClass = Value.assetClass curSymbol tokenName
+      txouts =
+        map
+          ( \(addr, Positive tokens, Positive lovelaces) ->
+              TxOut
+                addr
+                (Value.assetClassValue assetClass tokens <> Ada.lovelaceValueOf lovelaces)
+                Nothing
+          )
+          spend
       tx =
         mempty
-          { txOutputs =
-              map
-                ( \(addr, Positive tokens, Positive lovelaces) ->
-                    TxOut
-                      addr
-                      (Value.assetClassValue assetClass tokens <> Ada.lovelaceValueOf lovelaces)
-                      Nothing
-                )
-                spend
+          { txOutputs = txouts
           , txMint = Value.assetClassValue assetClass mintAmt
           }
-      minUtxo = 1_000_000
+      minUtxo = map (,1_000_000) txouts
       fees = 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       privKeys = Map.fromList [(pkh1, privateKey1)]
