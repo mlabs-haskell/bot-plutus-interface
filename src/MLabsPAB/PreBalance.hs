@@ -5,7 +5,7 @@ module MLabsPAB.PreBalance (
   preBalanceTxIO,
 ) where
 
-import Control.Monad (foldM, zipWithM)
+import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
@@ -36,7 +36,7 @@ import Ledger.Tx qualified as Tx
 import Ledger.Value (Value (Value), getValue)
 import Ledger.Value qualified as Value
 import MLabsPAB.CardanoCLI qualified as CardanoCLI
-import MLabsPAB.Effects (PABEffect, printLog)
+import MLabsPAB.Effects (PABEffect, createDirectoryIfMissing, printLog)
 import MLabsPAB.Files qualified as Files
 import MLabsPAB.Types (LogLevel (Debug), PABConfig)
 import Plutus.V1.Ledger.Api (
@@ -78,6 +78,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
       Tx ->
       EitherT Text (Eff effs) Tx
     loop utxoIndex privKeys requiredSigs prevMinUtxos tx = do
+      void $ lift $ Files.writeAll @w pabConf tx
       nextMinUtxos <-
         newEitherT $
           calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
@@ -89,6 +90,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
       txWithoutFees <-
         hoistEither $ preBalanceTx minUtxos 0 utxoIndex ownPkh privKeys requiredSigs tx
 
+      lift $ createDirectoryIfMissing @w False (Text.unpack pabConf.pcTxFileDir)
       lift $ CardanoCLI.buildTx @w pabConf ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 

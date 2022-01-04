@@ -12,11 +12,8 @@ import Control.Monad.Freer.Writer (Writer (Tell))
 import Data.Aeson (ToJSON, Value)
 import Data.Kind (Type)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
 import Data.Row (Row)
-import Data.Set qualified as Set
 import Data.Text qualified as Text
-import Ledger qualified
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
@@ -185,20 +182,8 @@ writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
 writeBalancedTx contractEnv (Right tx) = do
   createDirectoryIfMissing @w False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
 
-  let (validatorScripts, redeemers, datums) =
-        unzip3 $ mapMaybe Tx.inScripts $ Set.toList $ Tx.txInputs tx
-
-      policyScripts = Set.toList $ Ledger.txMintScripts tx
-      allDatums = datums <> Map.elems (Tx.txData tx)
-      allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
-
   fileWriteRes <-
-    Files.writeAll @w
-      contractEnv.cePABConfig
-      policyScripts
-      validatorScripts
-      allDatums
-      allRedeemers
+    Files.writeAll @w contractEnv.cePABConfig tx
 
   case fileWriteRes of
     Left err ->

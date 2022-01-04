@@ -5,3 +5,9 @@ cradle:
 
     - path: "./test"
       component: "test:mlabs-pab-test"
+
+    - path: "./examples/plutus-nft/src"
+      component: "lib:plutus-nft"
+
+    - path: "./examples/plutus-nft/app"
+      component: "exe:plutus-nft"
