@@ -5,9 +5,10 @@ module Main (main) where
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.PlutusExample.Game (
   GameSchema,
-  LockParams, GuessParams,
- lock,
+  GuessParams,
+  LockParams,
   guess,
+  lock,
  )
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
