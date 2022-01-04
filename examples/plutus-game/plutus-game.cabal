@@ -1,0 +1,137 @@
+cabal-version:      3.0
+name:               plutus-game
+version:            0.1.0.0
+synopsis:           Game example
+description:        Game example running on the fake pab
+homepage:           https://github.com/mlabs-haskell/mlabs-pab
+bug-reports:        https://github.com/mlabs-haskell/mlabs-pab
+license:
+license-file:
+author:             MLabs
+maintainer:         gergely@mlabs.city
+copyright:          TODO
+build-type:         Simple
+tested-with:        GHC ==8.10.4
+extra-source-files: README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/mlabs-haskell/mlabs-pab
+
+-- Common sections
+
+common common-lang
+  ghc-options:
+    -Wall -Wcompat -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wredundant-constraints -Werror
+    -fobject-code -fno-ignore-interface-pragmas
+    -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
+
+  build-depends:
+    , base                     ^>=4.14
+    , record-dot-preprocessor
+    , record-hasfield
+
+  default-extensions:
+    NoImplicitPrelude
+    BangPatterns
+    BinaryLiterals
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DuplicateRecordFields
+    EmptyCase
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    HexFloatLiterals
+    ImportQualifiedPost
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    NumericUnderscores
+    OverloadedStrings
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
+
+  default-language:   Haskell2010
+
+-- Libraries
+
+
+library
+  import:          common-lang
+  exposed-modules: Cardano.PlutusExample.Game
+  build-depends:
+    , aeson                    ^>=1.5.0.0
+    , attoparsec               >=0.13.2.2
+    , bytestring               ^>=0.10.12.0
+    , cardano-api
+    , cardano-crypto
+    , cardano-ledger-alonzo
+    , containers
+    , data-default
+    , data-default-class
+    , directory
+    , either
+    , filepath
+    , freer-extras
+    , freer-simple
+    , http-client
+    , http-types
+    , lens
+    , memory
+    , playground-common
+    , plutus-chain-index
+    , plutus-chain-index-core
+    , plutus-contract
+    , plutus-core
+    , plutus-ledger
+    , plutus-ledger-api
+    , plutus-pab
+    , plutus-tx
+    , plutus-tx-plugin
+    , process
+    , row-types
+    , serialise
+    , servant
+    , servant-client
+    , servant-server
+    , servant-websockets
+    , split
+    , stm
+    , text                     ^>=1.2.4.0
+    , transformers
+    , transformers-either
+    , uuid
+    , wai
+    , warp
+    , websockets
+
+  hs-source-dirs:  src
+
+executable plutus-game-pab
+  import:         common-lang
+  build-depends:
+    , aeson                ^>=1.5.0.0
+    , bytestring
+    , cardano-api
+    , mlabs-pab
+    , playground-common
+    , plutus-game
+    , plutus-ledger
+    , servant-client-core
+
+  main-is:        Main.hs
+  hs-source-dirs: app
