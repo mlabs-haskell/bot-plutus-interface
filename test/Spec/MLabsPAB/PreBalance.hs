@@ -8,12 +8,10 @@ import Ledger.Address (Address)
 import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
-import Ledger.Value (CurrencySymbol, TokenName)
 import Ledger.Value qualified as Value
 import MLabsPAB.PreBalance qualified as PreBalance
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
-import Test.Tasty.QuickCheck (Positive (..), Property, testProperty, (===))
 import Prelude
 
 {- | Tests for 'cardano-cli query utxo' result parsers
@@ -26,7 +24,6 @@ tests =
     "MLabsPAB.UtxoParser"
     [ testCase "Add utxos to cover fees" addUtxosForFees
     , testCase "Add utxos to cover native tokens" addUtxosForNativeTokens
-    , testProperty "Double pre balancing does not change the result" prop_DoublePreBalancing
     ]
 
 privateKey1 :: PrivateKey
@@ -85,36 +82,3 @@ addUtxosForNativeTokens = do
       prebalancedTx = PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
 
   txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
-
-prop_DoublePreBalancing ::
-  CurrencySymbol ->
-  TokenName ->
-  Positive Integer ->
-  [(Address, Positive Integer, Positive Integer)] ->
-  Property
-prop_DoublePreBalancing curSymbol tokenName (Positive mintAmt) spend =
-  let assetClass = Value.assetClass curSymbol tokenName
-      txouts =
-        map
-          ( \(addr, Positive tokens, Positive lovelaces) ->
-              TxOut
-                addr
-                (Value.assetClassValue assetClass tokens <> Ada.lovelaceValueOf lovelaces)
-                Nothing
-          )
-          spend
-      tx =
-        mempty
-          { txOutputs = txouts
-          , txMint = Value.assetClassValue assetClass mintAmt
-          }
-      minUtxo = map (,1_000_000) txouts
-      fees = 500_000
-      utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
-      privKeys = Map.fromList [(pkh1, privateKey1)]
-      requiredSigs = [pkh1]
-      ownPkh = pkh1
-   in PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
-        === ( PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
-                >>= PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs
-            )
