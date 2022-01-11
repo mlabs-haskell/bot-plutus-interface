@@ -208,7 +208,7 @@ sendTokens = do
       txOut1 =
         TxOut
           (Ledger.pubKeyHashAddress pkh1)
-          (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "testToken" 100)
+          (Ada.lovelaceValueOf 1300 <> Value.singleton "abcd1234" "testToken" 100)
           Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
@@ -252,7 +252,7 @@ sendTokensWithoutName = do
       txOut1 =
         TxOut
           (Ledger.pubKeyHashAddress pkh1)
-          (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "" 100)
+          (Ada.lovelaceValueOf 1300 <> Value.singleton "abcd1234" "" 100)
           Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =

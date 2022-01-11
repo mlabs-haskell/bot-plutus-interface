@@ -1,5 +1,7 @@
 module Spec.MLabsPAB.PreBalance (tests) where
 
+import Cardano.Api.Shelley (Lovelace (Lovelace), ProtocolParameters (protocolParamUTxOCostPerWord))
+import Data.Default (def)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Ledger qualified
@@ -24,6 +26,7 @@ tests =
     "MLabsPAB.UtxoParser"
     [ testCase "Add utxos to cover fees" addUtxosForFees
     , testCase "Add utxos to cover native tokens" addUtxosForNativeTokens
+    , testCase "Add utxos to cover change min utxo" addUtxosForChange
     ]
 
 privateKey1 :: PrivateKey
@@ -65,7 +68,8 @@ addUtxosForFees = do
       privKeys = Map.fromList [(pkh1, privateKey1)]
       requiredSigs = [pkh1]
       ownPkh = pkh1
-      prebalancedTx = PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
+      prebalancedTx =
+        PreBalance.preBalanceTx def minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
 
   txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2])
 
@@ -79,6 +83,23 @@ addUtxosForNativeTokens = do
       privKeys = Map.fromList [(pkh1, privateKey1)]
       requiredSigs = [pkh1]
       ownPkh = pkh1
-      prebalancedTx = PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
+      prebalancedTx =
+        PreBalance.preBalanceTx def minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
 
   txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
+
+addUtxosForChange :: Assertion
+addUtxosForChange = do
+  let txout = TxOut addr2 (Ada.lovelaceValueOf 1_100_000) Nothing
+      tx = mempty {txOutputs = [txout]}
+      minUtxo = [(txout, 1_000_000)]
+      fees = 500_000
+      utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
+      privKeys = Map.fromList [(pkh1, privateKey1)]
+      requiredSigs = [pkh1]
+      ownPkh = pkh1
+      pparams = def {protocolParamUTxOCostPerWord = Just (Lovelace 1)}
+      prebalancedTx =
+        PreBalance.preBalanceTx pparams minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
+
+  txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3])
