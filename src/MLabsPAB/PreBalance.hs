@@ -194,6 +194,8 @@ balanceTxIns pparams utxos fees tx = do
     maybeToRight "UTxOCostPerWord parameter not found" $ protocolParamUTxOCostPerWord pparams
   let txOuts = Tx.txOutputs tx
       nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
+      -- An ada-only UTxO entry is 29 words. More details about min utxo calculation can be found here:
+      -- https://github.com/cardano-foundation/CIPs/tree/master/CIP-0028#rationale-for-parameter-choices
       changeMinUtxo = 29 * utxoCost
       minSpending =
         mconcat
