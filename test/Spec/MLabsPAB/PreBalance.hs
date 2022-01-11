@@ -23,7 +23,7 @@ import Prelude
 tests :: TestTree
 tests =
   testGroup
-    "MLabsPAB.UtxoParser"
+    "MLabsPAB.PreBalance"
     [ testCase "Add utxos to cover fees" addUtxosForFees
     , testCase "Add utxos to cover native tokens" addUtxosForNativeTokens
     , testCase "Add utxos to cover change min utxo" addUtxosForChange
@@ -90,7 +90,7 @@ addUtxosForNativeTokens = do
 
 addUtxosForChange :: Assertion
 addUtxosForChange = do
-  let txout = TxOut addr2 (Ada.lovelaceValueOf 1_100_000) Nothing
+  let txout = TxOut addr2 (Ada.lovelaceValueOf 1_600_000) Nothing
       tx = mempty {txOutputs = [txout]}
       minUtxo = [(txout, 1_000_000)]
       fees = 500_000
