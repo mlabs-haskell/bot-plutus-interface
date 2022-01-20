@@ -117,9 +117,9 @@ handlePABReq contractEnv req = do
     ----------------------
     -- Handled requests --
     ----------------------
-    OwnPublicKeyHashReq ->
+    --OwnPublicKeyHashReq ->
       -- TODO: Should be able to get this from the wallet, hardcoded for now
-      pure $ OwnPublicKeyHashResp $ contractEnv.cePABConfig.pcOwnPubKeyHash
+      --pure $ OwnPublicKeyHashResp $ contractEnv.cePABConfig.pcOwnPubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->

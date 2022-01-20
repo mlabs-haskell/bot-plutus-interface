@@ -4,7 +4,8 @@ import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Address (Address)
+import Ledger.Address (Address, PaymentPubKeyHash (PaymentPubKeyHash))
+import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
@@ -30,15 +31,15 @@ tests =
     ]
 
 privateKey1 :: PrivateKey
-privateKey1 = Wallet.privateKey (Wallet.knownWallet 1)
+privateKey1 = Address.unPaymentPrivateKey . Wallet.paymentPrivateKey $ Wallet.knownMockWallet 1
 
 pkh1, pkh2 :: PubKeyHash
-pkh1 = Wallet.pubKeyHash (Wallet.knownWallet 1)
-pkh2 = Wallet.pubKeyHash (Wallet.knownWallet 2)
+pkh1 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 1
+pkh2 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 2
 
 addr1, addr2 :: Address
-addr1 = Ledger.pubKeyHashAddress pkh1
-addr2 = Ledger.pubKeyHashAddress pkh2
+addr1 = Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh1) Nothing
+addr2 = Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh2) Nothing
 
 txOutRef1, txOutRef2, txOutRef3, txOutRef4 :: TxOutRef
 txOutRef1 = TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0

@@ -181,7 +181,7 @@ buildTx ::
 buildTx pabConf ownPkh buildMode tx =
   callCommand @w $ ShellArgs "cardano-cli" opts (const ())
   where
-    ownAddr = Ledger.pubKeyHashAddress ownPkh
+    ownAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
     requiredSigners =
       concatMap
         (\pubKey -> ["--required-signer", signingKeyFilePath pabConf (Ledger.pubKeyHash pubKey)])

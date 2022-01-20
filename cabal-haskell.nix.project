@@ -9,12 +9,13 @@ source-repository-package
     plutus-chain-index-core
     plutus-contract
     plutus-ledger
+    plutus-ledger-constraints
     plutus-pab
     plutus-playground-server
     plutus-use-cases
     quickcheck-dynamic
     web-ghc
-  tag: 7f7aca8500105d3a0830b40627f1821c9ac7b58e
+  tag: 75a581c6eb98d36192ce3d3f86ea60a04bc4a52a
 
 -- The following sections are copied from the 'plutus-pab' repository cabal.project at the revision
 -- given above.
@@ -236,7 +237,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/input-output-hk/plutus
-  tag: 3f089ccf0ca746b399c99afe51e063b0640af547
+  tag: c8c5183f7facd967d48fe07b3b14465b8dd48fe7
   subdir:
     plutus-core
     plutus-ledger-api

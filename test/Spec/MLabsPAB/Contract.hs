@@ -37,11 +37,11 @@ import Spec.MockContract (
   commandHistory,
   files,
   observableState,
-  pkh1,
   pkh1',
-  pkh2,
-  pkh3,
   pkh3',
+  pkhAddr1,
+  paymentPkh2,
+  paymentPkh3,
   runContractPure,
   utxos,
  )
@@ -71,14 +71,14 @@ tests =
 sendAda :: Assertion
 sendAda = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
-              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
   assertContractWithTxId contract initState $ \state outTxId ->
@@ -150,15 +150,15 @@ sendAda = do
 multisigSupport :: Assertion
 multisigSupport = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract Text (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
-              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
-                <> Constraints.mustBeSignedBy pkh3
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
+                <> Constraints.mustBeSignedBy paymentPkh3
         submitTx constraints
 
   -- Building and siging the tx should include both signing keys
@@ -207,13 +207,13 @@ sendTokens = do
   let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
       txOut1 =
         TxOut
-          (Ledger.pubKeyHashAddress pkh1)
+          pkhAddr1
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "testToken" 100)
           Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
         TxOut
-          (Ledger.pubKeyHashAddress pkh1)
+          pkhAddr1
           (Ada.lovelaceValueOf 1250)
           Nothing
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
@@ -224,7 +224,7 @@ sendTokens = do
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
-                pkh2
+                paymentPkh2
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
         submitTx constraints
 
@@ -251,13 +251,13 @@ sendTokensWithoutName = do
   let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
       txOut1 =
         TxOut
-          (Ledger.pubKeyHashAddress pkh1)
+          pkhAddr1
           (Ada.lovelaceValueOf 1250 <> Value.singleton "abcd1234" "" 100)
           Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
         TxOut
-          (Ledger.pubKeyHashAddress pkh1)
+          pkhAddr1
           (Ada.lovelaceValueOf 1250)
           Nothing
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
@@ -268,7 +268,7 @@ sendTokensWithoutName = do
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
-                pkh2
+                paymentPkh2
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "" 5)
         submitTx constraints
 
@@ -293,7 +293,7 @@ sendTokensWithoutName = do
 mintTokens :: Assertion
 mintTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
@@ -319,7 +319,7 @@ mintTokens = do
         let constraints =
               Constraints.mustMintValue (Value.singleton curSymbol "testToken" 5)
                 <> Constraints.mustPayToPubKey
-                  pkh2
+                  paymentPkh2
                   (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
         submitTxConstraintsWith @Void lookups constraints
 
@@ -371,7 +371,7 @@ mintTokens = do
 spendToValidator :: Assertion
 spendToValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1000) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1000) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
@@ -457,7 +457,7 @@ spendToValidator = do
 redeemFromValidator :: Assertion
 redeemFromValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 100) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 100) Nothing
       txOutRef' = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut' = TxOut valAddr (Ada.lovelaceValueOf 1250) (Just datumHash)
       initState = def & utxos .~ [(txOutRef, txOut), (txOutRef', txOut')]
@@ -502,7 +502,7 @@ redeemFromValidator = do
                 <> Constraints.unspentOutputs utxos'
         let constraints =
               Constraints.mustSpendScriptOutput txOutRef' Ledger.unitRedeemer
-                <> Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 500)
+                <> Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 500)
         submitTxConstraintsWith @Void lookups constraints
 
   assertContractWithTxId contract initState $ \state outTxId -> do
@@ -553,13 +553,13 @@ redeemFromValidator = do
 multiTx :: Assertion
 multiTx = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
 
       contract :: Contract () (Endpoint "SendAda" ()) Text [CardanoTx]
       contract = do
         let constraints =
-              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         tx1 <- submitTx constraints
         tx2 <- submitTx constraints
 
@@ -585,14 +585,14 @@ multiTx = do
 useWriter :: Assertion
 useWriter = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
 
       contract :: Contract (Last Text) (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         tell $ Last $ Just "Init contract"
         let constraints =
-              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         txId <- submitTx constraints
         tell $ Last $ Just $ Text.pack $ show $ Tx.txId <$> txId
         pure txId

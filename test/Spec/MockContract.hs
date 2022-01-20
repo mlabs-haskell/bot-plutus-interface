@@ -22,6 +22,12 @@ module Spec.MockContract (
   addr1,
   addr2,
   addr3,
+  paymentPkh1,
+  paymentPkh2,
+  paymentPkh3,
+  pkhAddr1,
+  pkhAddr2,
+  pkhAddr3,
   commandHistory,
   instanceUpdateHistory,
   logHistory,
@@ -92,6 +98,7 @@ import MLabsPAB.Types (
   PABConfig (..),
  )
 import NeatInterpolation (text)
+import Plutus.ChainIndex.Api (UtxosResponse (..))
 import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
@@ -117,15 +124,25 @@ pkh1 = Ledger.pubKeyHash pubKey1
 pkh2 = Ledger.pubKeyHash pubKey2
 pkh3 = Ledger.pubKeyHash pubKey3
 
+paymentPkh1, paymentPkh2, paymentPkh3 :: Ledger.PaymentPubKeyHash
+paymentPkh1 = Ledger.PaymentPubKeyHash pkh1
+paymentPkh2 = Ledger.PaymentPubKeyHash pkh2
+paymentPkh3 = Ledger.PaymentPubKeyHash pkh3
+
+pkhAddr1, pkhAddr2, pkhAddr3 :: Ledger.Address
+pkhAddr1 = Ledger.pubKeyHashAddress paymentPkh1 Nothing
+pkhAddr2 = Ledger.pubKeyHashAddress paymentPkh2 Nothing
+pkhAddr3 = Ledger.pubKeyHashAddress paymentPkh3 Nothing
+
 pkh1', pkh2', pkh3' :: Text
 pkh1' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh1
 pkh2' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh2
 pkh3' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh3
 
 addr1, addr2, addr3 :: Text
-addr1 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress pkh1)
-addr2 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress pkh2)
-addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress pkh3)
+addr1 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh1 Nothing)
+addr2 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 Nothing)
+addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Nothing)
 
 toPubKey :: SigningKey PaymentKey -> PubKey
 toPubKey = Ledger.toPublicKey . fromRight (error "Impossible happened") . Files.fromCardanoPaymentKey
@@ -420,17 +437,19 @@ mockQueryChainIndex = \case
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress pageQuery _ -> do
     state <- get @(MockContractState w)
-    pure $
-      UtxoSetAtResponse
-        ( state ^. tip
-        , pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))
-        )
+    pure $ UtxoSetAtResponse $
+      UtxosResponse
+        (state ^. tip)
+        (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   UtxoSetWithCurrency pageQuery _ -> do
     state <- get @(MockContractState w)
-    pure $
-      UtxoSetAtResponse
-        ( state ^. tip
-        , pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))
-        )
+    pure $ UtxoSetAtResponse $
+      UtxosResponse
+        (state ^. tip)
+        (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+  TxsFromTxIds _ ->
+    throwError @Text "TxsFromIxIds is unimplemented"
+  TxoSetAtAddress _ _ ->
+    throwError @Text "TxoSetAtAddress is unimplemented"
   GetTip ->
     throwError @Text "GetTip is unimplemented"

@@ -22,7 +22,7 @@ import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
-import Ledger.Constraints.OffChain (UnbalancedTx (..))
+import Ledger.Constraints.OffChain (UnbalancedTx (..), fromScriptOutput)
 import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Scripts (Datum, DatumHash)
 import Ledger.Tx (
@@ -60,11 +60,11 @@ preBalanceTxIO ::
 preBalanceTxIO pabConf ownPkh unbalancedTx =
   runEitherT $
     do
-      utxos <- lift $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress ownPkh
+      utxos <- lift $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
-      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+      let utxoIndex = fmap Tx.toTxOut utxos <> fmap (Ledger.toTxOut . fromScriptOutput) (unBalancedTxUtxoIndex unbalancedTx)
           tx = unBalancedTxTx unbalancedTx
-          requiredSigs = Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+          requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
 
       lift $ printLog @w Debug $ show utxoIndex
 
@@ -217,7 +217,7 @@ addTxCollaterals utxos tx = do
 -- | We need to balance non ada values, as the cardano-cli is unable to balance them (as of 2021/09/24)
 balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
 balanceNonAdaOuts ownPkh utxos tx =
-  let changeAddr = Ledger.pubKeyHashAddress ownPkh
+  let changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
       txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
       inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
       outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
@@ -246,7 +246,7 @@ addSignatories ownPkh privKeys pkhs tx =
   foldM
     ( \tx' pkh ->
         case Map.lookup pkh privKeys of
-          Just privKey -> Right $ Tx.addSignature privKey tx'
+          Just privKey -> Right $ Tx.addSignature' privKey tx'
           Nothing -> Left "Signing key not found."
     )
     tx
