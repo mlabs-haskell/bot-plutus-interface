@@ -9,11 +9,11 @@ import Cardano.PlutusExample.Transfer (
   transfer,
  )
 import Data.Aeson qualified as JSON
-import Ledger.Value (Value)
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Maybe (fromMaybe)
 import Ledger.Crypto (PubKeyHash)
+import Ledger.Value (Value)
 import MLabsPAB qualified
 import MLabsPAB.Types (
   CLILocation (Local),
