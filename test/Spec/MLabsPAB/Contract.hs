@@ -40,6 +40,7 @@ import Spec.MockContract (
   paymentPkh2,
   paymentPkh3,
   pkh1',
+  pkh3,
   pkh3',
   pkhAddr1,
   runContractPure,
@@ -58,6 +59,7 @@ tests =
   testGroup
     "MLabsPAB.Contracts"
     [ testCase "Send ada to address" sendAda
+    , testCase "Send ada to address+staking" sendAdaStaking
     , testCase "Support multiple signatories" multisigSupport
     , testCase "Send native tokens" sendTokens
     , testCase "Send native tokens (without token name)" sendTokensWithoutName
@@ -131,6 +133,88 @@ sendAda = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+        |]
+        )
+      ,
+        ( 7
+        , [text|
+          cardano-cli transaction sign
+          --tx-body-file ./txs/tx-${outTxId}.raw
+          --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
+          --out-file ./txs/tx-${outTxId}.signed
+        |]
+        )
+      ]
+
+sendAdaStaking :: Assertion
+sendAdaStaking = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
+      initState = def & utxos .~ [(txOutRef, txOut)]
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+
+      stakePkh3 = Address.StakePubKeyHash pkh3
+      addr2Staking = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 (Just stakePkh3))
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract = do
+        let constraints =
+              Constraints.mustPayToPubKeyAddress paymentPkh2 stakePkh3 (Ada.lovelaceValueOf 1000)
+        submitTx constraints
+
+  assertContractWithTxId contract initState $ \state outTxId ->
+    assertCommandHistory
+      state
+      [
+        ( 0
+        , [text|
+          cardano-cli query utxo
+          --address ${addr1}
+          --mainnet
+         |]
+        )
+      ,
+        ( 1
+        , [text|
+          cardano-cli transaction calculate-min-required-utxo --alonzo-era
+          --tx-out ${addr2Staking}+1000
+          --protocol-params-file ./protocol.json
+          |]
+        )
+      ,
+        ( 2
+        , [text|
+          cardano-cli transaction build-raw --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2Staking}+1000
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --fee 0
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          |]
+        )
+      ,
+        ( 3
+        , [text|
+          cardano-cli transaction calculate-min-fee
+          --tx-body-file ./txs/tx-${outTxId}.raw
+          --tx-in-count 1
+          --tx-out-count 1
+          --witness-count 1
+          --protocol-params-file ./protocol.json
+          --mainnet
+          |]
+        )
+      ,
+        ( 6
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2Staking}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
