@@ -14,6 +14,7 @@ import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text qualified as Text
+import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
@@ -117,9 +118,9 @@ handlePABReq contractEnv req = do
     ----------------------
     -- Handled requests --
     ----------------------
-    --OwnPublicKeyHashReq ->
+    OwnPaymentPublicKeyHashReq ->
       -- TODO: Should be able to get this from the wallet, hardcoded for now
-      --pure $ OwnPublicKeyHashResp $ contractEnv.cePABConfig.pcOwnPubKeyHash
+      pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash $ contractEnv.cePABConfig.pcOwnPubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
