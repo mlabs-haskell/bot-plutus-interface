@@ -37,11 +37,11 @@ import Spec.MockContract (
   commandHistory,
   files,
   observableState,
+  paymentPkh2,
+  paymentPkh3,
   pkh1',
   pkh3',
   pkhAddr1,
-  paymentPkh2,
-  paymentPkh3,
   runContractPure,
   utxos,
  )

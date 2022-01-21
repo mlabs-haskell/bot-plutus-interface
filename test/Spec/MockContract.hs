@@ -437,16 +437,18 @@ mockQueryChainIndex = \case
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress pageQuery _ -> do
     state <- get @(MockContractState w)
-    pure $ UtxoSetAtResponse $
-      UtxosResponse
-        (state ^. tip)
-        (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+    pure $
+      UtxoSetAtResponse $
+        UtxosResponse
+          (state ^. tip)
+          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   UtxoSetWithCurrency pageQuery _ -> do
     state <- get @(MockContractState w)
-    pure $ UtxoSetAtResponse $
-      UtxosResponse
-        (state ^. tip)
-        (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+    pure $
+      UtxoSetAtResponse $
+        UtxosResponse
+          (state ^. tip)
+          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   TxsFromTxIds _ ->
     throwError @Text "TxsFromIxIds is unimplemented"
   TxoSetAtAddress _ _ ->
