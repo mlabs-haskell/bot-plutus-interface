@@ -5,11 +5,12 @@ module MLabsPAB.PreBalance (
   preBalanceTxIO,
 ) where
 
+import Cardano.Api.Shelley (Lovelace (Lovelace), ProtocolParameters (protocolParamUTxOCostPerWord))
 import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
-import Data.Either.Combinators (rightToMaybe)
+import Data.Either.Combinators (maybeToRight, rightToMaybe)
 import Data.Kind (Type)
 import Data.List (partition, (\\))
 import Data.Map (Map)
@@ -88,7 +89,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
       lift $ printLog @w Debug $ "Min utxos: " ++ show minUtxos
 
       txWithoutFees <-
-        hoistEither $ preBalanceTx minUtxos 0 utxoIndex ownPkh privKeys requiredSigs tx
+        hoistEither $ preBalanceTx pabConf.pcProtocolParams minUtxos 0 utxoIndex ownPkh privKeys requiredSigs tx
 
       lift $ createDirectoryIfMissing @w False (Text.unpack pabConf.pcTxFileDir)
       lift $ CardanoCLI.buildTx @w pabConf ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
@@ -96,7 +97,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
 
       lift $ printLog @w Debug $ "Fees: " ++ show fees
 
-      balancedTx <- hoistEither $ preBalanceTx minUtxos fees utxoIndex ownPkh privKeys requiredSigs tx
+      balancedTx <- hoistEither $ preBalanceTx pabConf.pcProtocolParams minUtxos fees utxoIndex ownPkh privKeys requiredSigs tx
 
       if balancedTx == tx
         then pure balancedTx
@@ -113,6 +114,7 @@ calculateMinUtxos pabConf datums txOuts =
   zipWithM (fmap . (,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo @w pabConf datums) txOuts
 
 preBalanceTx ::
+  ProtocolParameters ->
   [(TxOut, Integer)] ->
   Integer ->
   Map TxOutRef TxOut ->
@@ -121,12 +123,12 @@ preBalanceTx ::
   [PubKeyHash] ->
   Tx ->
   Either Text Tx
-preBalanceTx minUtxos fees utxos ownPkh privKeys requiredSigs tx =
+preBalanceTx pparams minUtxos fees utxos ownPkh privKeys requiredSigs tx =
   addTxCollaterals utxos tx
-    >>= balanceTxIns utxos fees
+    >>= balanceTxIns pparams utxos fees
     >>= balanceNonAdaOuts ownPkh utxos
     >>= Right . addLovelaces minUtxos
-    >>= balanceTxIns utxos fees -- Adding more inputs if required
+    >>= balanceTxIns pparams utxos fees -- Adding more inputs if required
     >>= balanceNonAdaOuts ownPkh utxos
     >>= addSignatories ownPkh privKeys requiredSigs
 
@@ -186,13 +188,18 @@ addLovelaces minLovelaces tx =
           $ txOutputs tx
    in tx {txOutputs = lovelacesAdded}
 
-balanceTxIns :: Map TxOutRef TxOut -> Integer -> Tx -> Either Text Tx
-balanceTxIns utxos fees tx = do
+balanceTxIns :: ProtocolParameters -> Map TxOutRef TxOut -> Integer -> Tx -> Either Text Tx
+balanceTxIns pparams utxos fees tx = do
+  Lovelace utxoCost <-
+    maybeToRight "UTxOCostPerWord parameter not found" $ protocolParamUTxOCostPerWord pparams
   let txOuts = Tx.txOutputs tx
       nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
+      -- An ada-only UTxO entry is 29 words. More details about min utxo calculation can be found here:
+      -- https://github.com/cardano-foundation/CIPs/tree/master/CIP-0028#rationale-for-parameter-choices
+      changeMinUtxo = 29 * utxoCost
       minSpending =
         mconcat
-          [ Ada.lovelaceValueOf fees
+          [ Ada.lovelaceValueOf (fees + changeMinUtxo)
           , nonMintedValue
           ]
   txIns <- collectTxIns (txInputs tx) utxos minSpending

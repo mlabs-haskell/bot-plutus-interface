@@ -1,5 +1,7 @@
 module Spec.MLabsPAB.PreBalance (tests) where
 
+import Cardano.Api.Shelley (Lovelace (Lovelace), ProtocolParameters (protocolParamUTxOCostPerWord))
+import Data.Default (def)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Ledger qualified
@@ -9,12 +11,10 @@ import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
-import Ledger.Value (CurrencySymbol, TokenName)
 import Ledger.Value qualified as Value
 import MLabsPAB.PreBalance qualified as PreBalance
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
-import Test.Tasty.QuickCheck (Positive (..), Property, testProperty, (===))
 import Prelude
 
 {- | Tests for 'cardano-cli query utxo' result parsers
@@ -24,10 +24,10 @@ import Prelude
 tests :: TestTree
 tests =
   testGroup
-    "MLabsPAB.UtxoParser"
+    "MLabsPAB.PreBalance"
     [ testCase "Add utxos to cover fees" addUtxosForFees
     , testCase "Add utxos to cover native tokens" addUtxosForNativeTokens
-    , testProperty "Double pre balancing does not change the result" prop_DoublePreBalancing
+    , testCase "Add utxos to cover change min utxo" addUtxosForChange
     ]
 
 privateKey1 :: PrivateKey
@@ -69,7 +69,8 @@ addUtxosForFees = do
       privKeys = Map.fromList [(pkh1, privateKey1)]
       requiredSigs = [pkh1]
       ownPkh = pkh1
-      prebalancedTx = PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
+      prebalancedTx =
+        PreBalance.preBalanceTx def minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
 
   txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2])
 
@@ -83,39 +84,23 @@ addUtxosForNativeTokens = do
       privKeys = Map.fromList [(pkh1, privateKey1)]
       requiredSigs = [pkh1]
       ownPkh = pkh1
-      prebalancedTx = PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
+      prebalancedTx =
+        PreBalance.preBalanceTx def minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
 
   txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
 
-prop_DoublePreBalancing ::
-  CurrencySymbol ->
-  TokenName ->
-  Positive Integer ->
-  [(Address, Positive Integer, Positive Integer)] ->
-  Property
-prop_DoublePreBalancing curSymbol tokenName (Positive mintAmt) spend =
-  let assetClass = Value.assetClass curSymbol tokenName
-      txouts =
-        map
-          ( \(addr, Positive tokens, Positive lovelaces) ->
-              TxOut
-                addr
-                (Value.assetClassValue assetClass tokens <> Ada.lovelaceValueOf lovelaces)
-                Nothing
-          )
-          spend
-      tx =
-        mempty
-          { txOutputs = txouts
-          , txMint = Value.assetClassValue assetClass mintAmt
-          }
-      minUtxo = map (,1_000_000) txouts
+addUtxosForChange :: Assertion
+addUtxosForChange = do
+  let txout = TxOut addr2 (Ada.lovelaceValueOf 1_600_000) Nothing
+      tx = mempty {txOutputs = [txout]}
+      minUtxo = [(txout, 1_000_000)]
       fees = 500_000
-      utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
+      utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       privKeys = Map.fromList [(pkh1, privateKey1)]
       requiredSigs = [pkh1]
       ownPkh = pkh1
-   in PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
-        === ( PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
-                >>= PreBalance.preBalanceTx minUtxo fees utxoIndex ownPkh privKeys requiredSigs
-            )
+      pparams = def {protocolParamUTxOCostPerWord = Just (Lovelace 1)}
+      prebalancedTx =
+        PreBalance.preBalanceTx pparams minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
+
+  txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3])

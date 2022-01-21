@@ -14,7 +14,7 @@ module MLabsPAB.Types (
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
-import Cardano.Api.Shelley (ProtocolParameters)
+import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
 import Data.Default (Default (def))
@@ -39,7 +39,7 @@ data PABConfig = PABConfig
     pcCliLocation :: !CLILocation
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
-  , pcProtocolParams :: !(Maybe ProtocolParameters)
+  , pcProtocolParams :: !ProtocolParameters
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -93,7 +93,7 @@ instance Default PABConfig where
       { pcCliLocation = Local
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
-      , pcProtocolParams = Nothing
+      , pcProtocolParams = def
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"
       , pcTxFileDir = "./txs"
