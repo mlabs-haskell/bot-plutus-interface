@@ -11,6 +11,7 @@ import Cardano.PlutusExample.NFT (
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Maybe (fromMaybe)
 import Ledger.Value (TokenName)
 import MLabsPAB qualified
 import MLabsPAB.Types (
@@ -46,7 +47,9 @@ $(deriveJSON defaultOptions ''MintNFTContracts)
 
 main :: IO ()
 main = do
-  protocolParams <- JSON.decode <$> LazyByteString.readFile "protocol.json"
+  protocolParams <-
+    fromMaybe (error "protocol.json file not found") . JSON.decode
+      <$> LazyByteString.readFile "protocol.json"
   let pabConf =
         PABConfig
           { pcCliLocation = Local

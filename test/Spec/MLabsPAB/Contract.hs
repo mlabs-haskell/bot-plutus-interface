@@ -37,11 +37,12 @@ import Spec.MockContract (
   commandHistory,
   files,
   observableState,
-  pkh1,
+  paymentPkh2,
+  paymentPkh3,
   pkh1',
-  pkh2,
   pkh3,
   pkh3',
+  pkhAddr1,
   runContractPure,
   utxos,
  )
@@ -58,6 +59,7 @@ tests =
   testGroup
     "MLabsPAB.Contracts"
     [ testCase "Send ada to address" sendAda
+    , testCase "Send ada to address+staking" sendAdaStaking
     , testCase "Support multiple signatories" multisigSupport
     , testCase "Send native tokens" sendTokens
     , testCase "Send native tokens (without token name)" sendTokensWithoutName
@@ -71,14 +73,14 @@ tests =
 sendAda :: Assertion
 sendAda = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
-              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
   assertContractWithTxId contract initState $ \state outTxId ->
@@ -147,18 +149,100 @@ sendAda = do
         )
       ]
 
+sendAdaStaking :: Assertion
+sendAdaStaking = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
+      initState = def & utxos .~ [(txOutRef, txOut)]
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+
+      stakePkh3 = Address.StakePubKeyHash pkh3
+      addr2Staking = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 (Just stakePkh3))
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract = do
+        let constraints =
+              Constraints.mustPayToPubKeyAddress paymentPkh2 stakePkh3 (Ada.lovelaceValueOf 1000)
+        submitTx constraints
+
+  assertContractWithTxId contract initState $ \state outTxId ->
+    assertCommandHistory
+      state
+      [
+        ( 0
+        , [text|
+          cardano-cli query utxo
+          --address ${addr1}
+          --mainnet
+         |]
+        )
+      ,
+        ( 1
+        , [text|
+          cardano-cli transaction calculate-min-required-utxo --alonzo-era
+          --tx-out ${addr2Staking}+1000
+          --protocol-params-file ./protocol.json
+          |]
+        )
+      ,
+        ( 2
+        , [text|
+          cardano-cli transaction build-raw --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2Staking}+1000
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --fee 0
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          |]
+        )
+      ,
+        ( 3
+        , [text|
+          cardano-cli transaction calculate-min-fee
+          --tx-body-file ./txs/tx-${outTxId}.raw
+          --tx-in-count 1
+          --tx-out-count 1
+          --witness-count 1
+          --protocol-params-file ./protocol.json
+          --mainnet
+          |]
+        )
+      ,
+        ( 6
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2Staking}+1000
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+        |]
+        )
+      ,
+        ( 7
+        , [text|
+          cardano-cli transaction sign
+          --tx-body-file ./txs/tx-${outTxId}.raw
+          --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
+          --out-file ./txs/tx-${outTxId}.signed
+        |]
+        )
+      ]
+
 multisigSupport :: Assertion
 multisigSupport = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract Text (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
-              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
-                <> Constraints.mustBeSignedBy pkh3
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
+                <> Constraints.mustBeSignedBy paymentPkh3
         submitTx constraints
 
   -- Building and siging the tx should include both signing keys
@@ -207,13 +291,13 @@ sendTokens = do
   let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
       txOut1 =
         TxOut
-          (Ledger.pubKeyHashAddress pkh1)
+          pkhAddr1
           (Ada.lovelaceValueOf 1300 <> Value.singleton "abcd1234" "testToken" 100)
           Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
         TxOut
-          (Ledger.pubKeyHashAddress pkh1)
+          pkhAddr1
           (Ada.lovelaceValueOf 1250)
           Nothing
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
@@ -224,7 +308,7 @@ sendTokens = do
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
-                pkh2
+                paymentPkh2
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
         submitTx constraints
 
@@ -251,13 +335,13 @@ sendTokensWithoutName = do
   let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
       txOut1 =
         TxOut
-          (Ledger.pubKeyHashAddress pkh1)
+          pkhAddr1
           (Ada.lovelaceValueOf 1300 <> Value.singleton "abcd1234" "" 100)
           Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
         TxOut
-          (Ledger.pubKeyHashAddress pkh1)
+          pkhAddr1
           (Ada.lovelaceValueOf 1250)
           Nothing
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
@@ -268,7 +352,7 @@ sendTokensWithoutName = do
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
-                pkh2
+                paymentPkh2
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "" 5)
         submitTx constraints
 
@@ -293,7 +377,7 @@ sendTokensWithoutName = do
 mintTokens :: Assertion
 mintTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
@@ -319,7 +403,7 @@ mintTokens = do
         let constraints =
               Constraints.mustMintValue (Value.singleton curSymbol "testToken" 5)
                 <> Constraints.mustPayToPubKey
-                  pkh2
+                  paymentPkh2
                   (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
         submitTxConstraintsWith @Void lookups constraints
 
@@ -371,7 +455,7 @@ mintTokens = do
 spendToValidator :: Assertion
 spendToValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1000) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1000) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
@@ -457,7 +541,7 @@ spendToValidator = do
 redeemFromValidator :: Assertion
 redeemFromValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 100) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 100) Nothing
       txOutRef' = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut' = TxOut valAddr (Ada.lovelaceValueOf 1250) (Just datumHash)
       initState = def & utxos .~ [(txOutRef, txOut), (txOutRef', txOut')]
@@ -502,7 +586,7 @@ redeemFromValidator = do
                 <> Constraints.unspentOutputs utxos'
         let constraints =
               Constraints.mustSpendScriptOutput txOutRef' Ledger.unitRedeemer
-                <> Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 500)
+                <> Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 500)
         submitTxConstraintsWith @Void lookups constraints
 
   assertContractWithTxId contract initState $ \state outTxId -> do
@@ -553,13 +637,13 @@ redeemFromValidator = do
 multiTx :: Assertion
 multiTx = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
 
       contract :: Contract () (Endpoint "SendAda" ()) Text [CardanoTx]
       contract = do
         let constraints =
-              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         tx1 <- submitTx constraints
         tx2 <- submitTx constraints
 
@@ -585,14 +669,14 @@ multiTx = do
 useWriter :: Assertion
 useWriter = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut (Ledger.pubKeyHashAddress pkh1) (Ada.lovelaceValueOf 1250) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
 
       contract :: Contract (Last Text) (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         tell $ Last $ Just "Init contract"
         let constraints =
-              Constraints.mustPayToPubKey pkh2 (Ada.lovelaceValueOf 1000)
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         txId <- submitTx constraints
         tell $ Last $ Just $ Text.pack $ show $ Tx.txId <$> txId
         pure txId

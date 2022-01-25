@@ -235,10 +235,10 @@
         "homepage": "",
         "owner": "input-output-hk",
         "repo": "plutus",
-        "rev": "3f089ccf0ca746b399c99afe51e063b0640af547",
-        "sha256": "1nx8xmdgwmnsla4qg4k67f5md8vm3p1p9i25ndalrqdg40z90486",
+        "rev": "c8c5183f7facd967d48fe07b3b14465b8dd48fe7",
+        "sha256": "01fmakdp589h9nllc31s3mkys6gic6ba38s9r3ycfb9r1j5n1cja",
         "type": "tarball",
-        "url": "https://github.com/input-output-hk/plutus/archive/3f089ccf0ca746b399c99afe51e063b0640af547.tar.gz",
+        "url": "https://github.com/input-output-hk/plutus/archive/c8c5183f7facd967d48fe07b3b14465b8dd48fe7.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "plutus-apps": {
@@ -247,10 +247,10 @@
         "homepage": null,
         "owner": "input-output-hk",
         "repo": "plutus-apps",
-        "rev": "7f7aca8500105d3a0830b40627f1821c9ac7b58e",
-        "sha256": "1zn8mhwdwk5ya0i4x8pj906glica62y5pi95l26nav4xldwj8zv0",
+        "rev": "75a581c6eb98d36192ce3d3f86ea60a04bc4a52a",
+        "sha256": "06f0ghj3v2q6gh73kgsr3vqbhr7f7gkbar0c9ry3jmmxny30q6dv",
         "type": "tarball",
-        "url": "https://github.com/input-output-hk/plutus-apps/archive/7f7aca8500105d3a0830b40627f1821c9ac7b58e.tar.gz",
+        "url": "https://github.com/input-output-hk/plutus-apps/archive/75a581c6eb98d36192ce3d3f86ea60a04bc4a52a.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "purescript-bridge": {

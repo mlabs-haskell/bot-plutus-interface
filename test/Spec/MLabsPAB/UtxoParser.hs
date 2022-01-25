@@ -20,6 +20,9 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 import Prelude
 
+pubKeyHashAddress :: Ledger.PubKeyHash -> Address
+pubKeyHashAddress pkh = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash pkh) Nothing
+
 {- | Tests for 'cardano-cli query utxo' result parsers
 
  @since 0.1
@@ -37,7 +40,7 @@ tests =
 
 withoutUtxo :: Assertion
 withoutUtxo = do
-  let addr = Ledger.pubKeyHashAddress "0000"
+  let addr = pubKeyHashAddress "0000"
   testUtxoParser
     addr
     [text|                           TxHash                                 TxIx        Amount
@@ -47,7 +50,7 @@ withoutUtxo = do
 
 singleAdaOnly :: Assertion
 singleAdaOnly = do
-  let addr = Ledger.pubKeyHashAddress "0000"
+  let addr = pubKeyHashAddress "0000"
   testUtxoParser
     addr
     [text|                           TxHash                                 TxIx        Amount
@@ -62,7 +65,7 @@ singleAdaOnly = do
 
 multiAdaOnly :: Assertion
 multiAdaOnly = do
-  let addr = Ledger.pubKeyHashAddress "0000"
+  let addr = pubKeyHashAddress "0000"
   testUtxoParser
     addr
     [text|                           TxHash                                 TxIx        Amount
@@ -87,7 +90,7 @@ multiAdaOnly = do
 
 singleWithNativeTokens :: Assertion
 singleWithNativeTokens = do
-  let addr = Ledger.pubKeyHashAddress "0000"
+  let addr = pubKeyHashAddress "0000"
   testUtxoParser
     addr
     [text|                           TxHash                                 TxIx        Amount

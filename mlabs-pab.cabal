@@ -112,6 +112,7 @@ library
     , plutus-core
     , plutus-ledger
     , plutus-ledger-api
+    , plutus-ledger-constraints
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
@@ -170,6 +171,7 @@ test-suite mlabs-pab-test
     , plutus-core
     , plutus-ledger
     , plutus-ledger-api
+    , plutus-ledger-constraints
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
