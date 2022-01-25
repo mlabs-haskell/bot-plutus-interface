@@ -1,4 +1,4 @@
-module MLabsPAB.UtxoParser (
+module BotPlutusInterface.UtxoParser (
   chainIndexTxOutParser,
   feeParser,
   utxoParser,

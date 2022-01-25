@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module MLabsPAB.Files (
+module BotPlutusInterface.Files (
   policyScriptFilePath,
   validatorScriptFilePath,
   readPrivateKeys,
@@ -17,6 +17,15 @@ module MLabsPAB.Files (
   writeDatumJsonFile,
 ) where
 
+import BotPlutusInterface.Effects (
+  PABEffect,
+  createDirectoryIfMissing,
+  listDirectory,
+  readFileTextEnvelope,
+  writeFileJSON,
+  writeFileTextEnvelope,
+ )
+import BotPlutusInterface.Types (PABConfig)
 import Cardano.Api (
   AsType (AsPaymentKey, AsSigningKey),
   FileError,
@@ -54,15 +63,6 @@ import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
-import MLabsPAB.Effects (
-  PABEffect,
-  createDirectoryIfMissing,
-  listDirectory,
-  readFileTextEnvelope,
-  writeFileJSON,
-  writeFileTextEnvelope,
- )
-import MLabsPAB.Types (PABConfig)
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),

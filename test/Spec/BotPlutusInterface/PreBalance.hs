@@ -1,5 +1,6 @@
-module Spec.MLabsPAB.PreBalance (tests) where
+module Spec.BotPlutusInterface.PreBalance (tests) where
 
+import BotPlutusInterface.PreBalance qualified as PreBalance
 import Cardano.Api.Shelley (Lovelace (Lovelace), ProtocolParameters (protocolParamUTxOCostPerWord))
 import Data.Default (def)
 import Data.Map qualified as Map
@@ -12,7 +13,6 @@ import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
 import Ledger.Value qualified as Value
-import MLabsPAB.PreBalance qualified as PreBalance
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 import Prelude
@@ -24,7 +24,7 @@ import Prelude
 tests :: TestTree
 tests =
   testGroup
-    "MLabsPAB.PreBalance"
+    "BotPlutusInterface.PreBalance"
     [ testCase "Add utxos to cover fees" addUtxosForFees
     , testCase "Add utxos to cover native tokens" addUtxosForNativeTokens
     , testCase "Add utxos to cover change min utxo" addUtxosForChange

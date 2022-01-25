@@ -2,7 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 
-module MLabsPAB.Effects (
+module BotPlutusInterface.Effects (
   PABEffect (..),
   ShellArgs (..),
   handlePABEffect,
@@ -20,6 +20,13 @@ module MLabsPAB.Effects (
   callCommand,
 ) where
 
+import BotPlutusInterface.ChainIndex (handleChainIndexReq)
+import BotPlutusInterface.Types (
+  CLILocation (..),
+  ContractEnvironment,
+  ContractState (ContractState),
+  LogLevel (..),
+ )
 import Cardano.Api (AsType, FileError, HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
@@ -31,13 +38,6 @@ import Data.Aeson qualified as JSON
 import Data.Kind (Type)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import MLabsPAB.ChainIndex (handleChainIndexReq)
-import MLabsPAB.Types (
-  CLILocation (..),
-  ContractEnvironment,
-  ContractState (ContractState),
-  LogLevel (..),
- )
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import System.Directory qualified as Directory

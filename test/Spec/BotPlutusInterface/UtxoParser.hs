@@ -2,8 +2,9 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Spec.MLabsPAB.UtxoParser (tests) where
+module Spec.BotPlutusInterface.UtxoParser (tests) where
 
+import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Data.Attoparsec.Text (parseOnly)
 import Data.Text (Text)
 import Ledger qualified
@@ -14,7 +15,6 @@ import Ledger.Tx (
   TxOutRef (TxOutRef),
  )
 import Ledger.Value qualified as Value
-import MLabsPAB.UtxoParser qualified as UtxoParser
 import NeatInterpolation (text)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
@@ -30,7 +30,7 @@ pubKeyHashAddress pkh = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash pkh) 
 tests :: TestTree
 tests =
   testGroup
-    "MLabsPAB.UtxoParser"
+    "BotPlutusInterface.UtxoParser"
     [ testCase "Without utxo" withoutUtxo
     , testCase "Single utxo, ada only" singleAdaOnly
     , testCase "Multiple utxos, ada only" multiAdaOnly

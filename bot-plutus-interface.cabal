@@ -1,12 +1,12 @@
 cabal-version:      3.0
-name:               mlabs-pab
+name:               bot-plutus-interface
 version:            0.1.0.0
 synopsis:           Unofficial PAB implementation
 description:
   Unofficial PAB imlementation, using the cardano-cli in the background to submit transactions
 
-homepage:           https://github.com/mlabs-haskell/mlabs-pab
-bug-reports:        https://github.com/mlabs-haskell/mlabs-pab
+homepage:           https://github.com/mlabs-haskell/bot-plutus-interface
+bug-reports:        https://github.com/mlabs-haskell/bot-plutus-interface
 license:
 license-file:
 author:             MLabs
@@ -18,7 +18,7 @@ extra-source-files: README.md
 
 source-repository head
   type:     git
-  location: https://github.com/mlabs-haskell/mlabs-pab
+  location: https://github.com/mlabs-haskell/bot-plutus-interface
 
 -- Common sections
 
@@ -75,17 +75,17 @@ common common-lang
 library
   import:          common-lang
   exposed-modules:
-    MLabsPAB
-    MLabsPAB.CardanoCLI
-    MLabsPAB.ChainIndex
-    MLabsPAB.Contract
-    MLabsPAB.Effects
-    MLabsPAB.Files
-    MLabsPAB.PreBalance
-    MLabsPAB.Types
-    MLabsPAB.UtxoParser
+    BotPlutusInterface
+    BotPlutusInterface.CardanoCLI
+    BotPlutusInterface.ChainIndex
+    BotPlutusInterface.Contract
+    BotPlutusInterface.Effects
+    BotPlutusInterface.Files
+    BotPlutusInterface.PreBalance
+    BotPlutusInterface.Types
+    BotPlutusInterface.UtxoParser
 
-  other-modules:   MLabsPAB.Server
+  other-modules:   BotPlutusInterface.Server
   build-depends:
     , aeson                    ^>=1.5.0.0
     , attoparsec               >=0.13.2.2
@@ -135,15 +135,15 @@ library
 
   hs-source-dirs:  src
 
-test-suite mlabs-pab-test
+test-suite bot-plutus-interface-test
   import:         common-lang
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
-    Spec.MLabsPAB.Contract
-    Spec.MLabsPAB.PreBalance
-    Spec.MLabsPAB.UtxoParser
+    Spec.BotPlutusInterface.Contract
+    Spec.BotPlutusInterface.PreBalance
+    Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
 
   build-depends:
@@ -151,6 +151,7 @@ test-suite mlabs-pab-test
     , attoparsec
     , base
     , base-compat
+    , bot-plutus-interface
     , bytestring               ^>=0.10.12.0
     , cardano-api
     , cardano-crypto-class
@@ -163,7 +164,6 @@ test-suite mlabs-pab-test
     , freer-simple
     , generic-arbitrary
     , lens
-    , mlabs-pab
     , neat-interpolation
     , plutus-chain-index
     , plutus-chain-index-core

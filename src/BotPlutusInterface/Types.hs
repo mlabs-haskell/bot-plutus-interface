@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 
-module MLabsPAB.Types (
+module BotPlutusInterface.Types (
   PABConfig (..),
   CLILocation (..),
   AppState (AppState),

@@ -2,6 +2,15 @@
 
 module Main (main) where
 
+import BotPlutusInterface qualified
+import BotPlutusInterface.Types (
+  CLILocation (Local),
+  HasDefinitions (..),
+  LogLevel (Debug),
+  PABConfig (..),
+  SomeBuiltin (..),
+  endpointsToSchemas,
+ )
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.PlutusExample.Game (
   GameSchema,
@@ -14,15 +23,6 @@ import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Maybe (fromMaybe)
-import MLabsPAB qualified
-import MLabsPAB.Types (
-  CLILocation (Local),
-  HasDefinitions (..),
-  LogLevel (Debug),
-  PABConfig (..),
-  SomeBuiltin (..),
-  endpointsToSchemas,
- )
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
@@ -65,4 +65,4 @@ main = do
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
           }
-  MLabsPAB.runPAB @GameContracts pabConf
+  BotPlutusInterface.runPAB @GameContracts pabConf

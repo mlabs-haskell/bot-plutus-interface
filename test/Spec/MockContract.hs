@@ -38,6 +38,16 @@ module Spec.MockContract (
   utxos,
 ) where
 
+import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
+import BotPlutusInterface.Contract (handleContract)
+import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
+import BotPlutusInterface.Files qualified as Files
+import BotPlutusInterface.Types (
+  ContractEnvironment (..),
+  ContractState (ContractState, csActivity, csObservableState),
+  LogLevel (..),
+  PABConfig (..),
+ )
 import Cardano.Api (
   AsType,
   FileError (FileError, FileIOError),
@@ -87,16 +97,6 @@ import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId (TxId (TxId))
 import Ledger.Value qualified as Value
-import MLabsPAB.CardanoCLI (unsafeSerialiseAddress)
-import MLabsPAB.Contract (handleContract)
-import MLabsPAB.Effects (PABEffect (..), ShellArgs (..))
-import MLabsPAB.Files qualified as Files
-import MLabsPAB.Types (
-  ContractEnvironment (..),
-  ContractState (ContractState, csActivity, csObservableState),
-  LogLevel (..),
-  PABConfig (..),
- )
 import NeatInterpolation (text)
 import Plutus.ChainIndex.Api (UtxosResponse (..))
 import Plutus.ChainIndex.Types (BlockId (..), Tip (..))

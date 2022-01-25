@@ -1,8 +1,20 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
 
-module MLabsPAB.Contract (runContract, handleContract) where
+module BotPlutusInterface.Contract (runContract, handleContract) where
 
+import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.Effects (
+  PABEffect,
+  createDirectoryIfMissing,
+  handlePABEffect,
+  logToContract,
+  printLog,
+  queryChainIndex,
+ )
+import BotPlutusInterface.Files qualified as Files
+import BotPlutusInterface.PreBalance qualified as PreBalance
+import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug))
 import Control.Lens ((^.))
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
@@ -18,18 +30,6 @@ import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
-import MLabsPAB.CardanoCLI qualified as CardanoCLI
-import MLabsPAB.Effects (
-  PABEffect,
-  createDirectoryIfMissing,
-  handlePABEffect,
-  logToContract,
-  printLog,
-  queryChainIndex,
- )
-import MLabsPAB.Files qualified as Files
-import MLabsPAB.PreBalance qualified as PreBalance
-import MLabsPAB.Types (ContractEnvironment (..), LogLevel (Debug))
 import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (

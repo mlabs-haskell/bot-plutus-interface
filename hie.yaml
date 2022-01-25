@@ -1,10 +1,10 @@
 cradle:
   cabal:
     - path: "./src"
-      component: "lib:mlabs-pab"
+      component: "lib:bot-plutus-interface"
 
     - path: "./test"
-      component: "test:mlabs-pab-test"
+      component: "test:bot-plutus-interface-test"
 
     - path: "./examples/plutus-nft/src"
       component: "lib:plutus-nft"
