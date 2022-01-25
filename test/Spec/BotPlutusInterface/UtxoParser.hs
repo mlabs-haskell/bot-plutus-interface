@@ -4,6 +4,7 @@
 
 module Spec.BotPlutusInterface.UtxoParser (tests) where
 
+import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Data.Attoparsec.Text (parseOnly)
 import Data.Text (Text)
 import Ledger qualified
@@ -14,7 +15,6 @@ import Ledger.Tx (
   TxOutRef (TxOutRef),
  )
 import Ledger.Value qualified as Value
-import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import NeatInterpolation (text)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))

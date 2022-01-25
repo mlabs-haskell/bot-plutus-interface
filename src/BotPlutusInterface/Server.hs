@@ -2,6 +2,14 @@
 
 module BotPlutusInterface.Server (app, initState) where
 
+import BotPlutusInterface.Contract (runContract)
+import BotPlutusInterface.Types (
+  AppState (AppState),
+  ContractEnvironment (..),
+  ContractState (ContractState, csActivity, csObservableState),
+  PABConfig,
+  SomeContractState (SomeContractState),
+ )
 import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.STM (TVar, atomically, modifyTVar, newTVarIO, readTVar, readTVarIO, retry)
 import Control.Monad (forever, guard, unless, void)
@@ -15,14 +23,6 @@ import Data.Maybe (catMaybes, fromMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.Row (Row)
 import Data.UUID.V4 qualified as UUID
-import BotPlutusInterface.Contract (runContract)
-import BotPlutusInterface.Types (
-  AppState (AppState),
-  ContractEnvironment (..),
-  ContractState (ContractState, csActivity, csObservableState),
-  PABConfig,
-  SomeContractState (SomeContractState),
- )
 import Network.WebSockets (
   Connection,
   PendingConnection,

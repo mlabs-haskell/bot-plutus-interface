@@ -2,10 +2,10 @@
 
 module BotPlutusInterface (runPAB) where
 
-import Data.Aeson (FromJSON)
-import Data.Kind (Type)
 import BotPlutusInterface.Server qualified as Server
 import BotPlutusInterface.Types (PABConfig (..))
+import Data.Aeson (FromJSON)
+import Data.Kind (Type)
 import Network.Wai.Handler.Warp (run)
 import Plutus.PAB.Effects.Contract.Builtin (HasDefinitions)
 import Prelude

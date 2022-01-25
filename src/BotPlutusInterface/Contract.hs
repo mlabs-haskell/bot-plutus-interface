@@ -3,6 +3,18 @@
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
+import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.Effects (
+  PABEffect,
+  createDirectoryIfMissing,
+  handlePABEffect,
+  logToContract,
+  printLog,
+  queryChainIndex,
+ )
+import BotPlutusInterface.Files qualified as Files
+import BotPlutusInterface.PreBalance qualified as PreBalance
+import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug))
 import Control.Lens ((^.))
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
@@ -17,18 +29,6 @@ import Data.Text qualified as Text
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
-import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (
-  PABEffect,
-  createDirectoryIfMissing,
-  handlePABEffect,
-  logToContract,
-  printLog,
-  queryChainIndex,
- )
-import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.PreBalance qualified as PreBalance
-import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug))
 import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (

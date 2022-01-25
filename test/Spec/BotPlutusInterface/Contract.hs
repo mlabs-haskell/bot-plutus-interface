@@ -3,6 +3,7 @@
 
 module Spec.BotPlutusInterface.Contract (tests) where
 
+import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import Cardano.Api (NetworkId (Mainnet))
 import Control.Lens (ix, (&), (.~), (^.), (^?))
 import Data.Aeson (ToJSON)
@@ -25,7 +26,6 @@ import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
-import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import NeatInterpolation (text)
 import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith, tell, utxosAt)
 import PlutusTx qualified
