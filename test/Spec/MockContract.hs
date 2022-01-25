@@ -61,6 +61,7 @@ import Cardano.Api (
   deserialiseFromTextEnvelope,
   serialiseToTextEnvelope,
  )
+import Data.Hex (hex)
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Control.Concurrent.STM (newTVarIO)
@@ -341,7 +342,7 @@ valueToUtxoOut =
                       encodeByteString $
                         fromBuiltin $ Value.unCurrencySymbol curSymbol
                     tokenName' =
-                      decodeUtf8 $
+                      decodeUtf8 $ hex $ 
                         fromBuiltin $ Value.unTokenName tokenName
                  in if Text.null tokenName'
                       then curSymbol'

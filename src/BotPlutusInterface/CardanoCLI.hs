@@ -35,6 +35,7 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either (fromRight)
 import Data.Either.Combinators (mapLeft, maybeToRight)
+import Data.Hex (hex)
 import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
@@ -371,7 +372,7 @@ flatValueToCliArg (curSymbol, name, amount)
   where
     amountStr = showText amount
     curSymbolStr = encodeByteString $ fromBuiltin $ unCurrencySymbol curSymbol
-    tokenNameStr = decodeUtf8 $ fromBuiltin $ unTokenName name
+    tokenNameStr = decodeUtf8 $ hex $ fromBuiltin $ unTokenName name
 
 valueToCliArg :: Value -> Text
 valueToCliArg val =
