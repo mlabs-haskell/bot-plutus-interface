@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Spec.MLabsPAB.Contract (tests) where
+module Spec.BotPlutusInterface.Contract (tests) where
 
 import Cardano.Api (NetworkId (Mainnet))
 import Control.Lens (ix, (&), (.~), (^.), (^?))
@@ -25,7 +25,7 @@ import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
-import MLabsPAB.CardanoCLI (unsafeSerialiseAddress)
+import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import NeatInterpolation (text)
 import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith, tell, utxosAt)
 import PlutusTx qualified
@@ -56,7 +56,7 @@ import Prelude
 tests :: TestTree
 tests =
   testGroup
-    "MLabsPAB.Contracts"
+    "BotPlutusInterface.Contracts"
     [ testCase "Send ada to address" sendAda
     , testCase "Support multiple signatories" multisigSupport
     , testCase "Send native tokens" sendTokens

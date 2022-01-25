@@ -1,9 +1,9 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
-module MLabsPAB.ChainIndex (handleChainIndexReq) where
+module BotPlutusInterface.ChainIndex (handleChainIndexReq) where
 
 import Data.Kind (Type)
-import MLabsPAB.Types (PABConfig)
+import BotPlutusInterface.Types (PABConfig)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Api (UtxoAtAddressRequest (UtxoAtAddressRequest), UtxoWithCurrencyRequest (UtxoWithCurrencyRequest))

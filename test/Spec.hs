@@ -1,8 +1,8 @@
 module Main (main) where
 
-import Spec.MLabsPAB.Contract qualified
-import Spec.MLabsPAB.PreBalance qualified
-import Spec.MLabsPAB.UtxoParser qualified
+import Spec.BotPlutusInterface.Contract qualified
+import Spec.BotPlutusInterface.PreBalance qualified
+import Spec.BotPlutusInterface.UtxoParser qualified
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Prelude
 
@@ -17,8 +17,8 @@ main = defaultMain tests
 tests :: TestTree
 tests =
   testGroup
-    "MLabsPAB"
-    [ Spec.MLabsPAB.Contract.tests
-    , Spec.MLabsPAB.UtxoParser.tests
-    , Spec.MLabsPAB.PreBalance.tests
+    "BotPlutusInterface"
+    [ Spec.BotPlutusInterface.Contract.tests
+    , Spec.BotPlutusInterface.UtxoParser.tests
+    , Spec.BotPlutusInterface.PreBalance.tests
     ]

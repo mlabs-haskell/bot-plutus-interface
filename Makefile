@@ -17,10 +17,10 @@ usage:
 	@echo "Available commands:"
 	@echo "  hoogle              -- Start local hoogle"
 	@echo "  build               -- Run cabal v2-build"
-	@echo "  watch               -- Track files: mlabs-pab.cabal, src/* and run 'make build' on change"
+	@echo "  watch               -- Track files: bot-plutus-interface.cabal, src/* and run 'make build' on change"
 	@echo "  test                -- Run cabal v2-test"
 	@echo "  accept_pirs         -- Accept new PIR changes"
-	@echo "  ghci                -- Run cabal v2-repl mlabs-pab"
+	@echo "  ghci                -- Run cabal v2-repl bot-plutus-interface"
 	@echo "  format              -- Apply source code formatting with fourmolu"
 	@echo "  format_check        -- Check source code formatting without making changes"
 	@echo "  nixfmt              -- Apply nix formatting with nixfmt"
@@ -48,7 +48,7 @@ build: requires_nix_shell
 	cabal v2-build $(GHC_FLAGS)
 
 watch: requires_nix_shell
-	while sleep 1; do find src mlabs-pab.cabal | entr -cd make build; done
+	while sleep 1; do find src bot-plutus-interface.cabal | entr -cd make build; done
 
 test: requires_nix_shell
 	cabal v2-test
@@ -57,7 +57,7 @@ accept_pirs: requires_nix_shell
 	stack build --test $(STACK_FLAGS) $(GHC_FLAGS) --ta '-p MarketAction --accept'
 
 ghci: requires_nix_shell
-	cabal v2-repl $(GHC_FLAGS) mlabs-pab
+	cabal v2-repl $(GHC_FLAGS) bot-plutus-interface
 
 # Source dirs to run fourmolu on
 FORMAT_SOURCES := $(shell git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.hs' )
@@ -113,7 +113,7 @@ update_plutus:
 ################################################################################
 # Geth
 
-build_path = dist-newstyle/build/x86_64-linux/ghc-8.10.4.20210212/mlabs-pab-0.1
+build_path = dist-newstyle/build/x86_64-linux/ghc-8.10.4.20210212/bot-plutus-interface-0.1
 clear_build:
 	@[ ! -e $(build_path) ] || rm -rf $(build_path)
 

@@ -1,7 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
-module MLabsPAB.CardanoCLI (
+module BotPlutusInterface.CardanoCLI (
   BuildMode (..),
   submitTx,
   calculateMinUtxo,
@@ -54,8 +54,8 @@ import Ledger.Tx (
 import Ledger.TxId (TxId (..))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
-import MLabsPAB.Effects (PABEffect, ShellArgs (..), callCommand, uploadDir)
-import MLabsPAB.Files (
+import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, uploadDir)
+import BotPlutusInterface.Files (
   datumJsonFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
@@ -63,8 +63,8 @@ import MLabsPAB.Files (
   txFilePath,
   validatorScriptFilePath,
  )
-import MLabsPAB.Types (PABConfig)
-import MLabsPAB.UtxoParser qualified as UtxoParser
+import BotPlutusInterface.Types (PABConfig)
+import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Plutus.Contract.CardanoAPI (toCardanoAddress)
 import Plutus.V1.Ledger.Api (
   BuiltinData,

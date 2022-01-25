@@ -1,4 +1,4 @@
-# MLabPAB (Plutus Fake PAB)
+# Bot Plutus Interface (formerly MLabsPAB or Plutus Fake PAB)
 
 This is a custom implementation of the PAB as the official one is not ready yet.
 This PAB is not feature complete, and not fully tested with all use cases, so please use it with care!
@@ -78,7 +78,7 @@ main = do
           , -- Protocol params file location relative to the cardano-cli working directory (needed for the cli)
             pcProtocolParamsFile = "./protocol.json"
           }
-  MLabsPAB.runPAB @MyContracts pabConf
+  BotPlutusInterface.runPAB @MyContracts pabConf
 ```
 
 To run the fake PAB, you need to prepare a few more things:
@@ -102,16 +102,16 @@ cardano-cli address key-hash --verification-key-file VERIFICATION_KEY.vkey
 
 The fake PAB consists of the following modules:
 
-- **MLabsPAB** main entry point
-- **MLabsPAB.Server** Servant server, handling http endpoint calls and websockets
-- **MLabsPAB.Contract** handling contract effects by creating the necessary files and calling cardano-cli commands (a few effects are mocked)
-- **MLabsPAB.PreBalance** doing some preparations so the cli can process the rest (non-ada asset balancing, addig tx inputs, adding minimum lovelaces, add signatories)
-- **MLabsPAB.CardanoCLI** wrappers for cardano-cli commands
+- **BotPlutusInterface** main entry point
+- **BotPlutusInterface.Server** Servant server, handling http endpoint calls and websockets
+- **BotPlutusInterface.Contract** handling contract effects by creating the necessary files and calling cardano-cli commands (a few effects are mocked)
+- **BotPlutusInterface.PreBalance** doing some preparations so the cli can process the rest (non-ada asset balancing, addig tx inputs, adding minimum lovelaces, add signatories)
+- **BotPlutusInterface.CardanoCLI** wrappers for cardano-cli commands
 - For development purposes, I created an ssh wrapper, so I can call relay these commands through an ssh connection. This is not nice, unsafe, and pretty slow, so I'm hoping to get rid of this pretty soon.
-- **MLabsPAB.UtxoParser** parse the output of the `cardano-cli query utxo` command
-- **MLabsPAB.Files** functions for handling script, datum and redeemer files
-- **MLabsPAB.Types** configuration for the fake pab
-- **MLabsPAB.PreBalance** prepare a transaction before sending to the cli for balancing. This includes:
+- **BotPlutusInterface.UtxoParser** parse the output of the `cardano-cli query utxo` command
+- **BotPlutusInterface.Files** functions for handling script, datum and redeemer files
+- **BotPlutusInterface.Types** configuration for the fake pab
+- **BotPlutusInterface.PreBalance** prepare a transaction before sending to the cli for balancing. This includes:
   - adding tx inputs to cover fees and outputs
   - adding collaterals,
   - modifying tx outs to contain the minimum amount of lovelaces

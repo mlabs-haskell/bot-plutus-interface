@@ -13,8 +13,8 @@ import Cardano.PlutusExample.Game (
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
-import MLabsPAB qualified
-import MLabsPAB.Types (
+import BotPlutusInterface qualified
+import BotPlutusInterface.Types (
   CLILocation (Local),
   HasDefinitions (..),
   LogLevel (Debug),
@@ -62,4 +62,4 @@ main = do
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
           }
-  MLabsPAB.runPAB @GameContracts pabConf
+  BotPlutusInterface.runPAB @GameContracts pabConf

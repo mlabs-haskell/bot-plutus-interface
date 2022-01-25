@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module MLabsPAB.Files (
+module BotPlutusInterface.Files (
   policyScriptFilePath,
   validatorScriptFilePath,
   readPrivateKeys,
@@ -54,7 +54,7 @@ import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
-import MLabsPAB.Effects (
+import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissing,
   listDirectory,
@@ -62,7 +62,7 @@ import MLabsPAB.Effects (
   writeFileJSON,
   writeFileTextEnvelope,
  )
-import MLabsPAB.Types (PABConfig)
+import BotPlutusInterface.Types (PABConfig)
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),

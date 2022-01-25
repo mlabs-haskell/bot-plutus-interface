@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module MLabsPAB.PreBalance (
+module BotPlutusInterface.PreBalance (
   preBalanceTx,
   preBalanceTxIO,
 ) where
@@ -36,10 +36,10 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value (Value (Value), getValue)
 import Ledger.Value qualified as Value
-import MLabsPAB.CardanoCLI qualified as CardanoCLI
-import MLabsPAB.Effects (PABEffect, createDirectoryIfMissing, printLog)
-import MLabsPAB.Files qualified as Files
-import MLabsPAB.Types (LogLevel (Debug), PABConfig)
+import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissing, printLog)
+import BotPlutusInterface.Files qualified as Files
+import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
 import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),

@@ -2,7 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 
-module MLabsPAB.Effects (
+module BotPlutusInterface.Effects (
   PABEffect (..),
   ShellArgs (..),
   handlePABEffect,
@@ -31,8 +31,8 @@ import Data.Aeson qualified as JSON
 import Data.Kind (Type)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import MLabsPAB.ChainIndex (handleChainIndexReq)
-import MLabsPAB.Types (
+import BotPlutusInterface.ChainIndex (handleChainIndexReq)
+import BotPlutusInterface.Types (
   CLILocation (..),
   ContractEnvironment,
   ContractState (ContractState),

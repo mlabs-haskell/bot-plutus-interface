@@ -1,5 +1,5 @@
 {
-  description = "mlabs-pab";
+  description = "bot-plutus-interface";
 
   inputs.haskell-nix.url = "github:input-output-hk/haskell.nix";
   inputs.nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
