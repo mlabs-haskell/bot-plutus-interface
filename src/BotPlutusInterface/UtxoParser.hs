@@ -125,7 +125,7 @@ decodeHash rawParser =
 
 decodeHex :: Parser Text -> Parser Text
 decodeHex rawParser =
-  rawParser >>= \parsed -> either (const mzero) pure ((fmap decodeUtf8 . unhex . encodeUtf8) parsed)
+  rawParser >>= \parsed -> either (const mzero) (pure . decodeUtf8) ((unhex . encodeUtf8) parsed)
 
 feeParser :: Parser Integer
 feeParser =
