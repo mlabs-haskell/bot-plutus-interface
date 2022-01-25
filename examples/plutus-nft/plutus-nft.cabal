@@ -74,9 +74,9 @@ library
   import:          common-lang
   exposed-modules: Cardano.PlutusExample.NFT
   build-depends:
-    , aeson                    ^>=1.5.0.0
-    , attoparsec               >=0.13.2.2
-    , bytestring               ^>=0.10.12.0
+    , aeson                      ^>=1.5.0.0
+    , attoparsec                 >=0.13.2.2
+    , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
@@ -99,6 +99,7 @@ library
     , plutus-core
     , plutus-ledger
     , plutus-ledger-api
+    , plutus-ledger-constraints
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
@@ -111,7 +112,7 @@ library
     , servant-websockets
     , split
     , stm
-    , text                     ^>=1.2.4.0
+    , text                       ^>=1.2.4.0
     , transformers
     , transformers-either
     , uuid

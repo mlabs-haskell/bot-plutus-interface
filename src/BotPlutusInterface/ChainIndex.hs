@@ -6,7 +6,11 @@ import BotPlutusInterface.Types (PABConfig)
 import Data.Kind (Type)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types (Status (statusCode))
-import Plutus.ChainIndex.Api (UtxoAtAddressRequest (UtxoAtAddressRequest), UtxoWithCurrencyRequest (UtxoWithCurrencyRequest))
+import Plutus.ChainIndex.Api (
+  TxoAtAddressRequest (TxoAtAddressRequest),
+  UtxoAtAddressRequest (UtxoAtAddressRequest),
+  UtxoWithCurrencyRequest (UtxoWithCurrencyRequest),
+ )
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Servant.Client (
@@ -52,6 +56,12 @@ handleChainIndexReq pabConf = \case
         (ChainIndexClient.getUtxoSetWithCurrency (UtxoWithCurrencyRequest (Just page) assetClass))
   GetTip ->
     GetTipResponse <$> chainIndexQueryMany pabConf ChainIndexClient.getTip
+  TxsFromTxIds txIds -> TxIdsResponse <$> chainIndexQueryMany pabConf (ChainIndexClient.getTxs txIds)
+  TxoSetAtAddress page credential ->
+    TxoSetAtResponse
+      <$> chainIndexQueryMany
+        pabConf
+        (ChainIndexClient.getTxoSetAtAddress (TxoAtAddressRequest (Just page) credential))
 
 chainIndexQuery' :: forall (a :: Type). PABConfig -> ClientM a -> IO (Either ClientError a)
 chainIndexQuery' pabConf endpoint = do

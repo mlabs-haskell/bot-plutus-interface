@@ -65,8 +65,8 @@ type NFTSchema =
 
 mintNft :: TokenName -> Contract (Last Text) NFTSchema Text ()
 mintNft tn = do
-  pkh <- Contract.ownPubKeyHash
-  utxos <- utxosAt (pubKeyHashAddress pkh)
+  pkh <- Contract.ownPaymentPubKeyHash
+  utxos <- utxosAt (pubKeyHashAddress pkh Nothing)
   tell $ Last $ Just "Contract started with "
   case Map.keys utxos of
     [] -> Contract.logError @String "no utxo found"
