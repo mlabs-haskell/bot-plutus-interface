@@ -87,9 +87,9 @@ library
 
   other-modules:   BotPlutusInterface.Server
   build-depends:
-    , aeson                    ^>=1.5.0.0
-    , attoparsec               >=0.13.2.2
-    , bytestring               ^>=0.10.12.0
+    , aeson                      ^>=1.5.0.0
+    , attoparsec                 >=0.13.2.2
+    , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
@@ -101,6 +101,7 @@ library
     , filepath
     , freer-extras
     , freer-simple
+    , hex
     , http-client
     , http-types
     , lens
@@ -125,7 +126,7 @@ library
     , servant-websockets
     , split
     , stm
-    , text                     ^>=1.2.4.0
+    , text                       ^>=1.2.4.0
     , transformers
     , transformers-either
     , uuid
@@ -147,12 +148,12 @@ test-suite bot-plutus-interface-test
     Spec.MockContract
 
   build-depends:
-    , aeson                    ^>=1.5.0.0
+    , aeson                      ^>=1.5.0.0
     , attoparsec
     , base
     , base-compat
     , bot-plutus-interface
-    , bytestring               ^>=0.10.12.0
+    , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto-class
     , containers
@@ -163,6 +164,7 @@ test-suite bot-plutus-interface-test
     , freer-extras
     , freer-simple
     , generic-arbitrary
+    , hex
     , lens
     , neat-interpolation
     , plutus-chain-index
@@ -183,7 +185,7 @@ test-suite bot-plutus-interface-test
     , tasty
     , tasty-hunit
     , tasty-quickcheck
-    , text                     ^>=1.2.4.0
+    , text                       ^>=1.2.4.0
     , uuid
 
   hs-source-dirs: test

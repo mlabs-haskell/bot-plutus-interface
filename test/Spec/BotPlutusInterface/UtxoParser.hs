@@ -95,7 +95,7 @@ singleWithNativeTokens = do
     addr
     [text|                           TxHash                                 TxIx        Amount
           --------------------------------------------------------------------------------------
-          384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51     0        1234 lovelace + 2345 057910a2c93551443cb2c0544d1d65da3fb033deaa79452bd431ee08.testToken + 3456 7c6de14062b27c3dc3ba9f232ade32efe22fb8e2ae76b24f33212fdb.testToken2 + 4567 98a759ed2e20f6d83aa4d37d028d4bbb547a696fc345d54126188614 + TxOutDatumNone
+          384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51     0        1234 lovelace + 2345 057910a2c93551443cb2c0544d1d65da3fb033deaa79452bd431ee08.74657374546f6b656e + 3456 7c6de14062b27c3dc3ba9f232ade32efe22fb8e2ae76b24f33212fdb.74657374546f6b656e32 + 4567 98a759ed2e20f6d83aa4d37d028d4bbb547a696fc345d54126188614 + TxOutDatumNone
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0

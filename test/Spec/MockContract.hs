@@ -77,6 +77,7 @@ import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight, mapLeft)
+import Data.Hex (hex)
 import Data.Kind (Type)
 import Data.List (isPrefixOf)
 import Data.Map (Map)
@@ -342,7 +343,8 @@ valueToUtxoOut =
                         fromBuiltin $ Value.unCurrencySymbol curSymbol
                     tokenName' =
                       decodeUtf8 $
-                        fromBuiltin $ Value.unTokenName tokenName
+                        hex $
+                          fromBuiltin $ Value.unTokenName tokenName
                  in if Text.null tokenName'
                       then curSymbol'
                       else [text|${curSymbol'}.${tokenName'}|]

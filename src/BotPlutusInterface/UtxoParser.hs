@@ -24,8 +24,9 @@ import Data.Attoparsec.Text (
   takeWhile,
   (<?>),
  )
+import Data.Hex (unhex)
 import Data.Text (Text)
-import Data.Text.Encoding (encodeUtf8)
+import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Ledger (Address (addressCredential))
 import Ledger.Ada qualified as Ada
 import Ledger.Scripts (DatumHash (..))
@@ -105,7 +106,7 @@ tokenNameParser = do
   where
     tokenName = do
       void $ char '.'
-      Value.tokenName . encodeUtf8 <$> takeWhile (/= ' ')
+      Value.tokenName . encodeUtf8 <$> decodeHex (takeWhile (/= ' '))
 
 datumHashNoneParser :: Parser ()
 datumHashNoneParser = "TxOutDatumNone" >> pure ()
@@ -121,6 +122,10 @@ datumHashParser = do
 decodeHash :: Parser Text -> Parser BuiltinByteString
 decodeHash rawParser =
   rawParser >>= \parsed -> either (const mzero) (pure . toBuiltin) (tryDecode parsed)
+
+decodeHex :: Parser Text -> Parser Text
+decodeHex rawParser =
+  rawParser >>= \parsed -> either (const mzero) (pure . decodeUtf8) ((unhex . encodeUtf8) parsed)
 
 feeParser :: Parser Integer
 feeParser =
