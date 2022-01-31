@@ -94,13 +94,14 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
 import Ledger.Scripts (DatumHash (DatumHash))
+import Ledger.Slot (Slot (getSlot))
 import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId (TxId (TxId))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
 import Plutus.ChainIndex.Api (UtxosResponse (..))
-import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
+import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
@@ -240,7 +241,7 @@ runPABEffectPure ::
   Eff '[PABEffect w] a ->
   (Either Text a, MockContractState w)
 runPABEffectPure initState req =
-  run (runState initState (runError (reinterpret2 go req)))
+  run (runState initState (runError (reinterpret2 (incSlot . go) req)))
   where
     go :: forall (v :: Type). PABEffect w v -> MockContract w v
     go (CallCommand args) = mockCallCommand args
@@ -258,6 +259,18 @@ runPABEffectPure initState req =
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
 
+    incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
+    incSlot mc =
+      mc <* modify @(MockContractState w) (tip %~ incTip)
+
+    incTip TipAtGenesis = Tip 1 (BlockId "00") 0
+    incTip Tip {tipSlot, tipBlockId, tipBlockNo} =
+      Tip
+        { tipSlot = tipSlot + 1
+        , tipBlockId = tipBlockId
+        , tipBlockNo = tipBlockNo
+        }
+
 mockCallCommand ::
   forall (w :: Type) (a :: Type).
   ShellArgs a ->
@@ -266,6 +279,8 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
   modify @(MockContractState w) (commandHistory %~ (cmdName <> " " <> Text.unwords cmdArgs <|))
 
   case (cmdName, cmdArgs) of
+    ("cardano-cli", "query" : "tip" : _) ->
+      cmdOutParser <$> mockQueryTip
     ("cardano-cli", "query" : "utxo" : "--address" : addr : _) ->
       cmdOutParser <$> mockQueryUtxo addr
     ("cardano-cli", "transaction" : "calculate-min-required-utxo" : _) ->
@@ -295,7 +310,27 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
       pure $ cmdOutParser ""
     ("cardano-cli", "transaction" : "submit" : _) ->
       pure $ cmdOutParser ""
-    _ -> throwError @Text "Unknown command"
+    (unsupportedCmd, unsupportedArgs) ->
+      throwError @Text
+        ("Unsupported command: " <> Text.intercalate " " (unsupportedCmd : unsupportedArgs))
+
+mockQueryTip :: forall (w :: Type). MockContract w String
+mockQueryTip = do
+  state <- get @(MockContractState w)
+
+  let slot = Text.pack $ show $ getSlot $ tipSlot (state ^. tip)
+      blockId = decodeUtf8 $ getBlockId $ tipBlockId (state ^. tip)
+      blockNo = Text.pack $ show $ unBlockNumber $ tipBlockNo (state ^. tip)
+  pure $
+    Text.unpack
+      [text|{
+              "era": "Alonzo",
+              "syncProgress": "100.00",
+              "hash": "${blockId}",
+              "epoch": 1,
+              "slot": ${slot},
+              "block": ${blockNo}
+            }|]
 
 mockQueryUtxo :: forall (w :: Type). Text -> MockContract w String
 mockQueryUtxo addr = do

@@ -13,6 +13,7 @@ module BotPlutusInterface.CardanoCLI (
   unsafeSerialiseAddress,
   policyScriptFilePath,
   utxosAt,
+  queryTip,
 ) where
 
 import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, uploadDir)
@@ -24,14 +25,16 @@ import BotPlutusInterface.Files (
   txFilePath,
   validatorScriptFilePath,
  )
-import BotPlutusInterface.Types (PABConfig)
+import BotPlutusInterface.Types (PABConfig, Tip)
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
 import Codec.Serialise qualified as Codec
 import Control.Monad.Freer (Eff, Member)
+import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.ByteString.Lazy.Char8 qualified as Char8
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either (fromRight)
 import Data.Either.Combinators (mapLeft, maybeToRight)
@@ -40,7 +43,7 @@ import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (maybeToList)
+import Data.Maybe (fromMaybe, maybeToList)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -92,6 +95,20 @@ uploadFiles pabConf =
     [ pabConf.pcScriptFileDir
     , pabConf.pcSigningKeyFileDir
     ]
+
+-- | Getting information of the latest block
+queryTip ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  Eff effs Tip
+queryTip config =
+  callCommand @w
+    ShellArgs
+      { cmdName = "cardano-cli"
+      , cmdArgs = mconcat [["query", "tip"], networkOpt config]
+      , cmdOutParser = fromMaybe (error "Couldn't parse chain tip") . JSON.decode . Char8.pack
+      }
 
 -- | Getting all available UTXOs at an address (all utxos are assumed to be PublicKeyChainIndexTxOut)
 utxosAt ::

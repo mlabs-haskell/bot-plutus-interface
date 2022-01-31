@@ -22,12 +22,22 @@ import Ledger.Ada qualified as Ada
 import Ledger.Address qualified as Address
 import Ledger.Constraints qualified as Constraints
 import Ledger.Scripts qualified as Scripts
+import Ledger.Slot (Slot)
 import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith, tell, utxosAt)
+import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
+import Plutus.Contract (
+  Contract (..),
+  Endpoint,
+  submitTx,
+  submitTxConstraintsWith,
+  tell,
+  utxosAt,
+  waitNSlots,
+ )
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import Spec.MockContract (
@@ -44,6 +54,7 @@ import Spec.MockContract (
   pkh3',
   pkhAddr1,
   runContractPure,
+  tip,
   utxos,
  )
 import Test.Tasty (TestTree, testGroup)
@@ -59,7 +70,7 @@ tests =
   testGroup
     "BotPlutusInterface.Contracts"
     [ testCase "Send ada to address" sendAda
-    , testCase "Send ada to address+staking" sendAdaStaking
+    , testCase "Send ada to address with staking key" sendAdaStaking
     , testCase "Support multiple signatories" multisigSupport
     , testCase "Send native tokens" sendTokens
     , testCase "Send native tokens (without token name)" sendTokensWithoutName
@@ -68,6 +79,7 @@ tests =
     , testCase "Redeem from validator script" redeemFromValidator
     , testCase "Multiple txs in a contract" multiTx
     , testCase "Use Writer in a contract" useWriter
+    , testCase "Wait for next block" waitNextBlock
     ]
 
 sendAda :: Assertion
@@ -684,6 +696,29 @@ useWriter = do
   assertContractWithTxId contract initState $ \state outTxId -> do
     (state ^. observableState)
       @?= Last (Just ("Right " <> outTxId))
+
+waitNextBlock :: Assertion
+waitNextBlock = do
+  let initSlot = 1000
+      initTip = Tip initSlot (BlockId "ab12") 4
+      initState = def & tip .~ initTip
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text Slot
+      contract = waitNSlots 1
+
+  let (result, state) = runContractPure contract initState
+
+  case result of
+    Left errMsg -> assertFailure (show errMsg)
+    Right slot -> do
+      assertBool "Current Slot is too small" (initSlot + 1 < slot)
+      assertCommandHistory
+        state
+        [
+          ( 0
+          , [text| cardano-cli query tip --mainnet |]
+          )
+        ]
 
 assertFiles :: forall (w :: Type). MockContractState w -> [Text] -> Assertion
 assertFiles state expectedFiles =

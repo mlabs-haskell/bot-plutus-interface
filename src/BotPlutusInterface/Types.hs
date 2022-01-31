@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE RankNTypes #-}
 
 module BotPlutusInterface.Types (
@@ -6,6 +7,7 @@ module BotPlutusInterface.Types (
   AppState (AppState),
   LogLevel (..),
   ContractEnvironment (..),
+  Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
   SomeContractState (SomeContractState),
   HasDefinitions (..),
@@ -17,10 +19,12 @@ import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
+import Data.Aeson qualified as JSON
 import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
+import GHC.Generics (Generic)
 import Ledger (PubKeyHash)
 import Network.Wai.Handler.Warp (Port)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -63,6 +67,17 @@ data ContractEnvironment w = ContractEnvironment
   , ceWallet :: Wallet
   }
   deriving stock (Show)
+
+data Tip = Tip
+  { epoch :: Integer
+  , hash :: Text
+  , slot :: Integer
+  , block :: Integer
+  , era :: Text
+  , syncProgress :: Text
+  }
+  deriving stock (Show, Generic)
+  deriving anyclass (JSON.FromJSON)
 
 instance Show (TVar (ContractState w)) where
   show _ = "<ContractState>"
