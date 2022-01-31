@@ -14,6 +14,7 @@ import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
+import Data.Default (Default (def))
 import Data.Either.Combinators (maybeToRight, rightToMaybe)
 import Data.Kind (Type)
 import Data.List (partition, (\\))
@@ -30,6 +31,8 @@ import Ledger.Address (Address (..))
 import Ledger.Constraints.OffChain (UnbalancedTx (..), fromScriptOutput)
 import Ledger.Crypto (PrivateKey, PubKeyHash)
 import Ledger.Scripts (Datum, DatumHash)
+import Ledger.Time (POSIXTimeRange)
+import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange)
 import Ledger.Tx (
   Tx (..),
   TxIn (..),
@@ -64,7 +67,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
       utxos <- lift $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> fmap (Ledger.toTxOut . fromScriptOutput) (unBalancedTxUtxoIndex unbalancedTx)
-          tx = unBalancedTxTx unbalancedTx
+          tx = addValidRange (unBalancedTxValidityTimeRange unbalancedTx) (unBalancedTxTx unbalancedTx)
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
 
       lift $ printLog @w Debug $ show utxoIndex
@@ -258,6 +261,10 @@ addSignatories ownPkh privKeys pkhs tx =
     )
     tx
     (ownPkh : pkhs)
+
+addValidRange :: POSIXTimeRange -> Tx -> Tx
+addValidRange timeRange tx =
+  tx {txValidRange = posixTimeRangeToContainedSlotRange def timeRange}
 
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show

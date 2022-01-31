@@ -21,8 +21,10 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address qualified as Address
 import Ledger.Constraints qualified as Constraints
+import Ledger.Interval (interval)
 import Ledger.Scripts qualified as Scripts
 import Ledger.Slot (Slot)
+import Ledger.Time (POSIXTime (POSIXTime))
 import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
@@ -78,6 +80,7 @@ tests =
     , testCase "Spend to validator script" spendToValidator
     , testCase "Redeem from validator script" redeemFromValidator
     , testCase "Multiple txs in a contract" multiTx
+    , testCase "With valid range" withValidRange
     , testCase "Use Writer in a contract" useWriter
     , testCase "Wait for next block" waitNextBlock
     ]
@@ -677,6 +680,53 @@ multiTx = do
             , [text|./txs/tx-${outTxId2}.signed|]
             ]
     Right _ -> assertFailure "Wrong number of txs"
+
+withValidRange :: Assertion
+withValidRange = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
+      initState = def & utxos .~ [(txOutRef, txOut)]
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract = do
+        let constraints =
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
+                <> Constraints.mustValidateIn (interval (POSIXTime 1643636293000) (POSIXTime 1646314693000))
+        submitTx constraints
+
+  assertContractWithTxId contract initState $ \state outTxId ->
+    assertCommandHistory
+      state
+      [
+        ( 2
+        , [text|
+          cardano-cli transaction build-raw --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000
+          --invalid-hereafter 47577202
+          --invalid-before 50255602
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --fee 0
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          |]
+        )
+      ,
+        ( 6
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000
+          --invalid-hereafter 47577202
+          --invalid-before 50255602
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+        |]
+        )
+      ]
 
 useWriter :: Assertion
 useWriter = do

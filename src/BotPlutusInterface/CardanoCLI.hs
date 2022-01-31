@@ -12,6 +12,7 @@ module BotPlutusInterface.CardanoCLI (
   validatorScriptFilePath,
   unsafeSerialiseAddress,
   policyScriptFilePath,
+  validateRange,
   utxosAt,
   queryTip,
 ) where
@@ -49,10 +50,17 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
+import Ledger (Slot (Slot), SlotRange)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
 import Ledger.Crypto (PubKey, PubKeyHash)
+import Ledger.Interval (
+  Extended (Finite, NegInf, PosInf),
+  Interval (Interval),
+  LowerBound (LowerBound),
+  UpperBound (UpperBound),
+ )
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
@@ -185,9 +193,7 @@ isRawBuildMode :: BuildMode -> Bool
 isRawBuildMode (BuildRaw _) = True
 isRawBuildMode _ = False
 
-{- | Build a tx body and write it to disk
- If a fee if specified, it uses the build-raw command
--}
+-- | Build a tx body and write it to disk
 buildTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -211,6 +217,7 @@ buildTx pabConf ownPkh buildMode tx =
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mintOpts pabConf buildMode (txMintScripts tx) (txRedeemers tx) (txMint tx)
+        , validRangeOpts (txValidRange tx)
         , requiredSigners
         , case buildMode of
             BuildRaw fee -> ["--fee", showText fee]
@@ -350,6 +357,20 @@ mintOpts pabConf buildMode mintingPolicies redeemers mintValue =
         else []
     ]
 
+-- | This function does not check if the range is valid, that
+validRangeOpts :: SlotRange -> [Text]
+validRangeOpts (Interval lowerBound upperBound) =
+  mconcat
+    [ case lowerBound of
+        LowerBound (Finite (Slot x)) True -> ["--invalid-hereafter", showText x]
+        LowerBound (Finite (Slot x)) False -> ["--invalid-hereafter", showText (x + 1)]
+        _ -> []
+    , case upperBound of
+        UpperBound (Finite (Slot x)) True -> ["--invalid-before", showText (x + 1)]
+        UpperBound (Finite (Slot x)) False -> ["--invalid-before", showText x]
+        _ -> []
+    ]
+
 txOutOpts :: PABConfig -> Map DatumHash Datum -> [TxOut] -> [Text]
 txOutOpts pabConf datums =
   concatMap
@@ -416,6 +437,14 @@ exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
 
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
+
+validateRange :: SlotRange -> Bool
+validateRange (Interval (LowerBound PosInf _) _) = False
+validateRange (Interval _ (UpperBound NegInf _)) = False
+validateRange (Interval (LowerBound (Finite lowerBound) _) (UpperBound (Finite upperBound) _))
+  | lowerBound >= upperBound = False
+  | otherwise = True
+validateRange _ = True
 
 -- -- TODO: There is some issue with this function, the generated wallet key is incorrect
 -- toWalletKey :: Wallet -> Text
