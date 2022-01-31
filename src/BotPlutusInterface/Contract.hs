@@ -23,13 +23,16 @@ import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Data.Aeson (ToJSON, Value)
+import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text qualified as Text
+import Ledger (POSIXTime)
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
+import Ledger.TimeSlot (slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
@@ -133,6 +136,7 @@ handlePABReq contractEnv req = do
       WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
     CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
+    CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -140,7 +144,6 @@ handlePABReq contractEnv req = do
     -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
     -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
     AwaitTxStatusChangeReq txId -> pure $ AwaitTxStatusChangeResp txId (Committed TxValid ())
-    -- CurrentTimeReq -> CurrentTimeResp POSIXTime
     -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
     -- PosixTimeRangeToContainedSlotRangeReq POSIXTimeRange -> PosixTimeRangeToContainedSlotRangeResp (Either SlotConversionError SlotRange)
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
@@ -237,3 +240,11 @@ currentSlot ::
   Eff effs Slot
 currentSlot contractEnv =
   Slot . slot <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+
+currentTime ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Eff effs POSIXTime
+currentTime contractEnv =
+  slotToEndPOSIXTime def <$> currentSlot @w contractEnv
