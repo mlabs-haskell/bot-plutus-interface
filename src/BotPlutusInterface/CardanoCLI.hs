@@ -12,7 +12,6 @@ module BotPlutusInterface.CardanoCLI (
   validatorScriptFilePath,
   unsafeSerialiseAddress,
   policyScriptFilePath,
-  validateRange,
   utxosAt,
   queryTip,
 ) where
@@ -56,7 +55,7 @@ import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
 import Ledger.Crypto (PubKey, PubKeyHash)
 import Ledger.Interval (
-  Extended (Finite, NegInf, PosInf),
+  Extended (Finite),
   Interval (Interval),
   LowerBound (LowerBound),
   UpperBound (UpperBound),
@@ -437,14 +436,6 @@ exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
 
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
-
-validateRange :: SlotRange -> Bool
-validateRange (Interval (LowerBound PosInf _) _) = False
-validateRange (Interval _ (UpperBound NegInf _)) = False
-validateRange (Interval (LowerBound (Finite lowerBound) _) (UpperBound (Finite upperBound) _))
-  | lowerBound >= upperBound = False
-  | otherwise = True
-validateRange _ = True
 
 -- -- TODO: There is some issue with this function, the generated wallet key is incorrect
 -- toWalletKey :: Wallet -> Text
