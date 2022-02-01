@@ -229,7 +229,7 @@ awaitSlot contractEnv (Slot n) = do
     waitNSlots' refSlot = do
       threadDelay @w 10_000_000
       tip' <- CardanoCLI.queryTip @w contractEnv.cePABConfig
-      if (tip'.slot < n)
+      if tip'.slot < n
         then waitNSlots' refSlot
         else pure $ Slot tip'.slot
 
