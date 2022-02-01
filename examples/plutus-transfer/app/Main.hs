@@ -3,16 +3,6 @@
 
 module Main (main) where
 
-import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
-import Cardano.PlutusExample.Transfer (
-  TransferSchema,
-  TransferParams,
-  transfer,
- )
-import Data.Aeson qualified as JSON
-import Data.Aeson.TH (defaultOptions, deriveJSON)
-import Data.ByteString.Lazy qualified as LazyByteString
-import Data.Maybe (fromMaybe)
 import BotPlutusInterface qualified
 import BotPlutusInterface.Types (
   CLILocation (Local),
@@ -22,6 +12,16 @@ import BotPlutusInterface.Types (
   SomeBuiltin (..),
   endpointsToSchemas,
  )
+import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
+import Cardano.PlutusExample.Transfer (
+  TransferParams,
+  TransferSchema,
+  transfer,
+ )
+import Data.Aeson qualified as JSON
+import Data.Aeson.TH (defaultOptions, deriveJSON)
+import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Maybe (fromMaybe)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))

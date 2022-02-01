@@ -36,7 +36,7 @@ transfer (TransferParams outputPerTx allPayments) = do
   tell $ Last $ Just "Contract started"
   let txs =
         map (mconcat . map (uncurry Constraints.mustPayToPubKey . first PaymentPubKeyHash)) $
-          group outputPerTx $ allPayments
+          group outputPerTx allPayments
   forM_ txs $ \tx -> submitTx tx >> waitNSlots 1
   tell $ Last $ Just "Finished"
 
