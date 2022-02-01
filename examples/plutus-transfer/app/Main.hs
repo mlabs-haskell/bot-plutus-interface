@@ -6,14 +6,13 @@ module Main (main) where
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.PlutusExample.Transfer (
   TransferSchema,
+  TransferParams,
   transfer,
  )
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Maybe (fromMaybe)
-import Ledger.Crypto (PubKeyHash)
-import Ledger.Value (Value)
 import BotPlutusInterface qualified
 import BotPlutusInterface.Types (
   CLILocation (Local),
@@ -40,7 +39,7 @@ instance HasDefinitions TransferContracts where
     Transfer payments ->
       SomeBuiltin $ transfer payments
 
-newtype TransferContracts = Transfer [(PubKeyHash, Value)]
+newtype TransferContracts = Transfer TransferParams
   deriving stock (Show)
 
 $(deriveJSON defaultOptions ''TransferContracts)

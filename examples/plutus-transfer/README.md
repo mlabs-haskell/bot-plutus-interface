@@ -1,7 +1,5 @@
-### plutus-helloworld
+### plutus-transfer
 
-This directory contains a simple "Hello World" script.  There are two versions: one using an integer literal (needed because the Plutus interpreter doesn't currently accept byte string literals) and a slighly more complicated one using a bytestring parameter.
-
-``plutus-helloworld'' -- very simple numeric version
-
-``plutus-helloworld-bytestring'' -- more compex version using bytestring constant
+Simple value transfer from an address to multiple addresses. With the tfpOutputPerTx option,
+payment tx outputs can be grouped together into separate txs, the Contract waits for at least one
+block in between.

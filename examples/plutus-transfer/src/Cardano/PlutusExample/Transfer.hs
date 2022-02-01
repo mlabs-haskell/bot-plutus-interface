@@ -1,20 +1,46 @@
-module Cardano.PlutusExample.Transfer (TransferSchema, transfer) where
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE TemplateHaskell #-}
 
-import Control.Monad (void)
+module Cardano.PlutusExample.Transfer (
+  TransferParams (TransferParams),
+  TransferSchema,
+  transfer,
+) where
+
+import Control.Monad (forM_)
+import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.Bifunctor (first)
 import Data.Monoid (Last (Last))
 import Data.Text (Text)
+import GHC.Generics (Generic)
 import Ledger hiding (singleton)
 import Ledger.Constraints as Constraints
-import Plutus.Contract (Contract, Endpoint, submitTx, tell)
-import PlutusTx.Prelude hiding (Semigroup (..), unless)
+import Plutus.Contract (Contract, Endpoint, submitTx, tell, waitNSlots)
+import Schema (ToSchema)
+import Prelude
 
 type TransferSchema =
-  Endpoint "transfer" [(PubKeyHash, Value)]
+  Endpoint "transfer" TransferParams
 
-transfer :: [(PubKeyHash, Value)] -> Contract (Last Text) TransferSchema Text ()
-transfer payments = do
+data TransferParams = TransferParams
+  { tfpOutputPerTx :: Int
+  , tfpPayments :: [(PubKeyHash, Value)]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToSchema)
+
+$(deriveJSON defaultOptions ''TransferParams)
+
+transfer :: TransferParams -> Contract (Last Text) TransferSchema Text ()
+transfer (TransferParams outputPerTx allPayments) = do
   tell $ Last $ Just "Contract started"
-  let tx = mconcat $ map (uncurry Constraints.mustPayToPubKey . first PaymentPubKeyHash) payments
-  void $ submitTx tx
+  let txs =
+        map (mconcat . map (uncurry Constraints.mustPayToPubKey . first PaymentPubKeyHash)) $
+          group outputPerTx $ allPayments
+  forM_ txs $ \tx -> submitTx tx >> waitNSlots 1
   tell $ Last $ Just "Finished"
+
+group :: Int -> [a] -> [[a]]
+group n list
+  | length list <= n = [list]
+  | otherwise = let (xs, xss) = splitAt n list in xs : group n xss
