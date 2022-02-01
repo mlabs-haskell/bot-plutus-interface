@@ -12,14 +12,13 @@ Supported features:
 - pre balance tx (adding minimum amount of tx inputs based on fee and tx output value, balancing non ada outputs)
 - mint tokens, and send them to arbitrary address(es)
 - redeem utxos from validator scripts, using the correct datum and redeemer (scripts, datums and redeemers are persisted in files for now)
+- use validity time ranges
+- waiting for slots
 
 Unsupported/In development
 
 - wallet integration
-- chain-index integration (in progress)
-- handling on-chain events (utxo set change, waiting for slot, etc.)
-- multisig
-- automated tests
+- handling on-chain events (utxo set change, etc.)
 
 ## How to use this?
 
@@ -67,16 +66,24 @@ main = do
   protocolParams <- JSON.decode <$> LazyByteString.readFile "protocol.json"
   let pabConf =
         PABConfig
-          { -- Calling the cli through ssh when set to Remote
-            pcCliLocation = Remote "11.22.33.44"
+          { -- Calling the cli locally or through an ssh connection
+            pcCliLocation = Local
           , pcNetwork = Testnet (NetworkMagic 42)
+          , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
+          , pcPort = 9080
           , pcProtocolParams = protocolParams
+          , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
           , -- Directory name of the script and data files
-            pcScriptFileDir = "result-scripts"
+            pcScriptFileDir = "./scripts"
+          , -- Directory for the signing key file(s)
+            pcSigningKeyFileDir = "./signing-keys"
+          , -- Directory where the encoded transaction files will be saved
+            pcTxFileDir = "./txs"
           , -- Dry run mode will build the tx, but skip the submit step
             pcDryRun = False
+          , pcLogLevel = Debug
           , -- Protocol params file location relative to the cardano-cli working directory (needed for the cli)
-            pcProtocolParamsFile = "./protocol.json"
+          , pcProtocolParamsFile = "./protocol.json"
           }
   BotPlutusInterface.runPAB @MyContracts pabConf
 ```
@@ -107,7 +114,7 @@ The fake PAB consists of the following modules:
 - **BotPlutusInterface.Contract** handling contract effects by creating the necessary files and calling cardano-cli commands (a few effects are mocked)
 - **BotPlutusInterface.PreBalance** doing some preparations so the cli can process the rest (non-ada asset balancing, addig tx inputs, adding minimum lovelaces, add signatories)
 - **BotPlutusInterface.CardanoCLI** wrappers for cardano-cli commands
-- For development purposes, I created an ssh wrapper, so I can call relay these commands through an ssh connection. This is not nice, unsafe, and pretty slow, so I'm hoping to get rid of this pretty soon.
+- For development purposes, I created an ssh wrapper, so I can call relay these commands through an ssh connection. This is not nice, unsafe, and pretty slow, avoid using it if you can.
 - **BotPlutusInterface.UtxoParser** parse the output of the `cardano-cli query utxo` command
 - **BotPlutusInterface.Files** functions for handling script, datum and redeemer files
 - **BotPlutusInterface.Types** configuration for the fake pab
