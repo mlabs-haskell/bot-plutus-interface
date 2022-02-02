@@ -24,6 +24,7 @@ import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Data.Aeson (ToJSON, Value)
 import Data.Default (Default (def))
+import Data.Either (isRight)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
@@ -200,14 +201,15 @@ writeBalancedTx contractEnv (Right tx) = do
     Right _ -> do
       let ownPkh = contractEnv.cePABConfig.pcOwnPubKeyHash
       let requiredSigners = Map.keys $ tx ^. Tx.signatures
+      privKeys <- either (error . Text.unpack) id <$> Files.readPrivateKeys @w contractEnv.cePABConfig
 
       CardanoCLI.uploadFiles @w contractEnv.cePABConfig
 
-      CardanoCLI.buildTx @w contractEnv.cePABConfig ownPkh CardanoCLI.BuildAuto tx
-      CardanoCLI.signTx @w contractEnv.cePABConfig tx requiredSigners
+      CardanoCLI.buildTx @w contractEnv.cePABConfig privKeys ownPkh CardanoCLI.BuildAuto tx
+      res <- CardanoCLI.signTx @w contractEnv.cePABConfig privKeys tx requiredSigners
 
       result <-
-        if contractEnv.cePABConfig.pcDryRun
+        if contractEnv.cePABConfig.pcDryRun || isRight res
           then pure Nothing
           else CardanoCLI.submitTx @w contractEnv.cePABConfig tx
 
