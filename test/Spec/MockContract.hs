@@ -147,7 +147,11 @@ addr2 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 Not
 addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Nothing)
 
 toPubKey :: SigningKey PaymentKey -> PubKey
-toPubKey = Ledger.toPublicKey . fromRight (error "Impossible happened") . Files.fromCardanoPaymentKey
+toPubKey =
+  Ledger.toPublicKey
+    . Files.unDummyPrivateKey
+    . fromRight (error "Impossible happened")
+    . Files.skeyToDummyPrivKey
 
 toSigningKeyFile :: FilePath -> SigningKey PaymentKey -> (FilePath, MockFile)
 toSigningKeyFile signingKeyFileDir sKey =

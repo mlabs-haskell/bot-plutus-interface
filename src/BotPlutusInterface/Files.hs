@@ -3,6 +3,7 @@
 module BotPlutusInterface.Files (
   policyScriptFilePath,
   DummyPrivKey (FromSKey, FromVKey),
+  unDummyPrivateKey,
   validatorScriptFilePath,
   readPrivateKeys,
   signingKeyFilePath,
