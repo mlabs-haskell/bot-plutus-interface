@@ -57,7 +57,9 @@ import Spec.MockContract (
   pkhAddr1,
   runContractPure,
   tip,
+  toVerificationKeyFile,
   utxos,
+  verificationKey1,
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
@@ -74,6 +76,7 @@ tests =
     [ testCase "Send ada to address" sendAda
     , testCase "Send ada to address with staking key" sendAdaStaking
     , testCase "Support multiple signatories" multisigSupport
+    , testCase "Create a tx without signing" withoutSigning
     , testCase "Send native tokens" sendTokens
     , testCase "Send native tokens (without token name)" sendTokensWithoutName
     , testCase "Mint native tokens" mintTokens
@@ -297,6 +300,39 @@ multisigSupport = do
           --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
           --signing-key-file ./signing-keys/signing-key-${pkh3'}.skey
           --out-file ./txs/tx-${outTxId}.signed
+          |]
+        )
+      ]
+
+withoutSigning :: Assertion
+withoutSigning = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
+      initState =
+        def
+          & utxos .~ [(txOutRef, txOut)]
+          & files .~ uncurry Map.singleton (toVerificationKeyFile "./signing-keys" verificationKey1)
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+
+      contract :: Contract Text (Endpoint "SendAda" ()) Text CardanoTx
+      contract = do
+        let constraints = Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
+        submitTx constraints
+
+  -- Building and siging the tx should include both signing keys
+  assertContractWithTxId contract initState $ \state outTxId ->
+    assertCommandHistory
+      state
+      [
+        ( 6
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000
+          --required-signer-hash ${pkh1'}
+          --change-address ${addr1}
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]

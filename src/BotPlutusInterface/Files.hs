@@ -16,6 +16,7 @@ module BotPlutusInterface.Files (
   writeValidatorScriptFile,
   datumJsonFilePath,
   skeyToDummyPrivKey,
+  vkeyToDummyPrivKey,
   writeDatumJsonFile,
 ) where
 
