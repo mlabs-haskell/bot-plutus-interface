@@ -175,14 +175,14 @@ readPrivateKeys ::
   Eff effs (Either Text (Map PubKeyHash DummyPrivKey))
 readPrivateKeys pabConf = do
   files <- listDirectory @w $ Text.unpack pabConf.pcSigningKeyFileDir
-  let sKeyFiles =
-        map (\filename -> Text.unpack pabConf.pcSigningKeyFileDir ++ "/" ++ filename) $
-          filter ("skey" `isExtensionOf`) files
   let vKeyFiles =
         map (\filename -> Text.unpack pabConf.pcSigningKeyFileDir ++ "/" ++ filename) $
           filter ("vkey" `isExtensionOf`) files
-  privKeys <- mapM (readSigningKey @w) sKeyFiles
-  privKeys' <- mapM (readVerificationKey @w) vKeyFiles
+  let sKeyFiles =
+        map (\filename -> Text.unpack pabConf.pcSigningKeyFileDir ++ "/" ++ filename) $
+          filter ("skey" `isExtensionOf`) files
+  privKeys <- mapM (readVerificationKey @w) vKeyFiles
+  privKeys' <- mapM (readSigningKey @w) sKeyFiles
   pure $ toPrivKeyMap <$> sequence (privKeys <> privKeys')
   where
     toPrivKeyMap :: [DummyPrivKey] -> Map PubKeyHash DummyPrivKey
