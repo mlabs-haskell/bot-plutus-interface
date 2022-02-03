@@ -381,12 +381,12 @@ validRangeOpts :: SlotRange -> [Text]
 validRangeOpts (Interval lowerBound upperBound) =
   mconcat
     [ case lowerBound of
-        LowerBound (Finite (Slot x)) True -> ["--invalid-hereafter", showText x]
-        LowerBound (Finite (Slot x)) False -> ["--invalid-hereafter", showText (x + 1)]
+        LowerBound (Finite (Slot x)) True -> ["--invalid-before", showText x]
+        LowerBound (Finite (Slot x)) False -> ["--invalid-before", showText (x + 1)]
         _ -> []
     , case upperBound of
-        UpperBound (Finite (Slot x)) True -> ["--invalid-before", showText (x + 1)]
-        UpperBound (Finite (Slot x)) False -> ["--invalid-before", showText x]
+        UpperBound (Finite (Slot x)) True -> ["--invalid-hereafter", showText (x + 1)]
+        UpperBound (Finite (Slot x)) False -> ["--invalid-hereafter", showText x]
         _ -> []
     ]
 
