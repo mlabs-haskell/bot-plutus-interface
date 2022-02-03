@@ -311,7 +311,8 @@ withoutSigning = do
       initState =
         def
           & utxos .~ [(txOutRef, txOut)]
-          & files .~ uncurry Map.singleton (toVerificationKeyFile "./signing-keys" verificationKey1)
+          & files
+            .~ Map.fromList [toVerificationKeyFile "./signing-keys" verificationKey1]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract Text (Endpoint "SendAda" ()) Text CardanoTx
