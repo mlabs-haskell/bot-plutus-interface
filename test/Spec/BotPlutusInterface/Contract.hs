@@ -705,8 +705,8 @@ withValidRange = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
-          --invalid-hereafter 47577202
-          --invalid-before 50255602
+          --invalid-before 47577202
+          --invalid-hereafter 50255602
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
@@ -719,8 +719,8 @@ withValidRange = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
-          --invalid-hereafter 47577202
-          --invalid-before 50255602
+          --invalid-before 47577202
+          --invalid-hereafter 50255602
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
