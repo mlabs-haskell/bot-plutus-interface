@@ -184,9 +184,9 @@ readPrivateKeys pabConf = do
         ( \filename ->
             let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
              in case takeExtension filename of
-                     ".vkey" -> Just <$> readVerificationKey @w fullPath
-                     ".skey" -> Just <$> readSigningKey @w fullPath
-                     _ -> pure Nothing
+                  ".vkey" -> Just <$> readVerificationKey @w fullPath
+                  ".skey" -> Just <$> readSigningKey @w fullPath
+                  _ -> pure Nothing
         )
         files
 
