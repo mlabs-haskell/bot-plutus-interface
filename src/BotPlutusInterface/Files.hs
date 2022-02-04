@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE MultiWayIf #-}
 
 module BotPlutusInterface.Files (
   policyScriptFilePath,
