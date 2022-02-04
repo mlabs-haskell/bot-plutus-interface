@@ -83,7 +83,7 @@ import Plutus.V1.Ledger.Api (
  )
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
-import System.FilePath (isExtensionOf, (</>))
+import System.FilePath (takeExtension, (</>))
 import Prelude
 
 -- | Filename of a minting policy script
@@ -183,11 +183,10 @@ readPrivateKeys pabConf = do
       <$> mapM
         ( \filename ->
             let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
-             in case filename of
-                  _
-                    | "vkey" `isExtensionOf` filename -> Just <$> readVerificationKey @w fullPath
-                    | "skey" `isExtensionOf` filename -> Just <$> readSigningKey @w fullPath
-                    | otherwise -> pure Nothing
+             in case takeExtension filename of
+                     ".vkey" -> Just <$> readVerificationKey @w fullPath
+                     ".skey" -> Just <$> readSigningKey @w fullPath
+                     _ -> pure Nothing
         )
         files
 
