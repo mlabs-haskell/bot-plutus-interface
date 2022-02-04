@@ -318,9 +318,14 @@ mockQueryTip :: forall (w :: Type). MockContract w String
 mockQueryTip = do
   state <- get @(MockContractState w)
 
-  let slot = Text.pack $ show $ getSlot $ tipSlot (state ^. tip)
-      blockId = decodeUtf8 $ getBlockId $ tipBlockId (state ^. tip)
-      blockNo = Text.pack $ show $ unBlockNumber $ tipBlockNo (state ^. tip)
+  let (slot, blockId, blockNo) =
+        case state ^. tip of
+          TipAtGenesis -> ("0", "00", "0")
+          Tip {tipSlot, tipBlockId, tipBlockNo} ->
+            ( Text.pack $ show $ getSlot tipSlot
+            , decodeUtf8 $ getBlockId tipBlockId
+            , Text.pack $ show $ unBlockNumber tipBlockNo
+            )
   pure $
     Text.unpack
       [text|{

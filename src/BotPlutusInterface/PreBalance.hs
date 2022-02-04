@@ -283,7 +283,6 @@ validateRange (Interval (LowerBound PosInf _) _) = False
 validateRange (Interval _ (UpperBound NegInf _)) = False
 validateRange (Interval (LowerBound (Finite lowerBound) _) (UpperBound (Finite upperBound) _))
   | lowerBound >= upperBound = False
-  | otherwise = True
 validateRange _ = True
 
 showText :: forall (a :: Type). Show a => a -> Text
