@@ -41,17 +41,15 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import Wallet.Emulator.Error (WalletAPIError (..))
-import Wallet.Emulator.Types (Wallet)
 import Prelude
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
   (ToJSON w, Monoid w) =>
   ContractEnvironment w ->
-  Wallet ->
   Contract w s e a ->
   IO (Either e a)
-runContract contractEnv _ (Contract effs) = do
+runContract contractEnv (Contract effs) = do
   runM $ handlePABEffect @w contractEnv $ raiseEnd $ handleContract contractEnv effs
 
 handleContract ::
@@ -120,7 +118,7 @@ handlePABReq contractEnv req = do
     ----------------------
     OwnPaymentPublicKeyHashReq ->
       -- TODO: Should be able to get this from the wallet, hardcoded for now
-      pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash $ contractEnv.cePABConfig.pcOwnPubKeyHash
+      pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
