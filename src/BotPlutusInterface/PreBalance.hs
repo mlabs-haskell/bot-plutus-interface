@@ -7,7 +7,7 @@ module BotPlutusInterface.PreBalance (
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissing, printLog)
-import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
+import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
 import Cardano.Api.Shelley (Lovelace (Lovelace), ProtocolParameters (protocolParamUTxOCostPerWord))
@@ -267,8 +267,7 @@ addSignatories ownPkh privKeys pkhs tx =
   foldM
     ( \tx' pkh ->
         case Map.lookup pkh privKeys of
-          Just (FromSKey privKey) -> Right $ Tx.addSignature' privKey tx'
-          Just (FromVKey privKey) -> Right $ Tx.addSignature' privKey tx'
+          Just privKey -> Right $ Tx.addSignature' (unDummyPrivateKey privKey) tx'
           Nothing -> Left "Signing key not found."
     )
     tx

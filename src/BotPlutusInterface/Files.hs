@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module BotPlutusInterface.Files (
   policyScriptFilePath,
@@ -55,9 +56,10 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
+import Data.List (sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -82,7 +84,7 @@ import Plutus.V1.Ledger.Api (
  )
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
-import System.FilePath (isExtensionOf)
+import System.FilePath (isExtensionOf, (</>))
 import Prelude
 
 -- | Filename of a minting policy script
@@ -176,15 +178,21 @@ readPrivateKeys ::
   Eff effs (Either Text (Map PubKeyHash DummyPrivKey))
 readPrivateKeys pabConf = do
   files <- listDirectory @w $ Text.unpack pabConf.pcSigningKeyFileDir
-  let vKeyFiles =
-        map (\filename -> Text.unpack pabConf.pcSigningKeyFileDir ++ "/" ++ filename) $
-          filter ("vkey" `isExtensionOf`) files
-  let sKeyFiles =
-        map (\filename -> Text.unpack pabConf.pcSigningKeyFileDir ++ "/" ++ filename) $
-          filter ("skey" `isExtensionOf`) files
-  privKeys <- mapM (readVerificationKey @w) vKeyFiles
-  privKeys' <- mapM (readSigningKey @w) sKeyFiles
-  pure $ toPrivKeyMap <$> sequence (privKeys <> privKeys')
+
+  privKeys <-
+    catMaybes
+      <$> mapM
+        ( \filename ->
+            let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
+             in case filename of
+                  _
+                    | "vkey" `isExtensionOf` filename -> Just <$> readVerificationKey @w fullPath
+                    | "skey" `isExtensionOf` filename -> Just <$> readSigningKey @w fullPath
+                    | otherwise -> pure Nothing
+        )
+        files
+
+  pure $ toPrivKeyMap <$> sequence privKeys
   where
     toPrivKeyMap :: [DummyPrivKey] -> Map PubKeyHash DummyPrivKey
     toPrivKeyMap =
@@ -194,6 +202,11 @@ readPrivateKeys pabConf = do
              in Map.insert pkh pKey pKeyMap
         )
         Map.empty
+        . sortOn keyPriority
+
+    keyPriority :: DummyPrivKey -> Int
+    keyPriority (FromSKey _) = 1
+    keyPriority (FromVKey _) = 0
 
 data DummyPrivKey
   = FromSKey PrivateKey

@@ -207,14 +207,17 @@ buildTx pabConf privKeys ownPkh buildMode tx =
   callCommand @w $ ShellArgs "cardano-cli" opts (const ())
   where
     ownAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
-    skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
     requiredSigners =
       concatMap
         ( \pubKey ->
             let pkh = Ledger.pubKeyHash pubKey
-             in if Map.member pkh skeys
-                  then ["--required-signer", signingKeyFilePath pabConf pkh]
-                  else ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
+             in case Map.lookup pkh privKeys of
+                  Just (FromSKey _) ->
+                    ["--required-signer", signingKeyFilePath pabConf pkh]
+                  Just (FromVKey _) ->
+                    ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
+                  Nothing ->
+                    []
         )
         (Map.keys (Ledger.txSignatures tx))
     opts =

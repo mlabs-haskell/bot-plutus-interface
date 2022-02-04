@@ -56,10 +56,13 @@ import Spec.MockContract (
   pkh3',
   pkhAddr1,
   runContractPure,
+  signingKey1,
   tip,
+  toSigningKeyFile,
   toVerificationKeyFile,
   utxos,
   verificationKey1,
+  verificationKey3,
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
@@ -312,12 +315,18 @@ withoutSigning = do
         def
           & utxos .~ [(txOutRef, txOut)]
           & files
-            .~ Map.fromList [toVerificationKeyFile "./signing-keys" verificationKey1]
+            .~ Map.fromList
+              [ toSigningKeyFile "./signing-keys" signingKey1
+              , toVerificationKeyFile "./signing-keys" verificationKey1
+              , toVerificationKeyFile "./signing-keys" verificationKey3
+              ]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
       contract :: Contract Text (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
-        let constraints = Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
+        let constraints =
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
+                <> Constraints.mustBeSignedBy paymentPkh3
         submitTx constraints
 
   -- Building and siging the tx should include both signing keys
@@ -331,7 +340,8 @@ withoutSigning = do
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
-          --required-signer-hash ${pkh1'}
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh3'}
           --change-address ${addr1}
           --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]

@@ -85,7 +85,7 @@ import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
 import Data.Default (Default (def))
-import Data.Either.Combinators (fromRight, mapLeft)
+import Data.Either.Combinators (mapLeft)
 import Data.Hex (hex)
 import Data.Kind (Type)
 import Data.List (isPrefixOf)
@@ -164,14 +164,14 @@ skeyToPubKey :: SigningKey PaymentKey -> PubKey
 skeyToPubKey =
   Ledger.toPublicKey
     . Files.unDummyPrivateKey
-    . fromRight (error "Impossible happened")
+    . either (error . Text.unpack) id
     . Files.skeyToDummyPrivKey
 
 vkeyToPubKey :: VerificationKey PaymentKey -> PubKey
 vkeyToPubKey =
   Ledger.toPublicKey
     . Files.unDummyPrivateKey
-    . fromRight (error "Impossible happened")
+    . either (error . Text.unpack) id
     . Files.vkeyToDummyPrivKey
 
 toSigningKeyFile :: FilePath -> SigningKey PaymentKey -> (FilePath, MockFile)
