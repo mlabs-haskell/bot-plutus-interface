@@ -30,7 +30,6 @@ import Plutus.PAB.Effects.Contract.Builtin (
   endpointsToSchemas,
  )
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
-import Wallet.Emulator (Wallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -60,7 +59,6 @@ data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
-  , ceWallet :: Wallet
   }
   deriving stock (Show)
 

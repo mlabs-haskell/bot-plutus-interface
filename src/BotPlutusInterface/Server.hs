@@ -19,7 +19,7 @@ import Data.Aeson qualified as JSON
 import Data.Either.Combinators (leftToMaybe)
 import Data.Kind (Type)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy (Proxy))
 import Data.Row (Row)
 import Data.UUID.V4 qualified as UUID
@@ -48,7 +48,6 @@ import Plutus.PAB.Webserver.Types (
 import Servant.API (JSON, Post, ReqBody, (:<|>) (..), (:>))
 import Servant.API.WebSocket (WebSocketPending)
 import Servant.Server (Application, Handler, Server, serve)
-import Wallet.Emulator (Wallet, knownWallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -171,10 +170,9 @@ activateContractHandler ::
   AppState ->
   ContractActivationArgs c ->
   Handler ContractInstanceId
-activateContractHandler pabConf state (ContractActivationArgs cardMessage maybeWallet) =
-  let wallet = fromMaybe (knownWallet 1) maybeWallet
-   in case getContract cardMessage of
-        SomeBuiltin contract -> handleContract pabConf wallet state contract
+activateContractHandler pabConf state (ContractActivationArgs cardMessage _) =
+  case getContract cardMessage of
+    SomeBuiltin contract -> handleContract pabConf state contract
 
 handleContract ::
   forall
@@ -187,11 +185,10 @@ handleContract ::
   , IsContract contract
   ) =>
   PABConfig ->
-  Wallet ->
   AppState ->
   contract w s e a ->
   Handler ContractInstanceId
-handleContract pabConf wallet state@(AppState st) contract = liftIO $ do
+handleContract pabConf state@(AppState st) contract = liftIO $ do
   contractInstanceID <- liftIO $ ContractInstanceId <$> UUID.nextRandom
   contractState <- newTVarIO (ContractState Active mempty)
 
@@ -201,12 +198,11 @@ handleContract pabConf wallet state@(AppState st) contract = liftIO $ do
         ContractEnvironment
           { cePABConfig = pabConf
           , ceContractState = contractState
-          , ceWallet = wallet
           , ceContractInstanceId = contractInstanceID
           }
   void $
     forkIO $ do
-      result <- runContract contractEnv wallet (toContract contract)
+      result <- runContract contractEnv (toContract contract)
       let maybeError = toJSON <$> leftToMaybe result
       broadcastContractResult @w state contractInstanceID maybeError
   pure contractInstanceID
