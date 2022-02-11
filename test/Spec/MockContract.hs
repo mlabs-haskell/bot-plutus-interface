@@ -261,40 +261,40 @@ runPABEffectPure initState req =
 mockCallCommand ::
   forall (w :: Type) (a :: Type).
   ShellArgs a ->
-  MockContract w a
+  MockContract w (Either Text a)
 mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
   modify @(MockContractState w) (commandHistory %~ (cmdName <> " " <> Text.unwords cmdArgs <|))
 
   case (cmdName, cmdArgs) of
     ("cardano-cli", "query" : "utxo" : "--address" : addr : _) ->
-      cmdOutParser <$> mockQueryUtxo addr
+      Right . cmdOutParser <$> mockQueryUtxo addr
     ("cardano-cli", "transaction" : "calculate-min-required-utxo" : _) ->
-      pure $ cmdOutParser "Lovelace 50"
+      pure $ Right $ cmdOutParser "Lovelace 50"
     ("cardano-cli", "transaction" : "calculate-min-fee" : _) ->
-      pure $ cmdOutParser "200 Lovelace"
+      pure $ Right $ cmdOutParser "200 Lovelace"
     ("cardano-cli", "transaction" : "build-raw" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
           modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
         _ -> throwError @Text "Out file argument is missing"
 
-      pure $ cmdOutParser ""
+      pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "build" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
           modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
         _ -> throwError @Text "Out file argument is missing"
 
-      pure $ cmdOutParser ""
+      pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "sign" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
           modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "Tx")
         _ -> throwError @Text "Out file argument is missing"
 
-      pure $ cmdOutParser ""
+      pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "submit" : _) ->
-      pure $ cmdOutParser ""
+      pure $ Right $ cmdOutParser ""
     _ -> throwError @Text "Unknown command"
 
 mockQueryUtxo :: forall (w :: Type). Text -> MockContract w String

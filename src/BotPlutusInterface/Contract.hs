@@ -16,11 +16,14 @@ import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.PreBalance qualified as PreBalance
 import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug))
 import Control.Lens ((^.))
+import Control.Monad (void)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Either (eitherT, firstEitherT, newEitherT, secondEitherT)
 import Data.Aeson (ToJSON, Value)
 import Data.Kind (Type)
 import Data.Map qualified as Map
@@ -183,27 +186,17 @@ writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
 writeBalancedTx contractEnv (Right tx) = do
   createDirectoryIfMissing @w False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
 
-  fileWriteRes <-
-    Files.writeAll @w contractEnv.cePABConfig tx
+  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Right) $ do
+    void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w contractEnv.cePABConfig tx
 
-  case fileWriteRes of
-    Left err ->
-      pure $
-        WriteBalancedTxFailed $
-          OtherError $
-            "Failed to write script file(s): " <> Text.pack (show err)
-    Right _ -> do
-      let ownPkh = contractEnv.cePABConfig.pcOwnPubKeyHash
-      let requiredSigners = Map.keys $ tx ^. Tx.signatures
+    let ownPkh = contractEnv.cePABConfig.pcOwnPubKeyHash
+    let requiredSigners = Map.keys $ tx ^. Tx.signatures
 
-      CardanoCLI.uploadFiles @w contractEnv.cePABConfig
+    lift $ CardanoCLI.uploadFiles @w contractEnv.cePABConfig
 
-      CardanoCLI.buildTx @w contractEnv.cePABConfig ownPkh CardanoCLI.BuildAuto tx
-      CardanoCLI.signTx @w contractEnv.cePABConfig tx requiredSigners
+    newEitherT $ CardanoCLI.buildTx @w contractEnv.cePABConfig ownPkh CardanoCLI.BuildAuto tx
+    newEitherT $ CardanoCLI.signTx @w contractEnv.cePABConfig tx requiredSigners
 
-      result <-
-        if contractEnv.cePABConfig.pcDryRun
-          then pure Nothing
-          else CardanoCLI.submitTx @w contractEnv.cePABConfig tx
-
-      pure $ maybe (WriteBalancedTxSuccess (Right tx)) (WriteBalancedTxFailed . OtherError) result
+    if contractEnv.cePABConfig.pcDryRun
+      then pure tx
+      else secondEitherT (const tx) $ newEitherT $ CardanoCLI.submitTx @w contractEnv.cePABConfig tx

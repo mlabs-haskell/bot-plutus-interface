@@ -28,6 +28,7 @@ import BotPlutusInterface.Types (PABConfig)
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
 import Codec.Serialise qualified as Codec
+import Control.Monad (join)
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
@@ -99,7 +100,7 @@ utxosAt ::
   Member (PABEffect w) effs =>
   PABConfig ->
   Address ->
-  Eff effs (Map TxOutRef ChainIndexTxOut)
+  Eff effs (Either Text (Map TxOutRef ChainIndexTxOut))
 utxosAt pabConf address =
   callCommand @w
     ShellArgs
@@ -125,17 +126,18 @@ calculateMinUtxo ::
   TxOut ->
   Eff effs (Either Text Integer)
 calculateMinUtxo pabConf datums txOut =
-  callCommand @w
-    ShellArgs
-      { cmdName = "cardano-cli"
-      , cmdArgs =
-          mconcat
-            [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
-            , txOutOpts pabConf datums [txOut]
-            , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            ]
-      , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
-      }
+  join
+    <$> callCommand @w
+      ShellArgs
+        { cmdName = "cardano-cli"
+        , cmdArgs =
+            mconcat
+              [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
+              , txOutOpts pabConf datums [txOut]
+              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+              ]
+        , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
+        }
 
 -- | Calculating fee for an unbalanced transaction
 calculateMinFee ::
@@ -145,21 +147,22 @@ calculateMinFee ::
   Tx ->
   Eff effs (Either Text Integer)
 calculateMinFee pabConf tx =
-  callCommand @w
-    ShellArgs
-      { cmdName = "cardano-cli"
-      , cmdArgs =
-          mconcat
-            [ ["transaction", "calculate-min-fee"]
-            , ["--tx-body-file", txFilePath pabConf "raw" tx]
-            , ["--tx-in-count", showText $ length $ txInputs tx]
-            , ["--tx-out-count", showText $ length $ txOutputs tx]
-            , ["--witness-count", showText $ length $ txSignatures tx]
-            , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            , networkOpt pabConf
-            ]
-      , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
-      }
+  join
+    <$> callCommand @w
+      ShellArgs
+        { cmdName = "cardano-cli"
+        , cmdArgs =
+            mconcat
+              [ ["transaction", "calculate-min-fee"]
+              , ["--tx-body-file", txFilePath pabConf "raw" tx]
+              , ["--tx-in-count", showText $ length $ txInputs tx]
+              , ["--tx-out-count", showText $ length $ txOutputs tx]
+              , ["--witness-count", showText $ length $ txSignatures tx]
+              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+              , networkOpt pabConf
+              ]
+        , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
+        }
 
 data BuildMode = BuildRaw Integer | BuildAuto
   deriving stock (Show)
@@ -178,7 +181,7 @@ buildTx ::
   PubKeyHash ->
   BuildMode ->
   Tx ->
-  Eff effs ()
+  Eff effs (Either Text ())
 buildTx pabConf ownPkh buildMode tx =
   callCommand @w $ ShellArgs "cardano-cli" opts (const ())
   where
@@ -215,7 +218,7 @@ signTx ::
   PABConfig ->
   Tx ->
   [PubKey] ->
-  Eff effs ()
+  Eff effs (Either Text ())
 signTx pabConf tx pubKeys =
   callCommand @w $
     ShellArgs
@@ -240,7 +243,7 @@ submitTx ::
   Member (PABEffect w) effs =>
   PABConfig ->
   Tx ->
-  Eff effs (Maybe Text)
+  Eff effs (Either Text ())
 submitTx pabConf tx =
   callCommand @w $
     ShellArgs
@@ -251,13 +254,7 @@ submitTx pabConf tx =
           , networkOpt pabConf
           ]
       )
-      ( ( \out ->
-            if "Transaction successfully submitted." `Text.isPrefixOf` out
-              then Nothing
-              else Just out
-        )
-          . Text.pack
-      )
+      (const ())
 
 txInOpts :: PABConfig -> BuildMode -> Set TxIn -> [Text]
 txInOpts pabConf buildMode =
