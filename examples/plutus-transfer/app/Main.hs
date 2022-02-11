@@ -24,6 +24,7 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Maybe (fromMaybe)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
+import Data.Default (def)
 import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
 import Prelude
 
@@ -56,6 +57,7 @@ main = do
           , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
           , pcPort = 9080
           , pcProtocolParams = protocolParams
+          , pcSlotConfig = def
           , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
           , pcScriptFileDir = "./scripts"
           , pcSigningKeyFileDir = "./signing-keys"
