@@ -107,7 +107,6 @@ import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import PlutusTx.Builtins (fromBuiltin)
 import System.IO.Unsafe (unsafePerformIO)
-import Wallet.Emulator (knownWallet)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 
@@ -198,7 +197,6 @@ instance Monoid w => Default (ContractEnvironment w) where
       { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
-      , ceWallet = knownWallet 1
       }
 
 instance Monoid w => Default (ContractState w) where
