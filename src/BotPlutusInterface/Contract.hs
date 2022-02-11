@@ -160,16 +160,6 @@ balanceTx ::
   UnbalancedTx ->
   Eff effs BalanceTxResponse
 balanceTx contractEnv unbalancedTx = do
-  -- TODO: Handle paging
-  -- (_, Page {pageItems}) <-
-  --   chainIndexQueryMany $
-  --     ChainIndexClient.getUtxoAtAddress $
-  --       addressCredential ownAddress
-  -- chainIndexTxOuts <- traverse (chainIndexQueryOne . ChainIndexClient.getTxOut) pageItems
-  -- let utxos =
-  --       Map.fromList $
-  --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
-
   eitherPreBalancedTx <-
     PreBalance.preBalanceTxIO @w
       contractEnv.cePABConfig
@@ -214,8 +204,8 @@ writeBalancedTx contractEnv (Right tx) = do
 
       pure $ maybe (WriteBalancedTxSuccess (Right tx)) (WriteBalancedTxFailed . OtherError) result
 
-{- | Wait for at least n slots. The slot number only changes when a new block is appended to the chain
- so it waits for at least one block
+{- | Wait at least until the given slot. The slot number only changes when a new block is appended
+ to the chain so it waits for at least one block
 -}
 awaitSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -223,16 +213,12 @@ awaitSlot ::
   ContractEnvironment w ->
   Slot ->
   Eff effs Slot
-awaitSlot contractEnv (Slot n) = do
-  tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
-  waitNSlots' tip.slot
-  where
-    waitNSlots' refSlot = do
-      threadDelay @w 10_000_000
-      tip' <- CardanoCLI.queryTip @w contractEnv.cePABConfig
-      if tip'.slot < n
-        then waitNSlots' refSlot
-        else pure $ Slot tip'.slot
+awaitSlot contractEnv s@(Slot n) = do
+  threadDelay @w 10_000_000
+  tip' <- CardanoCLI.queryTip @w contractEnv.cePABConfig
+  if tip'.slot < n
+    then awaitSlot contractEnv s
+    else pure $ Slot tip'.slot
 
 currentSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
