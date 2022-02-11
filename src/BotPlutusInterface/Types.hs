@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE RankNTypes #-}
 
 module BotPlutusInterface.Types (
@@ -6,6 +7,7 @@ module BotPlutusInterface.Types (
   AppState (AppState),
   LogLevel (..),
   ContractEnvironment (..),
+  Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
   SomeContractState (SomeContractState),
   HasDefinitions (..),
@@ -17,11 +19,14 @@ import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
+import Data.Aeson qualified as JSON
 import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
+import GHC.Generics (Generic)
 import Ledger (PubKeyHash)
+import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import Plutus.PAB.Effects.Contract.Builtin (
@@ -39,6 +44,8 @@ data PABConfig = PABConfig
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !ProtocolParameters
+  , -- | Slot configuration of the network, the default value can be used for the mainnet
+    pcSlotConfig :: !SlotConfig
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -50,7 +57,7 @@ data PABConfig = PABConfig
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
-  , pcOwnPubKeyHash :: PubKeyHash
+  , pcOwnPubKeyHash :: !PubKeyHash
   , pcPort :: !Port
   }
   deriving stock (Show, Eq)
@@ -61,6 +68,17 @@ data ContractEnvironment w = ContractEnvironment
   , ceContractState :: TVar (ContractState w)
   }
   deriving stock (Show)
+
+data Tip = Tip
+  { epoch :: Integer
+  , hash :: Text
+  , slot :: Integer
+  , block :: Integer
+  , era :: Text
+  , syncProgress :: Text
+  }
+  deriving stock (Show, Generic)
+  deriving anyclass (JSON.FromJSON)
 
 instance Show (TVar (ContractState w)) where
   show _ = "<ContractState>"
@@ -92,6 +110,7 @@ instance Default PABConfig where
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = def
+      , pcSlotConfig = def
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"
       , pcTxFileDir = "./txs"
