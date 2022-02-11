@@ -31,7 +31,7 @@ import Ledger (POSIXTime)
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
-import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, slotToEndPOSIXTime)
+import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
@@ -121,7 +121,6 @@ handlePABReq contractEnv req = do
     -- Handled requests --
     ----------------------
     OwnPaymentPublicKeyHashReq ->
-      -- TODO: Should be able to get this from the wallet, hardcoded for now
       pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
@@ -132,6 +131,7 @@ handlePABReq contractEnv req = do
     WriteBalancedTxReq tx ->
       WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
+    AwaitTimeReq t -> AwaitTimeResp <$> awaitTime @w contractEnv t
     CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
@@ -146,7 +146,9 @@ handlePABReq contractEnv req = do
     -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
     -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
     AwaitTxStatusChangeReq txId -> pure $ AwaitTxStatusChangeResp txId (Committed TxValid ())
+    -- AwaitTxOutStatusChangeReq TxOutRef
     -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
+    -- YieldUnbalancedTxReq UnbalancedTx
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
   printLog @w Debug $ show resp
@@ -219,6 +221,20 @@ awaitSlot contractEnv s@(Slot n) = do
   if tip'.slot < n
     then awaitSlot contractEnv s
     else pure $ Slot tip'.slot
+
+{- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
+ are applying here as well.
+-}
+awaitTime ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  POSIXTime ->
+  Eff effs POSIXTime
+awaitTime ce = fmap fromSlot . awaitSlot ce . toSlot
+  where
+    toSlot = posixTimeToEnclosingSlot ce.cePABConfig.pcSlotConfig
+    fromSlot = slotToEndPOSIXTime ce.cePABConfig.pcSlotConfig
 
 currentSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
