@@ -16,8 +16,9 @@ module BotPlutusInterface.CardanoCLI (
   queryTip,
 ) where
 
-import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, uploadDir)
+import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, printLog, uploadDir)
 import BotPlutusInterface.Files (
+  DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
@@ -25,7 +26,7 @@ import BotPlutusInterface.Files (
   txFilePath,
   validatorScriptFilePath,
  )
-import BotPlutusInterface.Types (PABConfig, Tip)
+import BotPlutusInterface.Types (LogLevel (Warn), PABConfig, Tip)
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
 import Codec.Serialise qualified as Codec
@@ -54,7 +55,7 @@ import Ledger (Slot (Slot), SlotRange)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
-import Ledger.Crypto (PubKey, PubKeyHash)
+import Ledger.Crypto (PubKey, PubKeyHash (getPubKeyHash))
 import Ledger.Interval (
   Extended (Finite),
   Interval (Interval),
@@ -198,17 +199,27 @@ buildTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
+  Map PubKeyHash DummyPrivKey ->
   PubKeyHash ->
   BuildMode ->
   Tx ->
   Eff effs ()
-buildTx pabConf ownPkh buildMode tx =
+buildTx pabConf privKeys ownPkh buildMode tx =
   callCommand @w $ ShellArgs "cardano-cli" opts (const ())
   where
     ownAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
     requiredSigners =
       concatMap
-        (\pubKey -> ["--required-signer", signingKeyFilePath pabConf (Ledger.pubKeyHash pubKey)])
+        ( \pubKey ->
+            let pkh = Ledger.pubKeyHash pubKey
+             in case Map.lookup pkh privKeys of
+                  Just (FromSKey _) ->
+                    ["--required-signer", signingKeyFilePath pabConf pkh]
+                  Just (FromVKey _) ->
+                    ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
+                  Nothing ->
+                    []
+        )
         (Map.keys (Ledger.txSignatures tx))
     opts =
       mconcat
@@ -237,26 +248,38 @@ signTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
+  Map PubKeyHash DummyPrivKey ->
   Tx ->
   [PubKey] ->
-  Eff effs ()
-signTx pabConf tx pubKeys =
-  callCommand @w $
-    ShellArgs
-      "cardano-cli"
-      ( mconcat
-          [ ["transaction", "sign"]
-          , ["--tx-body-file", txFilePath pabConf "raw" tx]
-          , signingKeyFiles
-          , ["--out-file", txFilePath pabConf "signed" tx]
-          ]
-      )
-      (const ())
+  Eff effs (Either Text ())
+signTx pabConf privKeys tx pubKeys =
+  let skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
+   in if all ((`Map.member` skeys) . Ledger.pubKeyHash) pubKeys
+        then callCommand @w $ ShellArgs "cardano-cli" opts (const (Right ()))
+        else do
+          let err =
+                Text.unlines
+                  [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
+                  , "Tx file: " <> txFilePath pabConf "raw" tx
+                  , "Signatories (pkh): "
+                      <> Text.unwords
+                        (map (encodeByteString . fromBuiltin . getPubKeyHash . Ledger.pubKeyHash) pubKeys)
+                  ]
+          printLog @w Warn (Text.unpack err)
+          pure $ Left err
   where
     signingKeyFiles =
       concatMap
         (\pubKey -> ["--signing-key-file", signingKeyFilePath pabConf (Ledger.pubKeyHash pubKey)])
         pubKeys
+
+    opts =
+      mconcat
+        [ ["transaction", "sign"]
+        , ["--tx-body-file", txFilePath pabConf "raw" tx]
+        , signingKeyFiles
+        , ["--out-file", txFilePath pabConf "signed" tx]
+        ]
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
 submitTx ::
