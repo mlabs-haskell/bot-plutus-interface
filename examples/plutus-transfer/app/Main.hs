@@ -13,38 +13,37 @@ import BotPlutusInterface.Types (
   endpointsToSchemas,
  )
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
-import Cardano.PlutusExample.NFT (
-  NFTSchema,
-  mintNft,
+import Cardano.PlutusExample.Transfer (
+  TransferParams,
+  TransferSchema,
+  transfer,
  )
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Default (def)
 import Data.Maybe (fromMaybe)
-import Ledger.Value (TokenName)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
 import Prelude
 
-instance HasDefinitions MintNFTContracts where
-  getDefinitions :: [MintNFTContracts]
+instance HasDefinitions TransferContracts where
+  getDefinitions :: [TransferContracts]
   getDefinitions = []
 
-  getSchema :: MintNFTContracts -> [FunctionSchema FormSchema]
-  getSchema _ = endpointsToSchemas @NFTSchema
+  getSchema :: TransferContracts -> [FunctionSchema FormSchema]
+  getSchema _ = endpointsToSchemas @TransferSchema
 
-  getContract :: (MintNFTContracts -> SomeBuiltin)
+  getContract :: (TransferContracts -> SomeBuiltin)
   getContract = \case
-    MintNFT tokenName ->
-      SomeBuiltin $
-        mintNft tokenName
+    Transfer payments ->
+      SomeBuiltin $ transfer payments
 
-newtype MintNFTContracts = MintNFT TokenName
+newtype TransferContracts = Transfer TransferParams
   deriving stock (Show)
 
-$(deriveJSON defaultOptions ''MintNFTContracts)
+$(deriveJSON defaultOptions ''TransferContracts)
 
 main :: IO ()
 main = do
@@ -67,4 +66,4 @@ main = do
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
           }
-  BotPlutusInterface.runPAB @MintNFTContracts pabConf
+  BotPlutusInterface.runPAB @TransferContracts pabConf

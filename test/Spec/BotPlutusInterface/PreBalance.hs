@@ -1,5 +1,6 @@
 module Spec.BotPlutusInterface.PreBalance (tests) where
 
+import BotPlutusInterface.Files (DummyPrivKey (FromSKey))
 import BotPlutusInterface.PreBalance qualified as PreBalance
 import Cardano.Api.Shelley (Lovelace (Lovelace), ProtocolParameters (protocolParamUTxOCostPerWord))
 import Data.Default (def)
@@ -10,7 +11,7 @@ import Ledger.Ada qualified as Ada
 import Ledger.Address (Address, PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
-import Ledger.Crypto (PrivateKey, PubKeyHash)
+import Ledger.Crypto (PubKeyHash)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
 import Ledger.Value qualified as Value
 import Test.Tasty (TestTree, testGroup)
@@ -30,8 +31,8 @@ tests =
     , testCase "Add utxos to cover change min utxo" addUtxosForChange
     ]
 
-privateKey1 :: PrivateKey
-privateKey1 = Address.unPaymentPrivateKey . Wallet.paymentPrivateKey $ Wallet.knownMockWallet 1
+privateKey1 :: DummyPrivKey
+privateKey1 = FromSKey . Address.unPaymentPrivateKey . Wallet.paymentPrivateKey $ Wallet.knownMockWallet 1
 
 pkh1, pkh2 :: PubKeyHash
 pkh1 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 1

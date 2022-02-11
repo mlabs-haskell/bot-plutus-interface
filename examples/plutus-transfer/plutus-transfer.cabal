@@ -1,8 +1,8 @@
 cabal-version:      3.0
-name:               plutus-game
+name:               plutus-transfer
 version:            0.1.0.0
-synopsis:           Game example
-description:        Game example running on the fake pab
+synopsis:           Simple transfer of Ada and/or native tokens
+description:        Simple transfer of Ada and/or native tokens
 homepage:           https://github.com/mlabs-haskell/bot-plutus-interface
 bug-reports:        https://github.com/mlabs-haskell/bot-plutus-interface
 license:
@@ -72,7 +72,7 @@ common common-lang
 
 library
   import:          common-lang
-  exposed-modules: Cardano.PlutusExample.Game
+  exposed-modules: Cardano.PlutusExample.Transfer
   build-depends:
     , aeson                      ^>=1.5.0.0
     , attoparsec                 >=0.13.2.2
@@ -122,7 +122,7 @@ library
 
   hs-source-dirs:  src
 
-executable plutus-game-pab
+executable plutus-transfer-pab
   import:         common-lang
   build-depends:
     , aeson                 ^>=1.5.0.0
@@ -131,8 +131,8 @@ executable plutus-game-pab
     , cardano-api
     , data-default
     , playground-common
-    , plutus-game
     , plutus-ledger
+    , plutus-transfer
     , servant-client-core
 
   main-is:        Main.hs

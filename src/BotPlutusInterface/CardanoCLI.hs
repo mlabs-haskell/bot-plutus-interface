@@ -13,10 +13,12 @@ module BotPlutusInterface.CardanoCLI (
   unsafeSerialiseAddress,
   policyScriptFilePath,
   utxosAt,
+  queryTip,
 ) where
 
-import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, uploadDir)
+import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, printLog, uploadDir)
 import BotPlutusInterface.Files (
+  DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
@@ -24,15 +26,18 @@ import BotPlutusInterface.Files (
   txFilePath,
   validatorScriptFilePath,
  )
-import BotPlutusInterface.Types (PABConfig)
+import BotPlutusInterface.Types (LogLevel (Warn), PABConfig, Tip)
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
 import Codec.Serialise qualified as Codec
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, Member)
+import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
+import Data.Bool (bool)
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.ByteString.Lazy.Char8 qualified as Char8
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either (fromRight)
 import Data.Either.Combinators (mapLeft, maybeToRight)
@@ -41,16 +46,23 @@ import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (maybeToList)
+import Data.Maybe (fromMaybe, maybeToList)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
+import Ledger (Slot (Slot), SlotRange)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
-import Ledger.Crypto (PubKey, PubKeyHash)
+import Ledger.Crypto (PubKey, PubKeyHash (getPubKeyHash))
+import Ledger.Interval (
+  Extended (Finite),
+  Interval (Interval),
+  LowerBound (LowerBound),
+  UpperBound (UpperBound),
+ )
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
@@ -93,6 +105,20 @@ uploadFiles pabConf =
     [ pabConf.pcScriptFileDir
     , pabConf.pcSigningKeyFileDir
     ]
+
+-- | Getting information of the latest block
+queryTip ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  Eff effs (Either Text Tip)
+queryTip config =
+  callCommand @w
+    ShellArgs
+      { cmdName = "cardano-cli"
+      , cmdArgs = mconcat [["query", "tip"], networkOpt config]
+      , cmdOutParser = fromMaybe (error "Couldn't parse chain tip") . JSON.decode . Char8.pack
+      }
 
 -- | Getting all available UTXOs at an address (all utxos are assumed to be PublicKeyChainIndexTxOut)
 utxosAt ::
@@ -171,24 +197,32 @@ isRawBuildMode :: BuildMode -> Bool
 isRawBuildMode (BuildRaw _) = True
 isRawBuildMode _ = False
 
-{- | Build a tx body and write it to disk
- If a fee if specified, it uses the build-raw command
--}
+-- | Build a tx body and write it to disk
 buildTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
+  Map PubKeyHash DummyPrivKey ->
   PubKeyHash ->
   BuildMode ->
   Tx ->
   Eff effs (Either Text ())
-buildTx pabConf ownPkh buildMode tx =
+buildTx pabConf privKeys ownPkh buildMode tx =
   callCommand @w $ ShellArgs "cardano-cli" opts (const ())
   where
     ownAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
     requiredSigners =
       concatMap
-        (\pubKey -> ["--required-signer", signingKeyFilePath pabConf (Ledger.pubKeyHash pubKey)])
+        ( \pubKey ->
+            let pkh = Ledger.pubKeyHash pubKey
+             in case Map.lookup pkh privKeys of
+                  Just (FromSKey _) ->
+                    ["--required-signer", signingKeyFilePath pabConf pkh]
+                  Just (FromVKey _) ->
+                    ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
+                  Nothing ->
+                    []
+        )
         (Map.keys (Ledger.txSignatures tx))
     opts =
       mconcat
@@ -197,6 +231,7 @@ buildTx pabConf ownPkh buildMode tx =
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mintOpts pabConf buildMode (txMintScripts tx) (txRedeemers tx) (txMint tx)
+        , validRangeOpts (txValidRange tx)
         , requiredSigners
         , case buildMode of
             BuildRaw fee -> ["--fee", showText fee]
@@ -216,26 +251,38 @@ signTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
+  Map PubKeyHash DummyPrivKey ->
   Tx ->
   [PubKey] ->
   Eff effs (Either Text ())
-signTx pabConf tx pubKeys =
-  callCommand @w $
-    ShellArgs
-      "cardano-cli"
-      ( mconcat
-          [ ["transaction", "sign"]
-          , ["--tx-body-file", txFilePath pabConf "raw" tx]
-          , signingKeyFiles
-          , ["--out-file", txFilePath pabConf "signed" tx]
-          ]
-      )
-      (const ())
+signTx pabConf privKeys tx pubKeys =
+  let skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
+   in if all ((`Map.member` skeys) . Ledger.pubKeyHash) pubKeys
+        then callCommand @w $ ShellArgs "cardano-cli" opts (const ())
+        else do
+          let err =
+                Text.unlines
+                  [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
+                  , "Tx file: " <> txFilePath pabConf "raw" tx
+                  , "Signatories (pkh): "
+                      <> Text.unwords
+                        (map (encodeByteString . fromBuiltin . getPubKeyHash . Ledger.pubKeyHash) pubKeys)
+                  ]
+          printLog @w Warn (Text.unpack err)
+          pure $ Left err
   where
     signingKeyFiles =
       concatMap
         (\pubKey -> ["--signing-key-file", signingKeyFilePath pabConf (Ledger.pubKeyHash pubKey)])
         pubKeys
+
+    opts =
+      mconcat
+        [ ["transaction", "sign"]
+        , ["--tx-body-file", txFilePath pabConf "raw" tx]
+        , signingKeyFiles
+        , ["--out-file", txFilePath pabConf "signed" tx]
+        ]
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
 submitTx ::
@@ -328,6 +375,20 @@ mintOpts pabConf buildMode mintingPolicies redeemers mintValue =
           , valueToCliArg mintValue
           ]
         else []
+    ]
+
+-- | This function does not check if the range is valid, for that see `PreBalance.validateRange`
+validRangeOpts :: SlotRange -> [Text]
+validRangeOpts (Interval lowerBound upperBound) =
+  mconcat
+    [ case lowerBound of
+        LowerBound (Finite (Slot x)) closed ->
+          ["--invalid-before", showText (bool (x + 1) x closed)]
+        _ -> []
+    , case upperBound of
+        UpperBound (Finite (Slot x)) closed ->
+          ["--invalid-hereafter", showText (bool x (x + 1) closed)]
+        _ -> []
     ]
 
 txOutOpts :: PABConfig -> Map DatumHash Datum -> [TxOut] -> [Text]
