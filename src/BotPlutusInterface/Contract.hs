@@ -23,7 +23,6 @@ import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Data.Aeson (ToJSON, Value)
-import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
@@ -245,4 +244,4 @@ currentTime ::
   ContractEnvironment w ->
   Eff effs POSIXTime
 currentTime contractEnv =
-  slotToEndPOSIXTime def <$> currentSlot @w contractEnv
+  slotToEndPOSIXTime contractEnv.cePABConfig.pcSlotConfig <$> currentSlot @w contractEnv

@@ -14,7 +14,6 @@ import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
-import Data.Default (Default (def))
 import Data.Either.Combinators (maybeToRight, rightToMaybe)
 import Data.Kind (Type)
 import Data.List (partition, (\\))
@@ -77,6 +76,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
       tx <-
         hoistEither $
           addValidRange
+            pabConf
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
@@ -272,10 +272,10 @@ addSignatories ownPkh privKeys pkhs tx =
     tx
     (ownPkh : pkhs)
 
-addValidRange :: POSIXTimeRange -> Tx -> Either Text Tx
-addValidRange timeRange tx =
+addValidRange :: PABConfig -> POSIXTimeRange -> Tx -> Either Text Tx
+addValidRange pabConf timeRange tx =
   if validateRange timeRange
-    then Right $ tx {txValidRange = posixTimeRangeToContainedSlotRange def timeRange}
+    then Right $ tx {txValidRange = posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange}
     else Left "Invalid validity interval."
 
 validateRange :: forall (a :: Type). Ord a => Interval a -> Bool

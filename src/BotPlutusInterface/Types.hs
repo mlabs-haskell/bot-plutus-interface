@@ -26,6 +26,7 @@ import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Ledger (PubKeyHash)
+import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import Plutus.PAB.Effects.Contract.Builtin (
@@ -43,6 +44,7 @@ data PABConfig = PABConfig
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !ProtocolParameters
+  , pcSlotConfig :: !SlotConfig
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -107,6 +109,7 @@ instance Default PABConfig where
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = def
+      , pcSlotConfig = def
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"
       , pcTxFileDir = "./txs"
