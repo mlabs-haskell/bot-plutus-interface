@@ -35,13 +35,15 @@ import Control.Monad (void, when)
 import Control.Monad.Freer (Eff, LastMember, Member, interpretM, send, type (~>))
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
+import Data.Bifunctor (second)
 import Data.Kind (Type)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import System.Directory qualified as Directory
-import System.Process (readProcess)
+import System.Exit (ExitCode (ExitFailure, ExitSuccess))
+import System.Process (readProcess, readProcessWithExitCode)
 import Prelude hiding (readFile)
 
 data ShellArgs a = ShellArgs
@@ -54,7 +56,7 @@ instance Show (ShellArgs a) where
   show ShellArgs {cmdName, cmdArgs} = Text.unpack $ cmdName <> mconcat cmdArgs
 
 data PABEffect (w :: Type) (r :: Type) where
-  CallCommand :: ShellArgs a -> PABEffect w a
+  CallCommand :: ShellArgs a -> PABEffect w (Either Text a)
   CreateDirectoryIfMissing :: Bool -> FilePath -> PABEffect w ()
   PrintLog :: LogLevel -> String -> PABEffect w ()
   UpdateInstanceState :: Activity -> PABEffect w ()
@@ -119,19 +121,28 @@ printLog' :: LogLevel -> LogLevel -> String -> IO ()
 printLog' logLevelSetting msgLogLvl msg =
   when (logLevelSetting >= msgLogLvl) $ putStrLn msg
 
-callLocalCommand :: forall (a :: Type). ShellArgs a -> IO a
+callLocalCommand :: forall (a :: Type). ShellArgs a -> IO (Either Text a)
 callLocalCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} =
-  cmdOutParser <$> readProcess (Text.unpack cmdName) (map Text.unpack cmdArgs) ""
+  second cmdOutParser <$> readProcessEither (Text.unpack cmdName) (map Text.unpack cmdArgs)
 
-callRemoteCommand :: forall (a :: Type). Text -> ShellArgs a -> IO a
+callRemoteCommand :: forall (a :: Type). Text -> ShellArgs a -> IO (Either Text a)
 callRemoteCommand ipAddr ShellArgs {cmdName, cmdArgs, cmdOutParser} =
-  cmdOutParser
-    <$> readProcess
+  second cmdOutParser
+    <$> readProcessEither
       "ssh"
       (map Text.unpack [ipAddr, Text.unwords $ "source ~/.bash_profile;" : cmdName : map quotes cmdArgs])
-      ""
+
 quotes :: Text -> Text
 quotes str = "\"" <> str <> "\""
+
+readProcessEither :: FilePath -> [String] -> IO (Either Text String)
+readProcessEither path args =
+  mapToEither <$> readProcessWithExitCode path args ""
+  where
+    mapToEither :: (ExitCode, String, String) -> Either Text String
+    mapToEither (ExitSuccess, stdout, _) = Right stdout
+    mapToEither (ExitFailure exitCode, _, stderr) =
+      Left $ "ExitCode " <> Text.pack (show exitCode) <> ": " <> Text.pack stderr
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@
@@ -140,7 +151,7 @@ callCommand ::
   forall (w :: Type) (a :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ShellArgs a ->
-  Eff effs a
+  Eff effs (Either Text a)
 callCommand = send @(PABEffect w) . CallCommand
 
 createDirectoryIfMissing ::

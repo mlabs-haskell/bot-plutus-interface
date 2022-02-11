@@ -70,7 +70,7 @@ preBalanceTxIO ::
 preBalanceTxIO pabConf ownPkh unbalancedTx =
   runEitherT $
     do
-      utxos <- lift $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+      utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> fmap (Ledger.toTxOut . fromScriptOutput) (unBalancedTxUtxoIndex unbalancedTx)
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
@@ -106,7 +106,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
         hoistEither $ preBalanceTx pabConf.pcProtocolParams minUtxos 0 utxoIndex ownPkh privKeys requiredSigs tx
 
       lift $ createDirectoryIfMissing @w False (Text.unpack pabConf.pcTxFileDir)
-      lift $ CardanoCLI.buildTx @w pabConf privKeys ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
+      newEitherT $ CardanoCLI.buildTx @w pabConf privKeys ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
       lift $ printLog @w Debug $ "Fees: " ++ show fees

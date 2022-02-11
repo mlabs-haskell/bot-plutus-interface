@@ -13,22 +13,28 @@ import BotPlutusInterface.Effects (
   queryChainIndex,
   threadDelay,
  )
+import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.PreBalance qualified as PreBalance
-import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug), Tip (slot))
+import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug, Warn), Tip (slot))
 import Control.Lens ((^.))
+import Control.Monad (void)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Either (eitherT, firstEitherT, newEitherT, secondEitherT)
 import Data.Aeson (ToJSON, Value)
-import Data.Either (isRight)
+import Data.Aeson.Extras (encodeByteString)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
+import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger (POSIXTime)
+import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
@@ -45,6 +51,7 @@ import Plutus.Contract.Effects (
  )
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
+import PlutusTx.Builtins (fromBuiltin)
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
 
@@ -180,33 +187,37 @@ writeBalancedTx ::
   Eff effs WriteBalancedTxResponse
 writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
 writeBalancedTx contractEnv (Right tx) = do
-  createDirectoryIfMissing @w False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
+  let pabConf = contractEnv.cePABConfig
+  createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
 
-  fileWriteRes <-
-    Files.writeAll @w contractEnv.cePABConfig tx
+  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Right) $ do
+    void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
+    privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
-  case fileWriteRes of
-    Left err ->
-      pure $
-        WriteBalancedTxFailed $
-          OtherError $
-            "Failed to write script file(s): " <> Text.pack (show err)
-    Right _ -> do
-      let ownPkh = contractEnv.cePABConfig.pcOwnPubKeyHash
-      let requiredSigners = Map.keys $ tx ^. Tx.signatures
-      privKeys <- either (error . Text.unpack) id <$> Files.readPrivateKeys @w contractEnv.cePABConfig
+    let ownPkh = pabConf.pcOwnPubKeyHash
+    let requiredSigners = Map.keys $ tx ^. Tx.signatures
+    let skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
+    let signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-      CardanoCLI.uploadFiles @w contractEnv.cePABConfig
+    lift $ CardanoCLI.uploadFiles @w pabConf
 
-      CardanoCLI.buildTx @w contractEnv.cePABConfig privKeys ownPkh CardanoCLI.BuildAuto tx
-      res <- CardanoCLI.signTx @w contractEnv.cePABConfig privKeys tx requiredSigners
+    newEitherT $ CardanoCLI.buildTx @w pabConf privKeys ownPkh CardanoCLI.BuildAuto tx
 
-      result <-
-        if contractEnv.cePABConfig.pcDryRun || isRight res
-          then pure Nothing
-          else CardanoCLI.submitTx @w contractEnv.cePABConfig tx
+    if signable
+      then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
+      else
+        lift . printLog @w Warn . Text.unpack . Text.unlines $
+          [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
+          , "Tx file: " <> Files.txFilePath pabConf "raw" tx
+          , "Signatories (pkh): " <> Text.unwords (map pkhToText requiredSigners)
+          ]
 
-      pure $ maybe (WriteBalancedTxSuccess (Right tx)) (WriteBalancedTxFailed . OtherError) result
+    if not pabConf.pcDryRun && signable
+      then secondEitherT (const tx) $ newEitherT $ CardanoCLI.submitTx @w pabConf tx
+      else pure tx
+
+pkhToText :: Ledger.PubKey -> Text
+pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
 
 {- | Wait at least until the given slot. The slot number only changes when a new block is appended
  to the chain so it waits for at least one block
@@ -219,10 +230,11 @@ awaitSlot ::
   Eff effs Slot
 awaitSlot contractEnv s@(Slot n) = do
   threadDelay @w 10_000_000
-  tip' <- CardanoCLI.queryTip @w contractEnv.cePABConfig
-  if tip'.slot < n
-    then awaitSlot contractEnv s
-    else pure $ Slot tip'.slot
+  tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
+  case tip of
+    Right tip'
+      | n < tip'.slot -> pure $ Slot tip'.slot
+    _ -> awaitSlot contractEnv s
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
  are applying here as well.
@@ -244,7 +256,7 @@ currentSlot ::
   ContractEnvironment w ->
   Eff effs Slot
 currentSlot contractEnv =
-  Slot . slot <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+  Slot . slot . either (error . Text.unpack) id <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
 
 currentTime ::
   forall (w :: Type) (effs :: [Type -> Type]).
