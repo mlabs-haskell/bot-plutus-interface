@@ -44,7 +44,8 @@ data PABConfig = PABConfig
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !ProtocolParameters
-  , pcSlotConfig :: !SlotConfig
+  , -- | Slot configuration of the network, the default value can be used for the mainnet
+    pcSlotConfig :: !SlotConfig
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -56,7 +57,7 @@ data PABConfig = PABConfig
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
-  , pcOwnPubKeyHash :: PubKeyHash
+  , pcOwnPubKeyHash :: !PubKeyHash
   , pcPort :: !Port
   }
   deriving stock (Show, Eq)

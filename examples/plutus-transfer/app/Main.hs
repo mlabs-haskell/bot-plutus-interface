@@ -21,10 +21,10 @@ import Cardano.PlutusExample.Transfer (
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Default (def)
 import Data.Maybe (fromMaybe)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
-import Data.Default (def)
 import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
 import Prelude
 
