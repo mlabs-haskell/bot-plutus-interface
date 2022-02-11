@@ -31,7 +31,7 @@ import Ledger (POSIXTime)
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
-import Ledger.TimeSlot (slotToEndPOSIXTime)
+import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
@@ -134,6 +134,11 @@ handlePABReq contractEnv req = do
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
     CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
+    PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
+      pure $
+        PosixTimeRangeToContainedSlotRangeResp $
+          Right $
+            posixTimeRangeToContainedSlotRange contractEnv.cePABConfig.pcSlotConfig posixTimeRange
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -142,7 +147,6 @@ handlePABReq contractEnv req = do
     -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
     AwaitTxStatusChangeReq txId -> pure $ AwaitTxStatusChangeResp txId (Committed TxValid ())
     -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
-    -- PosixTimeRangeToContainedSlotRangeReq POSIXTimeRange -> PosixTimeRangeToContainedSlotRangeResp (Either SlotConversionError SlotRange)
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
   printLog @w Debug $ show resp
