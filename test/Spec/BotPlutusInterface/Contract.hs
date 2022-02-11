@@ -803,7 +803,7 @@ waitNextBlock = do
       contract :: Contract () (Endpoint "SendAda" ()) Text Slot
       contract = waitNSlots 1
 
-  let (result, state) = runContractPure contract initState
+      (result, state) = runContractPure contract initState
 
   case result of
     Left errMsg -> assertFailure (show errMsg)

@@ -129,6 +129,7 @@ executable plutus-game-pab
     , bot-plutus-interface
     , bytestring
     , cardano-api
+    , data-default
     , playground-common
     , plutus-game
     , plutus-ledger

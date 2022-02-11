@@ -23,7 +23,6 @@ import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Data.Aeson (ToJSON, Value)
-import Data.Default (Default (def))
 import Data.Either (isRight)
 import Data.Kind (Type)
 import Data.Map qualified as Map
@@ -33,7 +32,7 @@ import Ledger (POSIXTime)
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
-import Ledger.TimeSlot (slotToEndPOSIXTime)
+import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
@@ -47,17 +46,15 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import Wallet.Emulator.Error (WalletAPIError (..))
-import Wallet.Emulator.Types (Wallet)
 import Prelude
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
   (ToJSON w, Monoid w) =>
   ContractEnvironment w ->
-  Wallet ->
   Contract w s e a ->
   IO (Either e a)
-runContract contractEnv _ (Contract effs) = do
+runContract contractEnv (Contract effs) = do
   runM $ handlePABEffect @w contractEnv $ raiseEnd $ handleContract contractEnv effs
 
 handleContract ::
@@ -125,8 +122,7 @@ handlePABReq contractEnv req = do
     -- Handled requests --
     ----------------------
     OwnPaymentPublicKeyHashReq ->
-      -- TODO: Should be able to get this from the wallet, hardcoded for now
-      pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash $ contractEnv.cePABConfig.pcOwnPubKeyHash
+      pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
@@ -136,8 +132,14 @@ handlePABReq contractEnv req = do
     WriteBalancedTxReq tx ->
       WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
+    AwaitTimeReq t -> AwaitTimeResp <$> awaitTime @w contractEnv t
     CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
+    PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
+      pure $
+        PosixTimeRangeToContainedSlotRangeResp $
+          Right $
+            posixTimeRangeToContainedSlotRange contractEnv.cePABConfig.pcSlotConfig posixTimeRange
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -145,8 +147,9 @@ handlePABReq contractEnv req = do
     -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
     -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
     AwaitTxStatusChangeReq txId -> pure $ AwaitTxStatusChangeResp txId (Committed TxValid ())
+    -- AwaitTxOutStatusChangeReq TxOutRef
     -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
-    -- PosixTimeRangeToContainedSlotRangeReq POSIXTimeRange -> PosixTimeRangeToContainedSlotRangeResp (Either SlotConversionError SlotRange)
+    -- YieldUnbalancedTxReq UnbalancedTx
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
   printLog @w Debug $ show resp
@@ -160,16 +163,6 @@ balanceTx ::
   UnbalancedTx ->
   Eff effs BalanceTxResponse
 balanceTx contractEnv unbalancedTx = do
-  -- TODO: Handle paging
-  -- (_, Page {pageItems}) <-
-  --   chainIndexQueryMany $
-  --     ChainIndexClient.getUtxoAtAddress $
-  --       addressCredential ownAddress
-  -- chainIndexTxOuts <- traverse (chainIndexQueryOne . ChainIndexClient.getTxOut) pageItems
-  -- let utxos =
-  --       Map.fromList $
-  --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
-
   eitherPreBalancedTx <-
     PreBalance.preBalanceTxIO @w
       contractEnv.cePABConfig
@@ -215,8 +208,8 @@ writeBalancedTx contractEnv (Right tx) = do
 
       pure $ maybe (WriteBalancedTxSuccess (Right tx)) (WriteBalancedTxFailed . OtherError) result
 
-{- | Wait for at least n slots. The slot number only changes when a new block is appended to the chain
- so it waits for at least one block
+{- | Wait at least until the given slot. The slot number only changes when a new block is appended
+ to the chain so it waits for at least one block
 -}
 awaitSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -224,16 +217,26 @@ awaitSlot ::
   ContractEnvironment w ->
   Slot ->
   Eff effs Slot
-awaitSlot contractEnv (Slot n) = do
-  tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
-  waitNSlots' tip.slot
+awaitSlot contractEnv s@(Slot n) = do
+  threadDelay @w 10_000_000
+  tip' <- CardanoCLI.queryTip @w contractEnv.cePABConfig
+  if tip'.slot < n
+    then awaitSlot contractEnv s
+    else pure $ Slot tip'.slot
+
+{- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
+ are applying here as well.
+-}
+awaitTime ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  POSIXTime ->
+  Eff effs POSIXTime
+awaitTime ce = fmap fromSlot . awaitSlot ce . toSlot
   where
-    waitNSlots' refSlot = do
-      threadDelay @w 10_000_000
-      tip' <- CardanoCLI.queryTip @w contractEnv.cePABConfig
-      if tip'.slot < n
-        then waitNSlots' refSlot
-        else pure $ Slot tip'.slot
+    toSlot = posixTimeToEnclosingSlot ce.cePABConfig.pcSlotConfig
+    fromSlot = slotToEndPOSIXTime ce.cePABConfig.pcSlotConfig
 
 currentSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -249,4 +252,4 @@ currentTime ::
   ContractEnvironment w ->
   Eff effs POSIXTime
 currentTime contractEnv =
-  slotToEndPOSIXTime def <$> currentSlot @w contractEnv
+  slotToEndPOSIXTime contractEnv.cePABConfig.pcSlotConfig <$> currentSlot @w contractEnv

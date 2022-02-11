@@ -129,6 +129,7 @@ executable plutus-nft-pab
     , bot-plutus-interface
     , bytestring
     , cardano-api
+    , data-default
     , playground-common
     , plutus-ledger
     , plutus-nft

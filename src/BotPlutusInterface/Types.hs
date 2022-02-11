@@ -26,6 +26,7 @@ import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Ledger (PubKeyHash)
+import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import Plutus.PAB.Effects.Contract.Builtin (
@@ -34,7 +35,6 @@ import Plutus.PAB.Effects.Contract.Builtin (
   endpointsToSchemas,
  )
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
-import Wallet.Emulator (Wallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -44,6 +44,8 @@ data PABConfig = PABConfig
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !ProtocolParameters
+  , -- | Slot configuration of the network, the default value can be used for the mainnet
+    pcSlotConfig :: !SlotConfig
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -55,7 +57,7 @@ data PABConfig = PABConfig
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
-  , pcOwnPubKeyHash :: PubKeyHash
+  , pcOwnPubKeyHash :: !PubKeyHash
   , pcPort :: !Port
   }
   deriving stock (Show, Eq)
@@ -64,7 +66,6 @@ data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
-  , ceWallet :: Wallet
   }
   deriving stock (Show)
 
@@ -109,6 +110,7 @@ instance Default PABConfig where
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = def
+      , pcSlotConfig = def
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"
       , pcTxFileDir = "./txs"

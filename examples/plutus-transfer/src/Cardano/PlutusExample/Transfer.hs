@@ -12,6 +12,7 @@ import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.Bifunctor (first)
 import Data.Monoid (Last (Last))
 import Data.Text (Text)
+import Data.Void (Void)
 import GHC.Generics (Generic)
 import Ledger hiding (singleton)
 import Ledger.Constraints as Constraints
@@ -35,10 +36,12 @@ transfer :: TransferParams -> Contract (Last Text) TransferSchema Text ()
 transfer (TransferParams outputPerTx allPayments) = do
   tell $ Last $ Just "Contract started"
   let txs =
-        map (mconcat . map (uncurry Constraints.mustPayToPubKey . first PaymentPubKeyHash)) $
-          group outputPerTx allPayments
+        map toTx $ group outputPerTx allPayments
   forM_ txs $ \tx -> submitTx tx >> waitNSlots 1
   tell $ Last $ Just "Finished"
+  where
+    toTx :: [(PubKeyHash, Value)] -> TxConstraints Void Void
+    toTx = mconcat . map (uncurry Constraints.mustPayToPubKey . first PaymentPubKeyHash)
 
 group :: Int -> [a] -> [[a]]
 group n list

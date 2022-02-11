@@ -34,6 +34,7 @@ import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
+import Data.Bool (bool)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Lazy.Char8 qualified as Char8
 import Data.ByteString.Short qualified as ShortByteString
@@ -379,17 +380,17 @@ mintOpts pabConf buildMode mintingPolicies redeemers mintValue =
         else []
     ]
 
--- | This function does not check if the range is valid, that
+-- | This function does not check if the range is valid, for that see `PreBalance.validateRange`
 validRangeOpts :: SlotRange -> [Text]
 validRangeOpts (Interval lowerBound upperBound) =
   mconcat
     [ case lowerBound of
-        LowerBound (Finite (Slot x)) True -> ["--invalid-before", showText x]
-        LowerBound (Finite (Slot x)) False -> ["--invalid-before", showText (x + 1)]
+        LowerBound (Finite (Slot x)) closed ->
+          ["--invalid-before", showText (bool (x + 1) x closed)]
         _ -> []
     , case upperBound of
-        UpperBound (Finite (Slot x)) True -> ["--invalid-hereafter", showText (x + 1)]
-        UpperBound (Finite (Slot x)) False -> ["--invalid-hereafter", showText x]
+        UpperBound (Finite (Slot x)) closed ->
+          ["--invalid-hereafter", showText (bool x (x + 1) closed)]
         _ -> []
     ]
 

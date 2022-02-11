@@ -39,6 +39,10 @@ data MyContracts
 2. Define a HasDefinitions instance for the endpoints
 
 ```haskell
+import BotPlutusInterface.Types (HasDefinitions (..), SomeBuiltin (..), endpointsToSchemas)
+import Playground.Types (FunctionSchema)
+import Schema (FormSchema)
+
 instance HasDefinitions MyContracts where
   getDefinitions :: [MyContract]
   getDefinitions = []
@@ -61,6 +65,13 @@ instance HasDefinitions MyContracts where
 3. Write your main entrypoint for the application, with the preferred configurations
 
 ```haskell
+import BotPlutusInterface.Types (CLILocation (Local), LogLevel (Debug), PABConfig (..))
+import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
+import Data.Aeson qualified as JSON
+import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Default (def)
+import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
+
 main :: IO ()
 main = do
   protocolParams <- JSON.decode <$> LazyByteString.readFile "protocol.json"
@@ -72,6 +83,8 @@ main = do
           , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
           , pcPort = 9080
           , pcProtocolParams = protocolParams
+          , -- | Slot configuration of the network, the default value can be used for the mainnet
+            pcSlotConfig = def
           , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
           , -- Directory name of the script and data files
             pcScriptFileDir = "./scripts"

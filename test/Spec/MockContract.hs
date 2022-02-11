@@ -116,7 +116,6 @@ import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import PlutusTx.Builtins (fromBuiltin)
 import System.IO.Unsafe (unsafePerformIO)
-import Wallet.Emulator (knownWallet)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 
@@ -229,7 +228,6 @@ instance Monoid w => Default (ContractEnvironment w) where
       { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
-      , ceWallet = knownWallet 1
       }
 
 instance Monoid w => Default (ContractState w) where
@@ -349,9 +347,14 @@ mockQueryTip :: forall (w :: Type). MockContract w String
 mockQueryTip = do
   state <- get @(MockContractState w)
 
-  let slot = Text.pack $ show $ getSlot $ tipSlot (state ^. tip)
-      blockId = decodeUtf8 $ getBlockId $ tipBlockId (state ^. tip)
-      blockNo = Text.pack $ show $ unBlockNumber $ tipBlockNo (state ^. tip)
+  let (slot, blockId, blockNo) =
+        case state ^. tip of
+          TipAtGenesis -> ("0", "00", "0")
+          Tip {tipSlot, tipBlockId, tipBlockNo} ->
+            ( Text.pack $ show $ getSlot tipSlot
+            , decodeUtf8 $ getBlockId tipBlockId
+            , Text.pack $ show $ unBlockNumber tipBlockNo
+            )
   pure $
     Text.unpack
       [text|{
