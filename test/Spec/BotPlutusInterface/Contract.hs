@@ -330,7 +330,7 @@ withoutSigning = do
         submitTx constraints
 
   -- Building and siging the tx should include both signing keys
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContractWithTxId contract initState $ \state outTxId -> do
     assertCommandHistory
       state
       [
@@ -347,6 +347,7 @@ withoutSigning = do
           |]
         )
       ]
+    assertCommandNotCalled state "cardano-cli transaction sign"
 
 sendTokens :: Assertion
 sendTokens = do
@@ -852,3 +853,15 @@ assertCommandHistory state =
     ( \(idx, expectedCmd) ->
         (state ^? commandHistory . ix idx) @?= Just (Text.replace "\n" " " expectedCmd)
     )
+
+assertCommandCalled :: forall (w :: Type). MockContractState w -> Text -> Assertion
+assertCommandCalled state expectedCmd =
+  assertBool
+    (Text.unpack . Text.unlines $ ["Command was not called:", expectedCmd])
+    (any (Text.isInfixOf (Text.replace "\n" " " expectedCmd)) (state ^. commandHistory))
+
+assertCommandNotCalled :: forall (w :: Type). MockContractState w -> Text -> Assertion
+assertCommandNotCalled state expectedCmd =
+  assertBool
+    (Text.unpack . Text.unlines $ ["Command was called:", expectedCmd])
+    (not (any (Text.isInfixOf (Text.replace "\n" " " expectedCmd)) (state ^. commandHistory)))
