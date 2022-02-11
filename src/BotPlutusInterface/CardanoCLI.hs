@@ -16,7 +16,7 @@ module BotPlutusInterface.CardanoCLI (
   queryTip,
 ) where
 
-import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, printLog, uploadDir)
+import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, uploadDir)
 import BotPlutusInterface.Files (
   DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
@@ -26,7 +26,7 @@ import BotPlutusInterface.Files (
   txFilePath,
   validatorScriptFilePath,
  )
-import BotPlutusInterface.Types (LogLevel (Warn), PABConfig, Tip)
+import BotPlutusInterface.Types (PABConfig, Tip)
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
 import Codec.Serialise qualified as Codec
@@ -251,25 +251,11 @@ signTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
-  Map PubKeyHash DummyPrivKey ->
   Tx ->
   [PubKey] ->
   Eff effs (Either Text ())
-signTx pabConf privKeys tx pubKeys =
-  let skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
-   in if all ((`Map.member` skeys) . Ledger.pubKeyHash) pubKeys
-        then callCommand @w $ ShellArgs "cardano-cli" opts (const ())
-        else do
-          let err =
-                Text.unlines
-                  [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-                  , "Tx file: " <> txFilePath pabConf "raw" tx
-                  , "Signatories (pkh): "
-                      <> Text.unwords
-                        (map (encodeByteString . fromBuiltin . getPubKeyHash . Ledger.pubKeyHash) pubKeys)
-                  ]
-          printLog @w Warn (Text.unpack err)
-          pure $ Left err
+signTx pabConf tx pubKeys =
+  callCommand @w $ ShellArgs "cardano-cli" opts (const ())
   where
     signingKeyFiles =
       concatMap
