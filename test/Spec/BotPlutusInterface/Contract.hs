@@ -9,6 +9,7 @@ import Control.Lens (ix, (&), (.~), (^.), (^?))
 import Data.Aeson (ToJSON)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
+import Data.Function (on)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
@@ -871,20 +872,20 @@ assertCommandHistory state =
     ( \(idx, expectedCmd) ->
         assertCommandEqual
           ("command at index " ++ show idx ++ " was incorrect:")
-          (fromMaybe "" $ state ^? commandHistory . ix idx)
           (Text.replace "\n" " " expectedCmd)
+          (fromMaybe "" $ state ^? commandHistory . ix idx)
     )
 
 assertCommandEqual :: String -> Text -> Text -> Assertion
-assertCommandEqual err actual expected
-  | commandEqual actual expected = return ()
+assertCommandEqual err expected actual
+  | commandEqual expected actual = return ()
   | otherwise = assertFailure $ err ++ "\nExpected:\n" ++ show expected ++ "\nGot:\n" ++ show actual
 
 commandEqual :: Text -> Text -> Bool
 commandEqual "" "" = True
 commandEqual "" _ = False
 commandEqual _ "" = False
-commandEqual actual expected = maybe False (\restAct -> commandEqual (dropToSpace restAct) (dropToSpace postExp)) mRestAct
+commandEqual expected actual = maybe False (on commandEqual dropToSpace postExp) mRestAct
   where
     (preExp, postExp) = Text.breakOn "?" expected
     mRestAct = Text.stripPrefix preExp actual
