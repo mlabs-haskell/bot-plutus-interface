@@ -7,12 +7,13 @@ import BotPlutusInterface.Types (
   AppState (AppState),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
-  PABConfig,
+  PABConfig (..),
   SomeContractState (SomeContractState),
  )
 import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.STM (TVar, atomically, modifyTVar, newTVarIO, readTVar, readTVarIO, retry)
 import Control.Monad (forever, guard, unless, void)
+import Control.Monad.Error.Class (throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON (toJSON))
 import Data.Aeson qualified as JSON
@@ -22,6 +23,8 @@ import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy (Proxy))
 import Data.Row (Row)
+import Data.Text (Text, unpack)
+import Data.Text.IO qualified as Text
 import Data.UUID.V4 qualified as UUID
 import Network.WebSockets (
   Connection,
@@ -45,9 +48,11 @@ import Plutus.PAB.Webserver.Types (
   ContractActivationArgs (..),
   InstanceStatusToClient (ContractFinished, NewObservableState),
  )
-import Servant.API (JSON, Post, ReqBody, (:<|>) (..), (:>))
+import Servant.API (Capture, Get, JSON, Post, ReqBody, (:<|>) (..), (:>))
 import Servant.API.WebSocket (WebSocketPending)
-import Servant.Server (Application, Handler, Server, serve)
+import Servant.Server (Application, Handler, Server, err404, serve)
+import System.Directory (canonicalizePath, doesFileExist, makeAbsolute)
+import System.FilePath (replaceExtension, takeDirectory, (</>))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -63,10 +68,16 @@ type API a =
             :> ReqBody '[JSON] (ContractActivationArgs a)
             :> Post '[JSON] ContractInstanceId -- Start a new instance.
          )
+    :<|> ( "rawTx"
+            :> Capture "hash" Text
+            :> Get '[JSON] Text
+         )
 
 server :: HasDefinitions t => PABConfig -> AppState -> Server (API t)
 server pabConfig state =
-  websocketHandler state :<|> activateContractHandler pabConfig state
+  websocketHandler state
+    :<|> activateContractHandler pabConfig state
+    :<|> rawTxHandler pabConfig
 
 apiProxy :: forall (t :: Type). Proxy (API t)
 apiProxy = Proxy
@@ -206,3 +217,29 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
       let maybeError = toJSON <$> leftToMaybe result
       broadcastContractResult @w state contractInstanceID maybeError
   pure contractInstanceID
+
+-- | This handler will allow to retrieve raw transactions from the pcTxFileDir if pcEnableTxEndpoint is True
+rawTxHandler :: PABConfig -> Text -> Handler Text
+rawTxHandler config hash = do
+  -- Check that endpoint is enabled
+  assert (pcEnableTxEndpoint config)
+  -- Absolute path to pcTxFileDir that is specified in the config
+  txFolderPath <- liftIO $ makeAbsolute (unpack $ pcTxFileDir config)
+
+  -- Add/Set .raw extension on path
+  let suppliedPath :: FilePath
+      suppliedPath = replaceExtension (txFolderPath </> "tx-" <> unpack hash) ".raw"
+  -- Resolve path indirections
+  path <- liftIO $ canonicalizePath suppliedPath
+  -- ensure it does not try to escape txFolderPath
+  assert (takeDirectory path == txFolderPath)
+  -- ensure file exists
+  fileExists <- liftIO $ doesFileExist path
+  assert fileExists
+
+  -- Read contents of path
+  liftIO $ Text.readFile path
+  where
+    assert :: Bool -> Handler ()
+    assert True = pure ()
+    assert False = throwError err404

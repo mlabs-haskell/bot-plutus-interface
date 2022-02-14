@@ -3,6 +3,7 @@ module Main (main) where
 import Spec.BotPlutusInterface.Contract qualified
 import Spec.BotPlutusInterface.PreBalance qualified
 import Spec.BotPlutusInterface.UtxoParser qualified
+import Spec.BotPlutusInterface.Server qualified
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Prelude
 
@@ -21,4 +22,5 @@ tests =
     [ Spec.BotPlutusInterface.Contract.tests
     , Spec.BotPlutusInterface.UtxoParser.tests
     , Spec.BotPlutusInterface.PreBalance.tests
+    , Spec.BotPlutusInterface.Server.tests
     ]

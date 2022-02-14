@@ -52,6 +52,7 @@ data PABConfig = PABConfig
   , pcLogLevel :: !LogLevel
   , pcOwnPubKeyHash :: PubKeyHash
   , pcPort :: !Port
+  , pcEnableTxEndpoint :: !Bool
   }
   deriving stock (Show, Eq)
 
@@ -100,4 +101,5 @@ instance Default PABConfig where
       , pcLogLevel = Info
       , pcOwnPubKeyHash = ""
       , pcPort = 9080
+      , pcEnableTxEndpoint = False
       }
