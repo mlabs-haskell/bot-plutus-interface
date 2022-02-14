@@ -86,17 +86,39 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       preBalancedTx <- hoistEither $ addTxCollaterals utxoIndex tx >>= addSignatories ownPkh privKeys requiredSigs
 
       -- Balance the tx
-      balancedTx <- loop utxoIndex privKeys [] preBalancedTx
+      (balancedTx, minUtxos) <- loop utxoIndex privKeys [] preBalancedTx
+
+      -- Check if we have Ada change
+      let adaChange = getAdaChange utxoIndex (lovelaceValue $ txFee balancedTx) balancedTx
+      -- If we have no change UTxO, but we do have change, we need to add an output for it
+      -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
+      balancedTxWithChange <-
+        if adaChange /= 0 && not (hasChangeUTxO ownPkh balancedTx)
+          then
+            let changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+                changeTxOut =
+                  TxOut
+                    { txOutAddress = changeAddr
+                    , txOutValue = Ada.lovelaceValueOf 1
+                    , txOutDatumHash = Nothing
+                    }
+                preBalancedTxWithChange = balancedTx {txOutputs = changeTxOut : txOutputs balancedTx}
+             in fst <$> loop utxoIndex privKeys minUtxos preBalancedTxWithChange
+          else pure balancedTx
+
+      -- Get the updated change, add it to the tx
+      let finalAdaChange = getAdaChange utxoIndex (lovelaceValue $ txFee balancedTxWithChange) balancedTxWithChange
+          fullyBalancedTx = addAdaChange ownPkh finalAdaChange balancedTxWithChange
 
       -- finally, we must update the signatories
-      hoistEither $ addSignatories ownPkh privKeys requiredSigs balancedTx
+      hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
     loop ::
       Map TxOutRef TxOut ->
       Map PubKeyHash DummyPrivKey ->
       [(TxOut, Integer)] ->
       Tx ->
-      EitherT Text (Eff effs) Tx
+      EitherT Text (Eff effs) (Tx, [(TxOut, Integer)])
     loop utxoIndex privKeys prevMinUtxos tx = do
       void $ lift $ Files.writeAll @w pabConf tx
       nextMinUtxos <-
@@ -123,7 +145,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       let balanceTxWithFees = balancedTx {txFee = Ada.lovelaceValueOf fees}
 
       if balanceTxWithFees == tx
-        then pure balanceTxWithFees
+        then pure (balanceTxWithFees, minUtxos)
         else loop utxoIndex privKeys minUtxos balanceTxWithFees
 
 calculateMinUtxos ::
@@ -146,7 +168,26 @@ balanceTxStep ::
 balanceTxStep minUtxos fees utxos ownPkh tx =
   Right (addLovelaces minUtxos tx)
     >>= balanceTxIns utxos fees
-    >>= handleChange ownPkh utxos fees
+    >>= handleNonAdaChange ownPkh utxos fees
+
+-- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
+getChange :: Map TxOutRef TxOut -> Integer -> Tx -> Value
+getChange utxos fees tx =
+  let txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
+      inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
+      outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
+      nonMintedOutputValue = outputValue `minus` txMint tx
+      change = (inputValue `minus` nonMintedOutputValue) `minus` Ada.lovelaceValueOf fees
+   in change
+
+lovelaceValue :: Value -> Integer
+lovelaceValue = flip Value.assetClassValueOf $ Value.assetClass "" ""
+
+getAdaChange :: Map TxOutRef TxOut -> Integer -> Tx -> Integer
+getAdaChange utxos fees = lovelaceValue . getChange utxos fees
+
+getNonAdaChange :: Map TxOutRef TxOut -> Integer -> Tx -> Value
+getNonAdaChange utxos fees = Ledger.noAdaValue . getChange utxos fees
 
 -- | Getting the necessary utxos to cover the fees for the transaction
 collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
@@ -232,29 +273,44 @@ addTxCollaterals utxos tx = do
       _ -> Left "There are no utxos to be used as collateral"
     filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
 
--- | Ensures all change goes back to user
-handleChange :: PubKeyHash -> Map TxOutRef TxOut -> Integer -> Tx -> Either Text Tx
-handleChange ownPkh utxos fees tx =
+-- | Ensures all non ada change goes back to user
+handleNonAdaChange :: PubKeyHash -> Map TxOutRef TxOut -> Integer -> Tx -> Either Text Tx
+handleNonAdaChange ownPkh utxos fees tx =
   let changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
-      txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
-      inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
-      outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
-      nonMintedOutputValue = outputValue `minus` txMint tx
-      change = (inputValue `minus` nonMintedOutputValue) `minus` Ada.lovelaceValueOf fees
+      nonAdaChange = getNonAdaChange utxos fees tx
       outputs =
         case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
           ([], txOuts) ->
             TxOut
               { txOutAddress = changeAddr
-              , txOutValue = change
+              , txOutValue = nonAdaChange
               , txOutDatumHash = Nothing
               } :
             txOuts
           (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
-            txOut {txOutValue = v <> change} : (txOuts <> txOuts')
-   in if isValueNat change
-        then Right $ if Value.isZero change then tx else tx {txOutputs = outputs}
+            txOut {txOutValue = v <> nonAdaChange} : (txOuts <> txOuts')
+   in if isValueNat nonAdaChange
+        then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
+
+hasChangeUTxO :: PubKeyHash -> Tx -> Bool
+hasChangeUTxO ownPkh tx =
+  any ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx
+  where
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+
+-- | Adds ada change to a transaction, assuming there is already an output going to ownPkh. Otherwise, this is identity
+addAdaChange :: PubKeyHash -> Integer -> Tx -> Tx
+addAdaChange ownPkh change tx =
+  tx
+    { txOutputs =
+        case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
+          (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
+            txOut {txOutValue = v <> Ada.lovelaceValueOf change} : (txOuts <> txOuts')
+          _ -> txOutputs tx
+    }
+  where
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
 
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.

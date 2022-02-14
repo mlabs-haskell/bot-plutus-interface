@@ -72,6 +72,7 @@ import Cardano.Api (
  )
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
+import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
 import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
@@ -91,6 +92,7 @@ import Data.Kind (Type)
 import Data.List (isPrefixOf)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Row (Row)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -116,6 +118,7 @@ import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import PlutusTx.Builtins (fromBuiltin)
 import System.IO.Unsafe (unsafePerformIO)
+import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 
@@ -314,8 +317,8 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
       Right . cmdOutParser <$> mockQueryUtxo addr
     ("cardano-cli", "transaction" : "calculate-min-required-utxo" : _) ->
       pure $ Right $ cmdOutParser "Lovelace 50"
-    ("cardano-cli", "transaction" : "calculate-min-fee" : _) ->
-      pure $ Right $ cmdOutParser "200 Lovelace"
+    ("cardano-cli", "transaction" : "calculate-min-fee" : rest) ->
+      pure $ Right $ cmdOutParser $ show (fromMaybe 0 $ toFee rest) ++ " Lovelace"
     ("cardano-cli", "transaction" : "build-raw" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
@@ -342,6 +345,12 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
     (unsupportedCmd, unsupportedArgs) ->
       throwError @Text
         ("Unsupported command: " <> Text.intercalate " " (unsupportedCmd : unsupportedArgs))
+
+toFee :: [Text] -> Maybe Integer
+toFee (_ : _ : _ : inCount : _ : outCount : _) = (100 *) <$> liftA2 (+) (textRead inCount) (textRead outCount)
+  where
+    textRead = readMaybe . Text.unpack
+toFee _ = Nothing
 
 mockQueryTip :: forall (w :: Type). MockContract w String
 mockQueryTip = do
