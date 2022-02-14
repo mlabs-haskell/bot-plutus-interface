@@ -3,9 +3,10 @@ module BotPlutusInterface.UtxoParser (
   feeParser,
   utxoParser,
   utxoMapParser,
+  tokenNameParser,
 ) where
 
-import Control.Applicative (many)
+import Control.Applicative (many, (<|>))
 import Control.Monad (mzero, void)
 import Data.Aeson.Extras (tryDecode)
 import Data.Attoparsec.Text (
@@ -22,11 +23,10 @@ import Data.Attoparsec.Text (
   skipSpace,
   skipWhile,
   takeWhile,
+  string,
   (<?>),
  )
-import Data.Hex (unhex)
 import Data.Text (Text)
-import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Ledger (Address (addressCredential))
 import Ledger.Ada qualified as Ada
 import Ledger.Scripts (DatumHash (..))
@@ -35,12 +35,13 @@ import Ledger.Tx (
   TxOutRef (..),
  )
 import Ledger.TxId (TxId (..))
-import Ledger.Value (AssetClass, TokenName, Value)
+import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
   BuiltinByteString,
   Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
+  TokenName(..),
  )
 import PlutusTx.Builtins (toBuiltin)
 import Prelude hiding (takeWhile)
@@ -106,7 +107,8 @@ tokenNameParser = do
   where
     tokenName = do
       void $ char '.'
-      Value.tokenName . encodeUtf8 <$> decodeHex (takeWhile (/= ' '))
+      void $ (string "0x" <|> string "")
+      TokenName <$> decodeHash (takeWhile (not . inClass " "))
 
 datumHashNoneParser :: Parser ()
 datumHashNoneParser = "TxOutDatumNone" >> pure ()
@@ -122,10 +124,6 @@ datumHashParser = do
 decodeHash :: Parser Text -> Parser BuiltinByteString
 decodeHash rawParser =
   rawParser >>= \parsed -> either (const mzero) (pure . toBuiltin) (tryDecode parsed)
-
-decodeHex :: Parser Text -> Parser Text
-decodeHex rawParser =
-  rawParser >>= \parsed -> either (const mzero) (pure . decodeUtf8) ((unhex . encodeUtf8) parsed)
 
 feeParser :: Parser Integer
 feeParser =
