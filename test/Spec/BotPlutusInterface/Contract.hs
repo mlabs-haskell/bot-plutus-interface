@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Spec.BotPlutusInterface.Contract (tests) where
+module Spec.BotPlutusInterface.Contract (tests, commandEqual) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import Cardano.Api (NetworkId (Mainnet))
@@ -11,6 +11,7 @@ import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
 import Data.Kind (Type)
 import Data.Map qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Monoid (Last (Last))
 import Data.Row (Row)
 import Data.Set qualified as Set
@@ -129,38 +130,41 @@ sendAda = do
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+250
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
         )
       ,
         ( 3
         , [text|
           cardano-cli transaction calculate-min-fee
-          --tx-body-file ./txs/tx-${outTxId}.raw
+          --tx-body-file ./txs/tx-?
           --tx-in-count 1
-          --tx-out-count 1
+          --tx-out-count 2
           --witness-count 1
           --protocol-params-file ./protocol.json
           --mainnet
           |]
         )
-      ,
-        ( 6
+      , -- Steps 4, 5 and 6 are near repeats of 1, 2 and 3, to ensure min utxo values are met
+
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+50
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
         |]
         )
       ,
-        ( 7
+        ( 8
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-${outTxId}.raw
@@ -211,38 +215,40 @@ sendAdaStaking = do
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+250
           --tx-out ${addr2Staking}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
         )
       ,
         ( 3
         , [text|
           cardano-cli transaction calculate-min-fee
-          --tx-body-file ./txs/tx-${outTxId}.raw
+          --tx-body-file ./txs/tx-?
           --tx-in-count 1
-          --tx-out-count 1
+          --tx-out-count 2
           --witness-count 1
           --protocol-params-file ./protocol.json
           --mainnet
           |]
         )
       ,
-        ( 6
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+50
           --tx-out ${addr2Staking}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
         |]
         )
       ,
-        ( 7
+        ( 8
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-${outTxId}.raw
@@ -274,29 +280,30 @@ multisigSupport = do
         ( 3
         , [text|
           cardano-cli transaction calculate-min-fee
-          --tx-body-file ./txs/tx-${outTxId}.raw
+          --tx-body-file ./txs/tx-?
           --tx-in-count 1
-          --tx-out-count 1
+          --tx-out-count 2
           --witness-count 2
           --protocol-params-file ./protocol.json
           --mainnet
           |]
         )
       ,
-        ( 6
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+50
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --required-signer ./signing-keys/signing-key-${pkh3'}.skey
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ,
-        ( 7
+        ( 8
         , [text| 
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-${outTxId}.raw
@@ -334,16 +341,17 @@ withoutSigning = do
     assertCommandHistory
       state
       [
-        ( 6
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+50
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --required-signer-hash ${pkh3'}
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]
@@ -379,16 +387,16 @@ sendTokens = do
     assertCommandHistory
       state
       [
-        ( 10
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId1}#0
           --tx-in-collateral ${inTxId2}#1
-          --tx-out ${addr1}+50 + 95 abcd1234.74657374546F6B656E
+          --tx-out ${addr1}+100 + 95 abcd1234.74657374546F6B656E
           --tx-out ${addr2}+1000 + 5 abcd1234.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
         |]
         )
       ]
@@ -423,16 +431,16 @@ sendTokensWithoutName = do
     assertCommandHistory
       state
       [
-        ( 10
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId1}#0
           --tx-in-collateral ${inTxId2}#1
-          --tx-out ${addr1}+50 + 95 abcd1234
+          --tx-out ${addr1}+100 + 95 abcd1234
           --tx-out ${addr2}+1000 + 5 abcd1234
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]
@@ -479,6 +487,7 @@ mintTokens = do
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+250
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
@@ -486,22 +495,24 @@ mintTokens = do
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?
       |]
         )
       ,
-        ( 6
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+50
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
+          --mint-execution-units (297830,1100)
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]
@@ -571,27 +582,29 @@ spendToValidator = do
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+500
           --tx-out ${valAddr'}+500
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 0 --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 0
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?
       |]
         )
       ,
-        ( 6
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+300
           --tx-out ${valAddr'}+500
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]
-    --tx-out-datum-file result-scripts/datum-${datumHash'}.json
 
     assertFiles
       state
@@ -665,24 +678,27 @@ redeemFromValidator = do
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --tx-in-execution-units (387149,1400)
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+750
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 0 --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 0 --protocol-params-file ./protocol.json --out-file ./txs/tx-?
       |]
         )
       ,
-        ( 6
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
+          --tx-in-execution-units (387149,1400)
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+550
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
       ]
@@ -752,26 +768,28 @@ withValidRange = do
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+250
           --tx-out ${addr2}+1000
           --invalid-before 47577202
           --invalid-hereafter 50255602
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
         )
       ,
-        ( 6
+        ( 7
         , [text|
-          cardano-cli transaction build --alonzo-era
+          cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+50
           --tx-out ${addr2}+1000
           --invalid-before 47577202
           --invalid-hereafter 50255602
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --change-address ${addr1}
-          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --fee 200
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
         |]
         )
       ]
@@ -851,8 +869,26 @@ assertCommandHistory :: forall (w :: Type). MockContractState w -> [(Int, Text)]
 assertCommandHistory state =
   mapM_
     ( \(idx, expectedCmd) ->
-        (state ^? commandHistory . ix idx) @?= Just (Text.replace "\n" " " expectedCmd)
+        assertCommandEqual
+          ("command at index " ++ show idx ++ " was incorrect:")
+          (fromMaybe "" $ state ^? commandHistory . ix idx)
+          (Text.replace "\n" " " expectedCmd)
     )
+
+assertCommandEqual :: String -> Text -> Text -> Assertion
+assertCommandEqual err actual expected
+  | commandEqual actual expected = return ()
+  | otherwise = assertFailure $ err ++ "\nExpected:\n" ++ show expected ++ "\nGot:\n" ++ show actual
+
+commandEqual :: Text -> Text -> Bool
+commandEqual "" "" = True
+commandEqual "" _ = False
+commandEqual _ "" = False
+commandEqual actual expected = maybe False (\restAct -> commandEqual (dropToSpace restAct) (dropToSpace postExp)) mRestAct
+  where
+    (preExp, postExp) = Text.breakOn "?" expected
+    mRestAct = Text.stripPrefix preExp actual
+    dropToSpace = Text.dropWhile (/= ' ')
 
 assertCommandCalled :: forall (w :: Type). MockContractState w -> Text -> Assertion
 assertCommandCalled state expectedCmd =
