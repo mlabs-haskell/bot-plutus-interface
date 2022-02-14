@@ -8,6 +8,7 @@ import Cardano.Api (NetworkId (Mainnet))
 import Control.Lens (ix, (&), (.~), (^.), (^?))
 import Data.Aeson (ToJSON)
 import Data.Aeson.Extras (encodeByteString)
+import Data.Char (isSpace)
 import Data.Default (def)
 import Data.Function (on)
 import Data.Kind (Type)
@@ -892,7 +893,7 @@ assertCommandHistory state =
     ( \(idx, expectedCmd) ->
         assertCommandEqual
           ("command at index " ++ show idx ++ " was incorrect:")
-          (Text.replace "\n" " " expectedCmd)
+          expectedCmd
           (fromMaybe "" $ state ^? commandHistory . ix idx)
     )
 
@@ -908,8 +909,8 @@ commandEqual _ "" = False
 commandEqual expected actual = maybe False (on commandEqual dropToSpace postExp) mPostAct
   where
     (preExp, postExp) = Text.breakOn "?" expected
-    mPostAct = Text.stripPrefix preExp actual
-    dropToSpace = Text.dropWhile (/= ' ')
+    mPostAct = Text.stripPrefix (Text.replace "\n" " " preExp) actual
+    dropToSpace = Text.dropWhile (not . isSpace)
 
 assertCommandCalled :: forall (w :: Type). MockContractState w -> Text -> Assertion
 assertCommandCalled state expectedCmd =

@@ -135,7 +135,7 @@ handlePABReq contractEnv req = do
     ChainIndexQueryReq query ->
       ChainIndexQueryResp <$> queryChainIndex @w query
     BalanceTxReq unbalancedTx ->
-      BalanceTxResp <$> balanceTxStep @w contractEnv unbalancedTx
+      BalanceTxResp <$> balanceTx @w contractEnv unbalancedTx
     WriteBalancedTxReq tx ->
       WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
@@ -162,14 +162,14 @@ handlePABReq contractEnv req = do
   printLog @w Debug $ show resp
   pure resp
 
--- | This is not identical to the real balancing, we only do a pre-balance at this stage
-balanceTxStep ::
+-- | This will FULLY balance a transaction
+balanceTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTxStep contractEnv unbalancedTx = do
+balanceTx contractEnv unbalancedTx = do
   eitherPreBalancedTx <-
     PreBalance.balanceTxIO @w
       contractEnv.cePABConfig
