@@ -885,10 +885,10 @@ commandEqual :: Text -> Text -> Bool
 commandEqual "" "" = True
 commandEqual "" _ = False
 commandEqual _ "" = False
-commandEqual expected actual = maybe False (on commandEqual dropToSpace postExp) mRestAct
+commandEqual expected actual = maybe False (on commandEqual dropToSpace postExp) mPostAct
   where
     (preExp, postExp) = Text.breakOn "?" expected
-    mRestAct = Text.stripPrefix preExp actual
+    mPostAct = Text.stripPrefix preExp actual
     dropToSpace = Text.dropWhile (/= ' ')
 
 assertCommandCalled :: forall (w :: Type). MockContractState w -> Text -> Assertion
