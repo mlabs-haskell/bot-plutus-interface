@@ -897,11 +897,15 @@ assertCommandHistory state =
           (fromMaybe "" $ state ^? commandHistory . ix idx)
     )
 
+-- | assertEqual but using `commandEqual`
 assertCommandEqual :: String -> Text -> Text -> Assertion
 assertCommandEqual err expected actual
   | commandEqual expected actual = return ()
   | otherwise = assertFailure $ err ++ "\nExpected:\n" ++ show expected ++ "\nGot:\n" ++ show actual
 
+-- | Checks if a command matches an expected command pattern
+-- Where a command pattern may use new lines in place of spaces, and use the wildcard `?` to match up to the next space
+-- E.g. `commandEqual "123\n456 ? 0" "123 456 789 0"` == `True`
 commandEqual :: Text -> Text -> Bool
 commandEqual "" "" = True
 commandEqual "" _ = False
