@@ -9,6 +9,7 @@ module BotPlutusInterface.UtxoParser (
 import Control.Applicative (many, (<|>))
 import Control.Monad (mzero, void)
 import Data.Aeson.Extras (tryDecode)
+import Data.Attoparsec.ByteString.Char8 (isSpace)
 import Data.Attoparsec.Text (
   Parser,
   char,
@@ -22,8 +23,8 @@ import Data.Attoparsec.Text (
   signed,
   skipSpace,
   skipWhile,
-  takeWhile,
   string,
+  takeWhile,
   (<?>),
  )
 import Data.Text (Text)
@@ -41,7 +42,7 @@ import Plutus.V1.Ledger.Api (
   BuiltinByteString,
   Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
-  TokenName(..),
+  TokenName (..),
  )
 import PlutusTx.Builtins (toBuiltin)
 import Prelude hiding (takeWhile)
@@ -107,8 +108,8 @@ tokenNameParser = do
   where
     tokenName = do
       void $ char '.'
-      void $ (string "0x" <|> string "")
-      TokenName <$> decodeHash (takeWhile (not . inClass " "))
+      void (string "0x") <|> pure ()
+      TokenName <$> decodeHash (takeWhile (not . isSpace))
 
 datumHashNoneParser :: Parser ()
 datumHashNoneParser = "TxOutDatumNone" >> pure ()
