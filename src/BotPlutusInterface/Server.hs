@@ -8,6 +8,7 @@ import BotPlutusInterface.Types (
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   PABConfig (..),
+  RawTx,
   SomeContractState (SomeContractState),
  )
 import Control.Concurrent (ThreadId, forkIO)
@@ -17,6 +18,7 @@ import Control.Monad.Error.Class (throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON (toJSON))
 import Data.Aeson qualified as JSON
+import Data.ByteString.Lazy qualified as LBS
 import Data.Either.Combinators (leftToMaybe)
 import Data.Kind (Type)
 import Data.Map qualified as Map
@@ -24,7 +26,6 @@ import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy (Proxy))
 import Data.Row (Row)
 import Data.Text (Text, unpack)
-import Data.Text.IO qualified as Text
 import Data.UUID.V4 qualified as UUID
 import Network.WebSockets (
   Connection,
@@ -70,7 +71,7 @@ type API a =
          )
     :<|> ( "rawTx"
             :> Capture "hash" Text
-            :> Get '[JSON] Text
+            :> Get '[JSON] RawTx
          )
 
 server :: HasDefinitions t => PABConfig -> AppState -> Server (API t)
@@ -219,7 +220,7 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
   pure contractInstanceID
 
 -- | This handler will allow to retrieve raw transactions from the pcTxFileDir if pcEnableTxEndpoint is True
-rawTxHandler :: PABConfig -> Text -> Handler Text
+rawTxHandler :: PABConfig -> Text -> Handler RawTx
 rawTxHandler config hash = do
   -- Check that endpoint is enabled
   assert (pcEnableTxEndpoint config)
@@ -237,8 +238,10 @@ rawTxHandler config hash = do
   fileExists <- liftIO $ doesFileExist path
   assert fileExists
 
-  -- Read contents of path
-  liftIO $ Text.readFile path
+  contents <- liftIO $ LBS.readFile path
+  case JSON.decode contents of
+    Just rawTx -> pure rawTx
+    Nothing -> throwError err404
   where
     assert :: Bool -> Handler ()
     assert True = pure ()

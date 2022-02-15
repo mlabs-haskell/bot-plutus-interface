@@ -2,8 +2,8 @@ module Main (main) where
 
 import Spec.BotPlutusInterface.Contract qualified
 import Spec.BotPlutusInterface.PreBalance qualified
-import Spec.BotPlutusInterface.UtxoParser qualified
 import Spec.BotPlutusInterface.Server qualified
+import Spec.BotPlutusInterface.UtxoParser qualified
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Prelude
 

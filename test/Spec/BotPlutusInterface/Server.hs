@@ -4,6 +4,7 @@ import BotPlutusInterface.Server (app, initState)
 import BotPlutusInterface.Types (
   HasDefinitions (..),
   PABConfig (..),
+  RawTx (..),
   SomeBuiltin (..),
  )
 
@@ -20,7 +21,8 @@ import Servant.API (Capture, Get, JSON, (:>))
 import Servant.Client (ClientEnv, ClientError (..), client, mkClientEnv, responseStatusCode, runClientM)
 import Servant.Client.Core.BaseUrl (BaseUrl (..), parseBaseUrl)
 
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON, ToJSON, encode)
+import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
 import Data.Proxy (Proxy (..))
 import Data.Text (Text, pack, unpack)
@@ -29,13 +31,13 @@ import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Prelude
 
-type RawTxEndpointResponse = Either ClientError Text
+type RawTxEndpointResponse = Either ClientError RawTx
 type RawTxTest a = (Text -> IO RawTxEndpointResponse) -> IO a
 
 tests :: TestTree
 tests =
   testGroup
-    "Server"
+    "BotPlutusInterface.Server"
     [ rawTxTests
     ]
 
@@ -53,13 +55,13 @@ rawTxTests =
     fetchTx = do
       initServerAndClient enableTxEndpointConfig $ \runRawTxClient -> do
         result <- runRawTxClient txHash
-        result @?= Right (pack txFileContents)
+        result @?= Right rawTx
 
     fetchSignedTx :: IO ()
     fetchSignedTx = do
       initServerAndClient enableTxEndpointConfig $ \runRawTxClient -> do
         result <- runRawTxClient $ txHash <> ".signed"
-        result @?= Right (pack txFileContents)
+        result @?= Right rawTx
 
     fetchOutsideTxFolder :: IO ()
     fetchOutsideTxFolder = do
@@ -79,7 +81,7 @@ txProxy ::
   Proxy
     ( "rawTx"
         :> Capture "hash" Text
-        :> Get '[JSON] Text
+        :> Get '[JSON] RawTx
     )
 txProxy = Proxy
 
@@ -89,7 +91,7 @@ initServerAndClient config test = do
     let pabConfig :: PABConfig
         pabConfig = config {pcTxFileDir = pack path}
     state <- initState
-    writeFile (path </> txFileName) txFileContents
+    LBS.writeFile (path </> txFileName) txFileContents
     testWithApplication (pure $ app @EmptyContract pabConfig state) (initClientOnPort test)
   where
     initClientOnPort :: RawTxTest a -> Int -> IO a
@@ -106,13 +108,21 @@ initServerAndClient config test = do
       testToRun runRawTxClient
 
 txHash :: Text
-txHash = "aaaa"
+txHash = "test"
 
 txFileName :: FilePath
 txFileName = "tx-" <> unpack txHash <> ".raw"
 
-txFileContents :: String
-txFileContents = "test"
+rawTx :: RawTx
+rawTx =
+  RawTx
+    { rawType = "TxBodyAlonzo"
+    , rawDescription = "description"
+    , rawCborHex = "hex"
+    }
+
+txFileContents :: LBS.ByteString
+txFileContents = encode rawTx
 
 enableTxEndpointConfig :: PABConfig
 enableTxEndpointConfig = def {pcEnableTxEndpoint = True}

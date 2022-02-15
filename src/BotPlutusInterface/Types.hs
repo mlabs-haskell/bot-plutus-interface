@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module BotPlutusInterface.Types (
   PABConfig (..),
@@ -11,16 +12,19 @@ module BotPlutusInterface.Types (
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
+  RawTx (..),
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
+import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
 import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
+import GHC.Generics (Generic)
 import Ledger (PubKeyHash)
 import Network.Wai.Handler.Warp (Port)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -103,3 +107,12 @@ instance Default PABConfig where
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       }
+
+data RawTx = RawTx
+  { rawType :: Text
+  , rawDescription :: Text
+  , rawCborHex :: Text
+  }
+  deriving (Generic, Eq, Show)
+
+$(deriveJSON defaultOptions {fieldLabelModifier = drop 3} ''RawTx)
