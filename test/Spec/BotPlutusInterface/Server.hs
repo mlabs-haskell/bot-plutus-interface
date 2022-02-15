@@ -116,9 +116,9 @@ txFileName = "tx-" <> unpack txHash <> ".raw"
 rawTx :: RawTx
 rawTx =
   RawTx
-    { rawType = "TxBodyAlonzo"
-    , rawDescription = "description"
-    , rawCborHex = "hex"
+    { _type = "TxBodyAlonzo"
+    , _description = "description"
+    , _cborHex = "hex"
     }
 
 txFileContents :: LBS.ByteString

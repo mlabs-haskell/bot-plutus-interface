@@ -109,10 +109,12 @@ instance Default PABConfig where
       }
 
 data RawTx = RawTx
-  { rawType :: Text
-  , rawDescription :: Text
-  , rawCborHex :: Text
+  { _type :: Text
+  , _description :: Text
+  , _cborHex :: Text
   }
   deriving (Generic, Eq, Show)
 
-$(deriveJSON defaultOptions {fieldLabelModifier = drop 3} ''RawTx)
+-- type is a reserved keyword in haskell and can not be used as a field name
+-- when converting this to JSON we drop the _ prefix from each field
+$(deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx)
