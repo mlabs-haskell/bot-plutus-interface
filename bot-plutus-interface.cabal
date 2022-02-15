@@ -186,7 +186,6 @@ test-suite bot-plutus-interface-test
     , quickcheck-instances
     , row-types
     , serialise
-    , servant
     , servant-client
     , servant-client-core
     , stm

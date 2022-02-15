@@ -135,4 +135,4 @@ data RawTx = RawTx
 
 -- type is a reserved keyword in haskell and can not be used as a field name
 -- when converting this to JSON we drop the _ prefix from each field
-$(deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx)
+deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx

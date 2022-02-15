@@ -1,6 +1,6 @@
 module Spec.BotPlutusInterface.Server (tests) where
 
-import BotPlutusInterface.Server (app, initState)
+import BotPlutusInterface.Server (RawTxEndpoint, app, initState)
 import BotPlutusInterface.Types (
   HasDefinitions (..),
   PABConfig (..),
@@ -17,7 +17,6 @@ import Test.Tasty.HUnit (testCase, (@?=))
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types.Status (status404)
 import Network.Wai.Handler.Warp (testWithApplication)
-import Servant.API (Capture, Get, JSON, (:>))
 import Servant.Client (ClientEnv, ClientError (..), client, mkClientEnv, responseStatusCode, runClientM)
 import Servant.Client.Core.BaseUrl (BaseUrl (..), parseBaseUrl)
 
@@ -75,14 +74,7 @@ rawTxTests =
         Left (FailureResponse _ res) <- runRawTxClient txHash
         responseStatusCode res @?= status404
 
--- Ideally we would reuse the API type definition from BotPlutusInterface.Server but servant-client
--- can not generate a client for the websocket endpoint.
-txProxy ::
-  Proxy
-    ( "rawTx"
-        :> Capture "hash" Text
-        :> Get '[JSON] RawTx
-    )
+txProxy :: Proxy RawTxEndpoint
 txProxy = Proxy
 
 initServerAndClient :: PABConfig -> RawTxTest a -> IO a

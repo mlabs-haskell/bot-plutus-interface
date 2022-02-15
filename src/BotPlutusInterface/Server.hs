@@ -1,6 +1,12 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module BotPlutusInterface.Server (app, initState) where
+module BotPlutusInterface.Server (
+  app,
+  initState,
+  WebSocketEndpoint,
+  ActivateContractEndpoint,
+  RawTxEndpoint,
+) where
 
 import BotPlutusInterface.Contract (runContract)
 import BotPlutusInterface.Types (
@@ -61,18 +67,25 @@ initState :: IO AppState
 initState = AppState <$> newTVarIO Map.empty
 
 -- | Mock API Schema, stripped endpoints that we don't use in this project
-type API a =
-  ("ws" :> WebSocketPending) -- Combined websocket (subscription protocol)
-    :<|> ( "api"
-            :> "contract"
-            :> "activate"
-            :> ReqBody '[JSON] (ContractActivationArgs a)
-            :> Post '[JSON] ContractInstanceId -- Start a new instance.
-         )
-    :<|> ( "rawTx"
-            :> Capture "hash" Text
-            :> Get '[JSON] RawTx
-         )
+type API a = WebSocketEndpoint :<|> ActivateContractEndpoint a :<|> RawTxEndpoint
+
+-- Endpoints are split up so it is easier to test them. In particular servant-client
+-- can not generate a client for the WebSocketEndpoint; this allows us to still
+-- use servant-client to test the other endpoints
+
+type WebSocketEndpoint = "ws" :> WebSocketPending -- Combined websocket (subscription protocol)
+
+type ActivateContractEndpoint a =
+  "api"
+    :> "contract"
+    :> "activate"
+    :> ReqBody '[JSON] (ContractActivationArgs a)
+    :> Post '[JSON] ContractInstanceId -- Start a new instance.
+
+type RawTxEndpoint =
+  "rawTx"
+    :> Capture "hash" Text
+    :> Get '[JSON] RawTx
 
 server :: HasDefinitions t => PABConfig -> AppState -> Server (API t)
 server pabConfig state =
@@ -223,9 +236,9 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
 rawTxHandler :: PABConfig -> Text -> Handler RawTx
 rawTxHandler config hash = do
   -- Check that endpoint is enabled
-  assert (pcEnableTxEndpoint config)
+  assert config.pcEnableTxEndpoint
   -- Absolute path to pcTxFileDir that is specified in the config
-  txFolderPath <- liftIO $ makeAbsolute (unpack $ pcTxFileDir config)
+  txFolderPath <- liftIO $ makeAbsolute (unpack config.pcTxFileDir)
 
   -- Add/Set .raw extension on path
   let suppliedPath :: FilePath
