@@ -1,27 +1,37 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module BotPlutusInterface.Server (app, initState) where
+module BotPlutusInterface.Server (
+  app,
+  initState,
+  WebSocketEndpoint,
+  ActivateContractEndpoint,
+  RawTxEndpoint,
+) where
 
 import BotPlutusInterface.Contract (runContract)
 import BotPlutusInterface.Types (
   AppState (AppState),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
-  PABConfig,
+  PABConfig (..),
+  RawTx,
   SomeContractState (SomeContractState),
  )
 import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.STM (TVar, atomically, modifyTVar, newTVarIO, readTVar, readTVarIO, retry)
 import Control.Monad (forever, guard, unless, void)
+import Control.Monad.Error.Class (throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON (toJSON))
 import Data.Aeson qualified as JSON
+import Data.ByteString.Lazy qualified as LBS
 import Data.Either.Combinators (leftToMaybe)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy (Proxy))
 import Data.Row (Row)
+import Data.Text (Text, unpack)
 import Data.UUID.V4 qualified as UUID
 import Network.WebSockets (
   Connection,
@@ -45,9 +55,11 @@ import Plutus.PAB.Webserver.Types (
   ContractActivationArgs (..),
   InstanceStatusToClient (ContractFinished, NewObservableState),
  )
-import Servant.API (JSON, Post, ReqBody, (:<|>) (..), (:>))
+import Servant.API (Capture, Get, JSON, Post, ReqBody, (:<|>) (..), (:>))
 import Servant.API.WebSocket (WebSocketPending)
-import Servant.Server (Application, Handler, Server, serve)
+import Servant.Server (Application, Handler, Server, err404, serve)
+import System.Directory (canonicalizePath, doesFileExist, makeAbsolute)
+import System.FilePath (replaceExtension, takeDirectory, (</>))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -55,18 +67,31 @@ initState :: IO AppState
 initState = AppState <$> newTVarIO Map.empty
 
 -- | Mock API Schema, stripped endpoints that we don't use in this project
-type API a =
-  ("ws" :> WebSocketPending) -- Combined websocket (subscription protocol)
-    :<|> ( "api"
-            :> "contract"
-            :> "activate"
-            :> ReqBody '[JSON] (ContractActivationArgs a)
-            :> Post '[JSON] ContractInstanceId -- Start a new instance.
-         )
+type API a = WebSocketEndpoint :<|> ActivateContractEndpoint a :<|> RawTxEndpoint
+
+-- Endpoints are split up so it is easier to test them. In particular servant-client
+-- can not generate a client for the WebSocketEndpoint; this allows us to still
+-- use servant-client to test the other endpoints
+
+type WebSocketEndpoint = "ws" :> WebSocketPending -- Combined websocket (subscription protocol)
+
+type ActivateContractEndpoint a =
+  "api"
+    :> "contract"
+    :> "activate"
+    :> ReqBody '[JSON] (ContractActivationArgs a)
+    :> Post '[JSON] ContractInstanceId -- Start a new instance.
+
+type RawTxEndpoint =
+  "rawTx"
+    :> Capture "hash" Text
+    :> Get '[JSON] RawTx
 
 server :: HasDefinitions t => PABConfig -> AppState -> Server (API t)
 server pabConfig state =
-  websocketHandler state :<|> activateContractHandler pabConfig state
+  websocketHandler state
+    :<|> activateContractHandler pabConfig state
+    :<|> rawTxHandler pabConfig
 
 apiProxy :: forall (t :: Type). Proxy (API t)
 apiProxy = Proxy
@@ -206,3 +231,31 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
       let maybeError = toJSON <$> leftToMaybe result
       broadcastContractResult @w state contractInstanceID maybeError
   pure contractInstanceID
+
+-- | This handler will allow to retrieve raw transactions from the pcTxFileDir if pcEnableTxEndpoint is True
+rawTxHandler :: PABConfig -> Text -> Handler RawTx
+rawTxHandler config hash = do
+  -- Check that endpoint is enabled
+  assert config.pcEnableTxEndpoint
+  -- Absolute path to pcTxFileDir that is specified in the config
+  txFolderPath <- liftIO $ makeAbsolute (unpack config.pcTxFileDir)
+
+  -- Add/Set .raw extension on path
+  let suppliedPath :: FilePath
+      suppliedPath = replaceExtension (txFolderPath </> "tx-" <> unpack hash) ".raw"
+  -- Resolve path indirections
+  path <- liftIO $ canonicalizePath suppliedPath
+  -- ensure it does not try to escape txFolderPath
+  assert (takeDirectory path == txFolderPath)
+  -- ensure file exists
+  fileExists <- liftIO $ doesFileExist path
+  assert fileExists
+
+  contents <- liftIO $ LBS.readFile path
+  case JSON.decode contents of
+    Just rawTx -> pure rawTx
+    Nothing -> throwError err404
+  where
+    assert :: Bool -> Handler ()
+    assert True = pure ()
+    assert False = throwError err404

@@ -84,8 +84,7 @@ library
     BotPlutusInterface.PreBalance
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
-
-  other-modules:   BotPlutusInterface.Server
+    BotPlutusInterface.Server
   build-depends:
     , aeson                      ^>=1.5.0.0
     , attoparsec                 >=0.13.2.2
@@ -106,6 +105,7 @@ library
     , http-types
     , lens
     , memory
+    , mtl
     , playground-common
     , plutus-chain-index
     , plutus-chain-index-core
@@ -145,6 +145,7 @@ test-suite bot-plutus-interface-test
     Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.PreBalance
     Spec.BotPlutusInterface.UtxoParser
+    Spec.BotPlutusInterface.Server
     Spec.MockContract
 
   build-depends:
@@ -161,12 +162,16 @@ test-suite bot-plutus-interface-test
     , data-default-class
     , either
     , extra
+    , filepath
     , freer-extras
     , freer-simple
     , generic-arbitrary
     , hex
+    , http-client
+    , http-types
     , lens
     , neat-interpolation
+    , playground-common
     , plutus-chain-index
     , plutus-chain-index-core
     , plutus-contract
@@ -181,11 +186,16 @@ test-suite bot-plutus-interface-test
     , quickcheck-instances
     , row-types
     , serialise
+    , servant-client
+    , servant-client-core
     , stm
     , tasty
     , tasty-hunit
     , tasty-quickcheck
+    , temporary
     , text                       ^>=1.2.4.0
     , uuid
+    , utf8-string
+    , warp
 
   hs-source-dirs: test

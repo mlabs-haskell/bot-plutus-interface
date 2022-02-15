@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module BotPlutusInterface.Types (
   PABConfig (..),
@@ -13,6 +14,7 @@ module BotPlutusInterface.Types (
   HasDefinitions (..),
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
+  RawTx (..),
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
@@ -20,6 +22,7 @@ import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
+import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
 import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map (Map)
@@ -59,6 +62,7 @@ data PABConfig = PABConfig
   , pcLogLevel :: !LogLevel
   , pcOwnPubKeyHash :: !PubKeyHash
   , pcPort :: !Port
+  , pcEnableTxEndpoint :: !Bool
   }
   deriving stock (Show, Eq)
 
@@ -119,4 +123,16 @@ instance Default PABConfig where
       , pcLogLevel = Info
       , pcOwnPubKeyHash = ""
       , pcPort = 9080
+      , pcEnableTxEndpoint = False
       }
+
+data RawTx = RawTx
+  { _type :: Text
+  , _description :: Text
+  , _cborHex :: Text
+  }
+  deriving (Generic, Eq, Show)
+
+-- type is a reserved keyword in haskell and can not be used as a field name
+-- when converting this to JSON we drop the _ prefix from each field
+deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx
