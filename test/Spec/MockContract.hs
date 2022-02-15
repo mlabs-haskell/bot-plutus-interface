@@ -4,12 +4,15 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Spec.MockContract (
+  -- Mock private and public keys etc.
   signingKey1,
   signingKey2,
-  runContractPure,
+  signingKey3,
+  verificationKey1,
+  verificationKey2,
+  verificationKey3,
   toSigningKeyFile,
-  runContractPure',
-  MockContractState (..),
+  toVerificationKeyFile,
   pubKey1,
   pubKey2,
   pubKey3,
@@ -28,6 +31,10 @@ module Spec.MockContract (
   pkhAddr1,
   pkhAddr2,
   pkhAddr3,
+  -- Test interpreter
+  runContractPure,
+  runContractPure',
+  MockContractState (..),
   commandHistory,
   instanceUpdateHistory,
   logHistory,
@@ -52,6 +59,7 @@ import Cardano.Api (
   AsType,
   FileError (FileError, FileIOError),
   HasTextEnvelope,
+  Key (VerificationKey, getVerificationKey),
   NetworkId (Mainnet),
   PaymentKey,
   SigningKey (PaymentSigningKey),
@@ -59,6 +67,7 @@ import Cardano.Api (
   TextEnvelopeDescr,
   TextEnvelopeError (TextEnvelopeAesonDecodeError),
   deserialiseFromTextEnvelope,
+  getVerificationKey,
   serialiseToTextEnvelope,
  )
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
@@ -76,7 +85,7 @@ import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
 import Data.Default (Default (def))
-import Data.Either.Combinators (fromRight, mapLeft)
+import Data.Either.Combinators (mapLeft)
 import Data.Hex (hex)
 import Data.Kind (Type)
 import Data.List (isPrefixOf)
@@ -94,13 +103,14 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
 import Ledger.Scripts (DatumHash (DatumHash))
+import Ledger.Slot (Slot (getSlot))
 import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId (TxId (TxId))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
 import Plutus.ChainIndex.Api (UtxosResponse (..))
-import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
+import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
@@ -114,10 +124,15 @@ signingKey1 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.rep
 signingKey2 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 1
 signingKey3 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 2
 
+verificationKey1, verificationKey2, verificationKey3 :: VerificationKey PaymentKey
+verificationKey1 = getVerificationKey signingKey1
+verificationKey2 = getVerificationKey signingKey2
+verificationKey3 = getVerificationKey signingKey3
+
 pubKey1, pubKey2, pubKey3 :: PubKey
-pubKey1 = toPubKey signingKey1
-pubKey2 = toPubKey signingKey2
-pubKey3 = toPubKey signingKey3
+pubKey1 = skeyToPubKey signingKey1
+pubKey2 = skeyToPubKey signingKey2
+pubKey3 = skeyToPubKey signingKey3
 
 pkh1, pkh2, pkh3 :: PubKeyHash
 pkh1 = Ledger.pubKeyHash pubKey1
@@ -144,13 +159,30 @@ addr1 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh1 Not
 addr2 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 Nothing)
 addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Nothing)
 
-toPubKey :: SigningKey PaymentKey -> PubKey
-toPubKey = Ledger.toPublicKey . fromRight (error "Impossible happened") . Files.fromCardanoPaymentKey
+skeyToPubKey :: SigningKey PaymentKey -> PubKey
+skeyToPubKey =
+  Ledger.toPublicKey
+    . Files.unDummyPrivateKey
+    . either (error . Text.unpack) id
+    . Files.skeyToDummyPrivKey
+
+vkeyToPubKey :: VerificationKey PaymentKey -> PubKey
+vkeyToPubKey =
+  Ledger.toPublicKey
+    . Files.unDummyPrivateKey
+    . either (error . Text.unpack) id
+    . Files.vkeyToDummyPrivKey
 
 toSigningKeyFile :: FilePath -> SigningKey PaymentKey -> (FilePath, MockFile)
 toSigningKeyFile signingKeyFileDir sKey =
-  ( signingKeyFileDir ++ "/signing-key-" ++ show (Ledger.pubKeyHash (toPubKey sKey)) ++ ".skey"
+  ( signingKeyFileDir ++ "/signing-key-" ++ show (Ledger.pubKeyHash (skeyToPubKey sKey)) ++ ".skey"
   , TextEnvelopeFile $ serialiseToTextEnvelope Nothing sKey
+  )
+
+toVerificationKeyFile :: FilePath -> VerificationKey PaymentKey -> (FilePath, MockFile)
+toVerificationKeyFile signingKeyFileDir vKey =
+  ( signingKeyFileDir ++ "/signing-key-" ++ show (Ledger.pubKeyHash (vkeyToPubKey vKey)) ++ ".vkey"
+  , TextEnvelopeFile $ serialiseToTextEnvelope Nothing vKey
   )
 
 data MockFile
@@ -238,7 +270,7 @@ runPABEffectPure ::
   Eff '[PABEffect w] a ->
   (Either Text a, MockContractState w)
 runPABEffectPure initState req =
-  run (runState initState (runError (reinterpret2 go req)))
+  run (runState initState (runError (reinterpret2 (incSlot . go) req)))
   where
     go :: forall (v :: Type). PABEffect w v -> MockContract w v
     go (CallCommand args) = mockCallCommand args
@@ -256,44 +288,83 @@ runPABEffectPure initState req =
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
 
+    incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
+    incSlot mc =
+      mc <* modify @(MockContractState w) (tip %~ incTip)
+
+    incTip TipAtGenesis = Tip 1 (BlockId "00") 0
+    incTip Tip {tipSlot, tipBlockId, tipBlockNo} =
+      Tip
+        { tipSlot = tipSlot + 1
+        , tipBlockId = tipBlockId
+        , tipBlockNo = tipBlockNo
+        }
+
 mockCallCommand ::
   forall (w :: Type) (a :: Type).
   ShellArgs a ->
-  MockContract w a
+  MockContract w (Either Text a)
 mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
   modify @(MockContractState w) (commandHistory %~ (cmdName <> " " <> Text.unwords cmdArgs <|))
 
   case (cmdName, cmdArgs) of
+    ("cardano-cli", "query" : "tip" : _) ->
+      Right . cmdOutParser <$> mockQueryTip
     ("cardano-cli", "query" : "utxo" : "--address" : addr : _) ->
-      cmdOutParser <$> mockQueryUtxo addr
+      Right . cmdOutParser <$> mockQueryUtxo addr
     ("cardano-cli", "transaction" : "calculate-min-required-utxo" : _) ->
-      pure $ cmdOutParser "Lovelace 50"
+      pure $ Right $ cmdOutParser "Lovelace 50"
     ("cardano-cli", "transaction" : "calculate-min-fee" : _) ->
-      pure $ cmdOutParser "200 Lovelace"
+      pure $ Right $ cmdOutParser "200 Lovelace"
     ("cardano-cli", "transaction" : "build-raw" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
           modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
         _ -> throwError @Text "Out file argument is missing"
 
-      pure $ cmdOutParser ""
+      pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "build" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
           modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
         _ -> throwError @Text "Out file argument is missing"
 
-      pure $ cmdOutParser ""
+      pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "sign" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
           modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "Tx")
         _ -> throwError @Text "Out file argument is missing"
 
-      pure $ cmdOutParser ""
+      pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "submit" : _) ->
-      pure $ cmdOutParser ""
-    _ -> throwError @Text "Unknown command"
+      pure $ Right $ cmdOutParser ""
+    (unsupportedCmd, unsupportedArgs) ->
+      throwError @Text
+        ("Unsupported command: " <> Text.intercalate " " (unsupportedCmd : unsupportedArgs))
+
+mockQueryTip :: forall (w :: Type). MockContract w String
+mockQueryTip = do
+  state <- get @(MockContractState w)
+
+  let (slot, blockId, blockNo) =
+        case state ^. tip of
+          TipAtGenesis -> ("0", "00", "0")
+          Tip {tipSlot, tipBlockId, tipBlockNo} ->
+            ( Text.pack $ show $ getSlot tipSlot
+            , decodeUtf8 $ getBlockId tipBlockId
+            , Text.pack $ show $ unBlockNumber tipBlockNo
+            )
+  pure $
+    Text.unpack
+      [text|{
+              "era": "Alonzo",
+              "syncProgress": "100.00",
+              "hash": "${blockId}",
+              "epoch": 1,
+              "slot": ${slot},
+              "block": ${blockNo}
+            }|]
 
 mockQueryUtxo :: forall (w :: Type). Text -> MockContract w String
 mockQueryUtxo addr = do

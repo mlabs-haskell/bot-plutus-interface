@@ -21,13 +21,25 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address qualified as Address
 import Ledger.Constraints qualified as Constraints
+import Ledger.Interval (interval)
 import Ledger.Scripts qualified as Scripts
+import Ledger.Slot (Slot)
+import Ledger.Time (POSIXTime (POSIXTime))
 import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.Contract (Contract (..), Endpoint, submitTx, submitTxConstraintsWith, tell, utxosAt)
+import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
+import Plutus.Contract (
+  Contract (..),
+  Endpoint,
+  submitTx,
+  submitTxConstraintsWith,
+  tell,
+  utxosAt,
+  waitNSlots,
+ )
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import Spec.MockContract (
@@ -44,7 +56,13 @@ import Spec.MockContract (
   pkh3',
   pkhAddr1,
   runContractPure,
+  signingKey1,
+  tip,
+  toSigningKeyFile,
+  toVerificationKeyFile,
   utxos,
+  verificationKey1,
+  verificationKey3,
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
@@ -59,15 +77,18 @@ tests =
   testGroup
     "BotPlutusInterface.Contracts"
     [ testCase "Send ada to address" sendAda
-    , testCase "Send ada to address+staking" sendAdaStaking
+    , testCase "Send ada to address with staking key" sendAdaStaking
     , testCase "Support multiple signatories" multisigSupport
+    , testCase "Create a tx without signing" withoutSigning
     , testCase "Send native tokens" sendTokens
     , testCase "Send native tokens (without token name)" sendTokensWithoutName
     , testCase "Mint native tokens" mintTokens
     , testCase "Spend to validator script" spendToValidator
     , testCase "Redeem from validator script" redeemFromValidator
     , testCase "Multiple txs in a contract" multiTx
+    , testCase "With valid range" withValidRange
     , testCase "Use Writer in a contract" useWriter
+    , testCase "Wait for next block" waitNextBlock
     ]
 
 sendAda :: Assertion
@@ -285,6 +306,48 @@ multisigSupport = do
           |]
         )
       ]
+
+withoutSigning :: Assertion
+withoutSigning = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
+      initState =
+        def
+          & utxos .~ [(txOutRef, txOut)]
+          & files
+            .~ Map.fromList
+              [ toSigningKeyFile "./signing-keys" signingKey1
+              , toVerificationKeyFile "./signing-keys" verificationKey1
+              , toVerificationKeyFile "./signing-keys" verificationKey3
+              ]
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+
+      contract :: Contract Text (Endpoint "SendAda" ()) Text CardanoTx
+      contract = do
+        let constraints =
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
+                <> Constraints.mustBeSignedBy paymentPkh3
+        submitTx constraints
+
+  -- Building and siging the tx should include both signing keys
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    assertCommandHistory
+      state
+      [
+        ( 6
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh3'}
+          --change-address ${addr1}
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          |]
+        )
+      ]
+    assertCommandNotCalled state "cardano-cli transaction sign"
 
 sendTokens :: Assertion
 sendTokens = do
@@ -666,6 +729,53 @@ multiTx = do
             ]
     Right _ -> assertFailure "Wrong number of txs"
 
+withValidRange :: Assertion
+withValidRange = do
+  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing
+      initState = def & utxos .~ [(txOutRef, txOut)]
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract = do
+        let constraints =
+              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
+                <> Constraints.mustValidateIn (interval (POSIXTime 1643636293000) (POSIXTime 1646314693000))
+        submitTx constraints
+
+  assertContractWithTxId contract initState $ \state outTxId ->
+    assertCommandHistory
+      state
+      [
+        ( 2
+        , [text|
+          cardano-cli transaction build-raw --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000
+          --invalid-before 47577202
+          --invalid-hereafter 50255602
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --fee 0
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          |]
+        )
+      ,
+        ( 6
+        , [text|
+          cardano-cli transaction build --alonzo-era
+          --tx-in ${inTxId}#0
+          --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr2}+1000
+          --invalid-before 47577202
+          --invalid-hereafter 50255602
+          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --change-address ${addr1}
+          --mainnet --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+        |]
+        )
+      ]
+
 useWriter :: Assertion
 useWriter = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
@@ -684,6 +794,29 @@ useWriter = do
   assertContractWithTxId contract initState $ \state outTxId -> do
     (state ^. observableState)
       @?= Last (Just ("Right " <> outTxId))
+
+waitNextBlock :: Assertion
+waitNextBlock = do
+  let initSlot = 1000
+      initTip = Tip initSlot (BlockId "ab12") 4
+      initState = def & tip .~ initTip
+
+      contract :: Contract () (Endpoint "SendAda" ()) Text Slot
+      contract = waitNSlots 1
+
+      (result, state) = runContractPure contract initState
+
+  case result of
+    Left errMsg -> assertFailure (show errMsg)
+    Right slot -> do
+      assertBool "Current Slot is too small" (initSlot + 1 < slot)
+      assertCommandHistory
+        state
+        [
+          ( 0
+          , [text| cardano-cli query tip --mainnet |]
+          )
+        ]
 
 assertFiles :: forall (w :: Type). MockContractState w -> [Text] -> Assertion
 assertFiles state expectedFiles =
@@ -720,3 +853,15 @@ assertCommandHistory state =
     ( \(idx, expectedCmd) ->
         (state ^? commandHistory . ix idx) @?= Just (Text.replace "\n" " " expectedCmd)
     )
+
+assertCommandCalled :: forall (w :: Type). MockContractState w -> Text -> Assertion
+assertCommandCalled state expectedCmd =
+  assertBool
+    (Text.unpack . Text.unlines $ ["Command was not called:", expectedCmd])
+    (any (Text.isInfixOf (Text.replace "\n" " " expectedCmd)) (state ^. commandHistory))
+
+assertCommandNotCalled :: forall (w :: Type). MockContractState w -> Text -> Assertion
+assertCommandNotCalled state expectedCmd =
+  assertBool
+    (Text.unpack . Text.unlines $ ["Command was called:", expectedCmd])
+    (not (any (Text.isInfixOf (Text.replace "\n" " " expectedCmd)) (state ^. commandHistory)))

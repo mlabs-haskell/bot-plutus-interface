@@ -7,6 +7,7 @@ module BotPlutusInterface.PreBalance (
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissing, printLog)
+import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
 import Cardano.Api.Shelley (Lovelace (Lovelace), ProtocolParameters (protocolParamUTxOCostPerWord))
@@ -28,8 +29,16 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
 import Ledger.Constraints.OffChain (UnbalancedTx (..), fromScriptOutput)
-import Ledger.Crypto (PrivateKey, PubKeyHash)
+import Ledger.Crypto (PubKeyHash)
+import Ledger.Interval (
+  Extended (Finite, NegInf, PosInf),
+  Interval (Interval),
+  LowerBound (LowerBound),
+  UpperBound (UpperBound),
+ )
 import Ledger.Scripts (Datum, DatumHash)
+import Ledger.Time (POSIXTimeRange)
+import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange)
 import Ledger.Tx (
   Tx (..),
   TxIn (..),
@@ -61,11 +70,16 @@ preBalanceTxIO ::
 preBalanceTxIO pabConf ownPkh unbalancedTx =
   runEitherT $
     do
-      utxos <- lift $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+      utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> fmap (Ledger.toTxOut . fromScriptOutput) (unBalancedTxUtxoIndex unbalancedTx)
-          tx = unBalancedTxTx unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+      tx <-
+        hoistEither $
+          addValidRange
+            pabConf
+            (unBalancedTxValidityTimeRange unbalancedTx)
+            (unBalancedTxTx unbalancedTx)
 
       lift $ printLog @w Debug $ show utxoIndex
 
@@ -73,7 +87,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
   where
     loop ::
       Map TxOutRef TxOut ->
-      Map PubKeyHash PrivateKey ->
+      Map PubKeyHash DummyPrivKey ->
       [PubKeyHash] ->
       [(TxOut, Integer)] ->
       Tx ->
@@ -92,7 +106,7 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
         hoistEither $ preBalanceTx pabConf.pcProtocolParams minUtxos 0 utxoIndex ownPkh privKeys requiredSigs tx
 
       lift $ createDirectoryIfMissing @w False (Text.unpack pabConf.pcTxFileDir)
-      lift $ CardanoCLI.buildTx @w pabConf ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
+      newEitherT $ CardanoCLI.buildTx @w pabConf privKeys ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
       lift $ printLog @w Debug $ "Fees: " ++ show fees
@@ -119,7 +133,7 @@ preBalanceTx ::
   Integer ->
   Map TxOutRef TxOut ->
   PubKeyHash ->
-  Map PubKeyHash PrivateKey ->
+  Map PubKeyHash DummyPrivKey ->
   [PubKeyHash] ->
   Tx ->
   Either Text Tx
@@ -248,16 +262,29 @@ balanceNonAdaOuts ownPkh utxos tx =
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
 -}
-addSignatories :: PubKeyHash -> Map PubKeyHash PrivateKey -> [PubKeyHash] -> Tx -> Either Text Tx
+addSignatories :: PubKeyHash -> Map PubKeyHash DummyPrivKey -> [PubKeyHash] -> Tx -> Either Text Tx
 addSignatories ownPkh privKeys pkhs tx =
   foldM
     ( \tx' pkh ->
         case Map.lookup pkh privKeys of
-          Just privKey -> Right $ Tx.addSignature' privKey tx'
+          Just privKey -> Right $ Tx.addSignature' (unDummyPrivateKey privKey) tx'
           Nothing -> Left "Signing key not found."
     )
     tx
     (ownPkh : pkhs)
+
+addValidRange :: PABConfig -> POSIXTimeRange -> Tx -> Either Text Tx
+addValidRange pabConf timeRange tx =
+  if validateRange timeRange
+    then Right $ tx {txValidRange = posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange}
+    else Left "Invalid validity interval."
+
+validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
+validateRange (Interval (LowerBound PosInf _) _) = False
+validateRange (Interval _ (UpperBound NegInf _)) = False
+validateRange (Interval (LowerBound (Finite lowerBound) _) (UpperBound (Finite upperBound) _))
+  | lowerBound >= upperBound = False
+validateRange _ = True
 
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show

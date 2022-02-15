@@ -11,23 +11,34 @@ import BotPlutusInterface.Effects (
   logToContract,
   printLog,
   queryChainIndex,
+  threadDelay,
  )
+import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.PreBalance qualified as PreBalance
-import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug))
+import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug, Warn), Tip (slot))
 import Control.Lens ((^.))
+import Control.Monad (void)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Either (eitherT, firstEitherT, newEitherT, secondEitherT)
 import Data.Aeson (ToJSON, Value)
+import Data.Aeson.Extras (encodeByteString)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
+import Data.Text (Text)
 import Data.Text qualified as Text
+import Ledger (POSIXTime)
+import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
+import Ledger.Slot (Slot (Slot))
+import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
@@ -40,6 +51,7 @@ import Plutus.Contract.Effects (
  )
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
+import PlutusTx.Builtins (fromBuiltin)
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
 
@@ -117,7 +129,6 @@ handlePABReq contractEnv req = do
     -- Handled requests --
     ----------------------
     OwnPaymentPublicKeyHashReq ->
-      -- TODO: Should be able to get this from the wallet, hardcoded for now
       pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
@@ -127,19 +138,26 @@ handlePABReq contractEnv req = do
       BalanceTxResp <$> balanceTx @w contractEnv unbalancedTx
     WriteBalancedTxReq tx ->
       WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx
+    AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
+    AwaitTimeReq t -> AwaitTimeResp <$> awaitTime @w contractEnv t
+    CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
+    CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
+    PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
+      pure $
+        PosixTimeRangeToContainedSlotRangeResp $
+          Right $
+            posixTimeRangeToContainedSlotRange contractEnv.cePABConfig.pcSlotConfig posixTimeRange
     ------------------------
     -- Unhandled requests --
     ------------------------
-    AwaitSlotReq s -> pure $ AwaitSlotResp s
-    AwaitTimeReq t -> pure $ AwaitTimeResp t
+    -- AwaitTimeReq t -> pure $ AwaitTimeResp t
     -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
     -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
     AwaitTxStatusChangeReq txId -> pure $ AwaitTxStatusChangeResp txId (Committed TxValid ())
-    -- CurrentSlotReq -> CurrentSlotResp Slot
-    -- CurrentTimeReq -> CurrentTimeResp POSIXTime
+    -- AwaitTxOutStatusChangeReq TxOutRef
     -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
-    -- PosixTimeRangeToContainedSlotRangeReq POSIXTimeRange -> PosixTimeRangeToContainedSlotRangeResp (Either SlotConversionError SlotRange)
-    _ -> pure $ OwnContractInstanceIdResp contractEnv.ceContractInstanceId
+    -- YieldUnbalancedTxReq UnbalancedTx
+    unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
   printLog @w Debug $ show resp
   pure resp
@@ -152,16 +170,6 @@ balanceTx ::
   UnbalancedTx ->
   Eff effs BalanceTxResponse
 balanceTx contractEnv unbalancedTx = do
-  -- TODO: Handle paging
-  -- (_, Page {pageItems}) <-
-  --   chainIndexQueryMany $
-  --     ChainIndexClient.getUtxoAtAddress $
-  --       addressCredential ownAddress
-  -- chainIndexTxOuts <- traverse (chainIndexQueryOne . ChainIndexClient.getTxOut) pageItems
-  -- let utxos =
-  --       Map.fromList $
-  --         catMaybes $ zipWith (\oref txout -> (,) <$> Just oref <*> txout) pageItems chainIndexTxOuts
-
   eitherPreBalancedTx <-
     PreBalance.preBalanceTxIO @w
       contractEnv.cePABConfig
@@ -179,29 +187,81 @@ writeBalancedTx ::
   Eff effs WriteBalancedTxResponse
 writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
 writeBalancedTx contractEnv (Right tx) = do
-  createDirectoryIfMissing @w False (Text.unpack contractEnv.cePABConfig.pcScriptFileDir)
+  let pabConf = contractEnv.cePABConfig
+  createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
 
-  fileWriteRes <-
-    Files.writeAll @w contractEnv.cePABConfig tx
+  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Right) $ do
+    void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
+    privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
-  case fileWriteRes of
-    Left err ->
-      pure $
-        WriteBalancedTxFailed $
-          OtherError $
-            "Failed to write script file(s): " <> Text.pack (show err)
-    Right _ -> do
-      let ownPkh = contractEnv.cePABConfig.pcOwnPubKeyHash
-      let requiredSigners = Map.keys $ tx ^. Tx.signatures
+    let ownPkh = pabConf.pcOwnPubKeyHash
+    let requiredSigners = Map.keys $ tx ^. Tx.signatures
+    let skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
+    let signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-      CardanoCLI.uploadFiles @w contractEnv.cePABConfig
+    lift $ CardanoCLI.uploadFiles @w pabConf
 
-      CardanoCLI.buildTx @w contractEnv.cePABConfig ownPkh CardanoCLI.BuildAuto tx
-      CardanoCLI.signTx @w contractEnv.cePABConfig tx requiredSigners
+    newEitherT $ CardanoCLI.buildTx @w pabConf privKeys ownPkh CardanoCLI.BuildAuto tx
 
-      result <-
-        if contractEnv.cePABConfig.pcDryRun
-          then pure Nothing
-          else CardanoCLI.submitTx @w contractEnv.cePABConfig tx
+    if signable
+      then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
+      else
+        lift . printLog @w Warn . Text.unpack . Text.unlines $
+          [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
+          , "Tx file: " <> Files.txFilePath pabConf "raw" tx
+          , "Signatories (pkh): " <> Text.unwords (map pkhToText requiredSigners)
+          ]
 
-      pure $ maybe (WriteBalancedTxSuccess (Right tx)) (WriteBalancedTxFailed . OtherError) result
+    if not pabConf.pcDryRun && signable
+      then secondEitherT (const tx) $ newEitherT $ CardanoCLI.submitTx @w pabConf tx
+      else pure tx
+
+pkhToText :: Ledger.PubKey -> Text
+pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
+
+{- | Wait at least until the given slot. The slot number only changes when a new block is appended
+ to the chain so it waits for at least one block
+-}
+awaitSlot ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Slot ->
+  Eff effs Slot
+awaitSlot contractEnv s@(Slot n) = do
+  threadDelay @w 10_000_000
+  tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
+  case tip of
+    Right tip'
+      | n < tip'.slot -> pure $ Slot tip'.slot
+    _ -> awaitSlot contractEnv s
+
+{- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
+ are applying here as well.
+-}
+awaitTime ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  POSIXTime ->
+  Eff effs POSIXTime
+awaitTime ce = fmap fromSlot . awaitSlot ce . toSlot
+  where
+    toSlot = posixTimeToEnclosingSlot ce.cePABConfig.pcSlotConfig
+    fromSlot = slotToEndPOSIXTime ce.cePABConfig.pcSlotConfig
+
+currentSlot ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Eff effs Slot
+currentSlot contractEnv =
+  Slot . slot . either (error . Text.unpack) id <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+
+currentTime ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Eff effs POSIXTime
+currentTime contractEnv =
+  slotToEndPOSIXTime contractEnv.cePABConfig.pcSlotConfig <$> currentSlot @w contractEnv
