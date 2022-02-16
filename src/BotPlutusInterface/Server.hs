@@ -9,6 +9,7 @@ module BotPlutusInterface.Server (
 ) where
 
 import BotPlutusInterface.Contract (runContract)
+import BotPlutusInterface.Files (txFileName)
 import BotPlutusInterface.Types (
   AppState (AppState),
   ContractEnvironment (..),
@@ -59,7 +60,7 @@ import Servant.API (Capture, Get, JSON, Post, ReqBody, (:<|>) (..), (:>))
 import Servant.API.WebSocket (WebSocketPending)
 import Servant.Server (Application, Handler, Server, err404, serve)
 import System.Directory (canonicalizePath, doesFileExist, makeAbsolute)
-import System.FilePath (replaceExtension, takeDirectory, (</>))
+import System.FilePath (takeDirectory, (</>))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -83,8 +84,8 @@ type ActivateContractEndpoint a =
     :> Post '[JSON] ContractInstanceId -- Start a new instance.
 
 type RawTxEndpoint =
-  "rawTx"
-    :> Capture "hash" Text
+  "raw-tx"
+    :> Capture "txId" Text
     :> Get '[JSON] RawTx
 
 server :: HasDefinitions t => PABConfig -> AppState -> Server (API t)
@@ -234,7 +235,7 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
 
 -- | This handler will allow to retrieve raw transactions from the pcTxFileDir if pcEnableTxEndpoint is True
 rawTxHandler :: PABConfig -> Text -> Handler RawTx
-rawTxHandler config hash = do
+rawTxHandler config txId = do
   -- Check that endpoint is enabled
   assert config.pcEnableTxEndpoint
   -- Absolute path to pcTxFileDir that is specified in the config
@@ -242,7 +243,7 @@ rawTxHandler config hash = do
 
   -- Add/Set .raw extension on path
   let suppliedPath :: FilePath
-      suppliedPath = replaceExtension (txFolderPath </> "tx-" <> unpack hash) ".raw"
+      suppliedPath = txFolderPath </> unpack (txFileName txId ".raw")
   -- Resolve path indirections
   path <- liftIO $ canonicalizePath suppliedPath
   -- ensure it does not try to escape txFolderPath
