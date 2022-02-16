@@ -1,5 +1,6 @@
 module Spec.BotPlutusInterface.Server (tests) where
 
+import BotPlutusInterface.Files (txFileName)
 import BotPlutusInterface.Server (RawTxEndpoint, app, initState)
 import BotPlutusInterface.Types (
   HasDefinitions (..),
@@ -83,7 +84,7 @@ initServerAndClient config test = do
     let pabConfig :: PABConfig
         pabConfig = config {pcTxFileDir = pack path}
     state <- initState
-    LBS.writeFile (path </> txFileName) txFileContents
+    LBS.writeFile (path </> testTxFileName) txFileContents
     testWithApplication (pure $ app @EmptyContract pabConfig state) (initClientOnPort test)
   where
     initClientOnPort :: RawTxTest a -> Int -> IO a
@@ -102,8 +103,8 @@ initServerAndClient config test = do
 txHash :: Text
 txHash = "test"
 
-txFileName :: FilePath
-txFileName = "tx-" <> unpack txHash <> ".raw"
+testTxFileName :: FilePath
+testTxFileName = unpack $ txFileName txHash ".raw"
 
 rawTx :: RawTx
 rawTx =
