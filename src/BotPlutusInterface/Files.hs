@@ -8,6 +8,7 @@ module BotPlutusInterface.Files (
   readPrivateKeys,
   signingKeyFilePath,
   txFilePath,
+  txFileName,
   writeAll,
   writePolicyScriptFile,
   redeemerJsonFilePath,
@@ -83,7 +84,7 @@ import Plutus.V1.Ledger.Api (
  )
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
-import System.FilePath (takeExtension, (</>))
+import System.FilePath (replaceExtension, takeExtension, (</>))
 import Prelude
 
 -- | Filename of a minting policy script
@@ -116,7 +117,10 @@ signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
 txFilePath :: PABConfig -> Text -> Tx.Tx -> Text
 txFilePath pabConf ext tx =
   let txId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txId tx
-   in pabConf.pcTxFileDir <> "/tx-" <> txId <> "." <> ext
+   in pabConf.pcTxFileDir <> "/" <> txFileName txId ext
+
+txFileName :: Text -> Text -> Text
+txFileName name ext = Text.pack $ replaceExtension ("tx-" <> Text.unpack name) (Text.unpack ext)
 
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile ::
