@@ -3,6 +3,7 @@
 module BotPlutusInterface.Balance (
   balanceTxStep,
   balanceTxIO,
+  withFee,
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
@@ -89,7 +90,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       (balancedTx, minUtxos) <- loop utxoIndex privKeys [] preBalancedTx
 
       -- Check if we have Ada change
-      let adaChange = getAdaChange utxoIndex (lovelaceValue $ txFee balancedTx) balancedTx
+      let adaChange = getAdaChange utxoIndex balancedTx
       -- If we have no change UTxO, but we do have change, we need to add an output for it
       -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
       balancedTxWithChange <-
@@ -107,7 +108,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
           else pure balancedTx
 
       -- Get the updated change, add it to the tx
-      let finalAdaChange = getAdaChange utxoIndex (lovelaceValue $ txFee balancedTxWithChange) balancedTxWithChange
+      let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
           fullyBalancedTx = addAdaChange ownPkh finalAdaChange balancedTxWithChange
 
       -- finally, we must update the signatories
@@ -131,7 +132,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
-        hoistEither $ balanceTxStep minUtxos 0 utxoIndex ownPkh tx
+        hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` 0
 
       lift $ createDirectoryIfMissing @w False (Text.unpack pabConf.pcTxFileDir)
       newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
@@ -140,13 +141,14 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       lift $ printLog @w Debug $ "Fees: " ++ show fees
 
       -- Rebalance the initial tx with the above fees
-      balancedTx <- hoistEither $ balanceTxStep minUtxos fees utxoIndex ownPkh tx
+      balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` fees
 
-      let balanceTxWithFees = balancedTx {txFee = Ada.lovelaceValueOf fees}
+      if balancedTx == tx
+        then pure (balancedTx, minUtxos)
+        else loop utxoIndex privKeys minUtxos balancedTx
 
-      if balanceTxWithFees == tx
-        then pure (balanceTxWithFees, minUtxos)
-        else loop utxoIndex privKeys minUtxos balanceTxWithFees
+withFee :: Tx -> Integer -> Tx
+withFee tx fee = tx {txFee = Ada.lovelaceValueOf fee}
 
 calculateMinUtxos ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -160,20 +162,20 @@ calculateMinUtxos pabConf datums txOuts =
 
 balanceTxStep ::
   [(TxOut, Integer)] ->
-  Integer ->
   Map TxOutRef TxOut ->
   PubKeyHash ->
   Tx ->
   Either Text Tx
-balanceTxStep minUtxos fees utxos ownPkh tx =
+balanceTxStep minUtxos utxos ownPkh tx =
   Right (addLovelaces minUtxos tx)
-    >>= balanceTxIns utxos fees
-    >>= handleNonAdaChange ownPkh utxos fees
+    >>= balanceTxIns utxos
+    >>= handleNonAdaChange ownPkh utxos
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
-getChange :: Map TxOutRef TxOut -> Integer -> Tx -> Value
-getChange utxos fees tx =
-  let txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
+getChange :: Map TxOutRef TxOut -> Tx -> Value
+getChange utxos tx =
+  let fees = lovelaceValue $ txFee tx
+      txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
       inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
       outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
       nonMintedOutputValue = outputValue `minus` txMint tx
@@ -183,11 +185,11 @@ getChange utxos fees tx =
 lovelaceValue :: Value -> Integer
 lovelaceValue = flip Value.assetClassValueOf $ Value.assetClass "" ""
 
-getAdaChange :: Map TxOutRef TxOut -> Integer -> Tx -> Integer
-getAdaChange utxos fees = lovelaceValue . getChange utxos fees
+getAdaChange :: Map TxOutRef TxOut -> Tx -> Integer
+getAdaChange utxos = lovelaceValue . getChange utxos
 
-getNonAdaChange :: Map TxOutRef TxOut -> Integer -> Tx -> Value
-getNonAdaChange utxos fees = Ledger.noAdaValue . getChange utxos fees
+getNonAdaChange :: Map TxOutRef TxOut -> Tx -> Value
+getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
 
 -- | Getting the necessary utxos to cover the fees for the transaction
 collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
@@ -245,13 +247,13 @@ addLovelaces minLovelaces tx =
           $ txOutputs tx
    in tx {txOutputs = lovelacesAdded}
 
-balanceTxIns :: Map TxOutRef TxOut -> Integer -> Tx -> Either Text Tx
-balanceTxIns utxos fees tx = do
+balanceTxIns :: Map TxOutRef TxOut -> Tx -> Either Text Tx
+balanceTxIns utxos tx = do
   let txOuts = Tx.txOutputs tx
       nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
       minSpending =
         mconcat
-          [ Ada.lovelaceValueOf fees
+          [ txFee tx
           , nonMintedValue
           ]
   txIns <- collectTxIns (txInputs tx) utxos minSpending
@@ -274,10 +276,10 @@ addTxCollaterals utxos tx = do
     filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
 
 -- | Ensures all non ada change goes back to user
-handleNonAdaChange :: PubKeyHash -> Map TxOutRef TxOut -> Integer -> Tx -> Either Text Tx
-handleNonAdaChange ownPkh utxos fees tx =
+handleNonAdaChange :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+handleNonAdaChange ownPkh utxos tx =
   let changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
-      nonAdaChange = getNonAdaChange utxos fees tx
+      nonAdaChange = getNonAdaChange utxos tx
       outputs =
         case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
           ([], txOuts) ->

@@ -1,5 +1,6 @@
 module Spec.BotPlutusInterface.Balance (tests) where
 
+import BotPlutusInterface.Balance (withFee)
 import BotPlutusInterface.Balance qualified as Balance
 import Data.Map qualified as Map
 import Data.Set qualified as Set
@@ -57,38 +58,35 @@ utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton 
 addUtxosForFees :: Assertion
 addUtxosForFees = do
   let txout = TxOut addr2 (Ada.lovelaceValueOf 1_000_000) Nothing
-      tx = mempty {txOutputs = [txout]}
+      tx = mempty {txOutputs = [txout]} `withFee` 500_000
       minUtxo = [(txout, 1_000_000)]
-      fees = 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownPkh = pkh1
       balancedTx =
-        Balance.balanceTxStep minUtxo fees utxoIndex ownPkh tx
+        Balance.balanceTxStep minUtxo utxoIndex ownPkh tx
 
   txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])
 
 addUtxosForNativeTokens :: Assertion
 addUtxosForNativeTokens = do
   let txout = TxOut addr2 (Value.singleton "11223344" "Token" 123) Nothing
-      tx = mempty {txOutputs = [txout]}
+      tx = mempty {txOutputs = [txout]} `withFee` 500_000
       minUtxo = [(txout, 1_000_000)]
-      fees = 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       ownPkh = pkh1
       balancedTx =
-        Balance.balanceTxStep minUtxo fees utxoIndex ownPkh tx
+        Balance.balanceTxStep minUtxo utxoIndex ownPkh tx
 
   txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
 
 addUtxosForChange :: Assertion
 addUtxosForChange = do
   let txout = TxOut addr2 (Ada.lovelaceValueOf 1_600_000) Nothing
-      tx = mempty {txOutputs = [txout]}
+      tx = mempty {txOutputs = [txout]} `withFee` 500_000
       minUtxo = [(txout, 1_000_000)]
-      fees = 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownPkh = pkh1
       balancedTx =
-        Balance.balanceTxStep minUtxo fees utxoIndex ownPkh tx
+        Balance.balanceTxStep minUtxo utxoIndex ownPkh tx
 
   txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])
