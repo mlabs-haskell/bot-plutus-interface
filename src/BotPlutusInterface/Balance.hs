@@ -89,22 +89,13 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       -- Balance the tx
       (balancedTx, minUtxos) <- loop utxoIndex privKeys [] preBalancedTx
 
-      -- Check if we have Ada change
+      -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
-      -- If we have no change UTxO, but we do have change, we need to add an output for it
+      -- If we have change but no change UTxO, we need to add an output for it
       -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
       balancedTxWithChange <-
         if adaChange /= 0 && not (hasChangeUTxO ownPkh balancedTx)
-          then
-            let changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
-                changeTxOut =
-                  TxOut
-                    { txOutAddress = changeAddr
-                    , txOutValue = Ada.lovelaceValueOf 1
-                    , txOutDatumHash = Nothing
-                    }
-                preBalancedTxWithChange = balancedTx {txOutputs = changeTxOut : txOutputs balancedTx}
-             in fst <$> loop utxoIndex privKeys minUtxos preBalancedTxWithChange
+          then fst <$> loop utxoIndex privKeys minUtxos (addOutput ownPkh balancedTx)
           else pure balancedTx
 
       -- Get the updated change, add it to the tx
@@ -313,6 +304,18 @@ addAdaChange ownPkh change tx =
     }
   where
     changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+
+-- | Adds a 1 lovelace output to a transaction
+addOutput :: PubKeyHash -> Tx -> Tx
+addOutput ownPkh tx = tx {txOutputs = changeTxOut : txOutputs tx}
+  where
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+    changeTxOut =
+      TxOut
+        { txOutAddress = changeAddr
+        , txOutValue = Ada.lovelaceValueOf 1
+        , txOutDatumHash = Nothing
+        }
 
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
