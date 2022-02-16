@@ -108,7 +108,7 @@ tokenNameParser = do
   where
     tokenName = do
       void $ char '.'
-      void (string "0x") <|> pure ()
+      void $ optional $ string "0x"
       TokenName <$> decodeHash (takeWhile (not . isSpace))
 
 datumHashNoneParser :: Parser ()
