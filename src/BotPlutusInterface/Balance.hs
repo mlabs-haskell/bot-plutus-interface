@@ -7,7 +7,7 @@ module BotPlutusInterface.Balance (
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissing, printLog)
+import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissingCLI, printLog)
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
@@ -82,6 +82,9 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       lift $ printLog @w Debug $ show utxoIndex
 
+      -- We need this folder on the CLI machine, which may not be the local machine
+      lift $ createDirectoryIfMissingCLI @w False (Text.unpack pabConf.pcTxFileDir)
+
       -- Adds required collaterals, only needs to happen once
       -- Also adds signatures for fee calculation
       preBalancedTx <- hoistEither $ addTxCollaterals utxoIndex tx >>= addSignatories ownPkh privKeys requiredSigs
@@ -125,7 +128,6 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       txWithoutFees <-
         hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` 0
 
-      lift $ createDirectoryIfMissing @w False (Text.unpack pabConf.pcTxFileDir)
       newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 

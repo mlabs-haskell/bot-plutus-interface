@@ -279,6 +279,8 @@ runPABEffectPure initState req =
     go (CallCommand args) = mockCallCommand args
     go (CreateDirectoryIfMissing createParents filePath) =
       mockCreateDirectoryIfMissing createParents filePath
+    go (CreateDirectoryIfMissingCLI createParents filePath) =
+      mockCreateDirectoryIfMissing createParents filePath
     go (PrintLog logLevel msg) = mockPrintLog logLevel msg
     go (UpdateInstanceState msg) = mockUpdateInstanceState msg
     go (LogToContract msg) = mockLogToContract msg

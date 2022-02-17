@@ -7,6 +7,7 @@ module BotPlutusInterface.Effects (
   ShellArgs (..),
   handlePABEffect,
   createDirectoryIfMissing,
+  createDirectoryIfMissingCLI,
   queryChainIndex,
   listDirectory,
   threadDelay,
@@ -37,6 +38,8 @@ import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.Kind (Type)
+import Data.Maybe (catMaybes)
+import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
@@ -58,6 +61,8 @@ instance Show (ShellArgs a) where
 data PABEffect (w :: Type) (r :: Type) where
   CallCommand :: ShellArgs a -> PABEffect w (Either Text a)
   CreateDirectoryIfMissing :: Bool -> FilePath -> PABEffect w ()
+  -- Same as above but creates folder on the CLI machine, be that local or remote.
+  CreateDirectoryIfMissingCLI :: Bool -> FilePath -> PABEffect w ()
   PrintLog :: LogLevel -> String -> PABEffect w ()
   UpdateInstanceState :: Activity -> PABEffect w ()
   LogToContract :: (ToJSON w, Monoid w) => w -> PABEffect w ()
@@ -93,6 +98,10 @@ handlePABEffect contractEnv =
             Remote ipAddr -> callRemoteCommand ipAddr shellArgs
         CreateDirectoryIfMissing createParents filePath ->
           Directory.createDirectoryIfMissing createParents filePath
+        CreateDirectoryIfMissingCLI createParents filePath ->
+          case contractEnv.cePABConfig.pcCliLocation of
+            Local -> Directory.createDirectoryIfMissing createParents filePath
+            Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
         PrintLog logLevel txt -> printLog' contractEnv.cePABConfig.pcLogLevel logLevel txt
         UpdateInstanceState s -> do
           atomically $
@@ -132,8 +141,15 @@ callRemoteCommand ipAddr ShellArgs {cmdName, cmdArgs, cmdOutParser} =
       "ssh"
       (map Text.unpack [ipAddr, Text.unwords $ "source ~/.bash_profile;" : cmdName : map quotes cmdArgs])
 
-quotes :: Text -> Text
-quotes str = "\"" <> str <> "\""
+createDirectoryIfMissingRemote :: Text -> Bool -> FilePath -> IO ()
+createDirectoryIfMissingRemote ipAddr createParents path =
+  void $ readProcessEither "ssh" $ catMaybes [Just $ Text.unpack ipAddr, Just "mkdir", pFlag, Just $ quotes path]
+  where
+    pFlag :: Maybe String
+    pFlag = if createParents then Just "-p" else Nothing
+
+quotes :: forall (a :: Type). (IsString a, Semigroup a) => a -> a
+quotes str = fromString "\"" <> str <> fromString "\""
 
 readProcessEither :: FilePath -> [String] -> IO (Either Text String)
 readProcessEither path args =
@@ -161,6 +177,14 @@ createDirectoryIfMissing ::
   FilePath ->
   Eff effs ()
 createDirectoryIfMissing createParents path = send @(PABEffect w) $ CreateDirectoryIfMissing createParents path
+
+createDirectoryIfMissingCLI ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Bool ->
+  FilePath ->
+  Eff effs ()
+createDirectoryIfMissingCLI createParents path = send @(PABEffect w) $ CreateDirectoryIfMissingCLI createParents path
 
 printLog ::
   forall (w :: Type) (effs :: [Type -> Type]).
