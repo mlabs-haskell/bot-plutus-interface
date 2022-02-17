@@ -1,9 +1,7 @@
-module Spec.BotPlutusInterface.PreBalance (tests) where
+module Spec.BotPlutusInterface.Balance (tests) where
 
-import BotPlutusInterface.Files (DummyPrivKey (FromSKey))
-import BotPlutusInterface.PreBalance qualified as PreBalance
-import Cardano.Api.Shelley (Lovelace (Lovelace), ProtocolParameters (protocolParamUTxOCostPerWord))
-import Data.Default (def)
+import BotPlutusInterface.Balance (withFee)
+import BotPlutusInterface.Balance qualified as Balance
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Ledger qualified
@@ -25,14 +23,11 @@ import Prelude
 tests :: TestTree
 tests =
   testGroup
-    "BotPlutusInterface.PreBalance"
+    "BotPlutusInterface.Balance"
     [ testCase "Add utxos to cover fees" addUtxosForFees
     , testCase "Add utxos to cover native tokens" addUtxosForNativeTokens
     , testCase "Add utxos to cover change min utxo" addUtxosForChange
     ]
-
-privateKey1 :: DummyPrivKey
-privateKey1 = FromSKey . Address.unPaymentPrivateKey . Wallet.paymentPrivateKey $ Wallet.knownMockWallet 1
 
 pkh1, pkh2 :: PubKeyHash
 pkh1 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 1
@@ -63,45 +58,35 @@ utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton 
 addUtxosForFees :: Assertion
 addUtxosForFees = do
   let txout = TxOut addr2 (Ada.lovelaceValueOf 1_000_000) Nothing
-      tx = mempty {txOutputs = [txout]}
+      tx = mempty {txOutputs = [txout]} `withFee` 500_000
       minUtxo = [(txout, 1_000_000)]
-      fees = 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
-      privKeys = Map.fromList [(pkh1, privateKey1)]
-      requiredSigs = [pkh1]
       ownPkh = pkh1
-      prebalancedTx =
-        PreBalance.preBalanceTx def minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
+      balancedTx =
+        Balance.balanceTxStep minUtxo utxoIndex ownPkh tx
 
-  txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2])
+  txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])
 
 addUtxosForNativeTokens :: Assertion
 addUtxosForNativeTokens = do
   let txout = TxOut addr2 (Value.singleton "11223344" "Token" 123) Nothing
-      tx = mempty {txOutputs = [txout]}
+      tx = mempty {txOutputs = [txout]} `withFee` 500_000
       minUtxo = [(txout, 1_000_000)]
-      fees = 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
-      privKeys = Map.fromList [(pkh1, privateKey1)]
-      requiredSigs = [pkh1]
       ownPkh = pkh1
-      prebalancedTx =
-        PreBalance.preBalanceTx def minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
+      balancedTx =
+        Balance.balanceTxStep minUtxo utxoIndex ownPkh tx
 
-  txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
+  txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
 
 addUtxosForChange :: Assertion
 addUtxosForChange = do
   let txout = TxOut addr2 (Ada.lovelaceValueOf 1_600_000) Nothing
-      tx = mempty {txOutputs = [txout]}
+      tx = mempty {txOutputs = [txout]} `withFee` 500_000
       minUtxo = [(txout, 1_000_000)]
-      fees = 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
-      privKeys = Map.fromList [(pkh1, privateKey1)]
-      requiredSigs = [pkh1]
       ownPkh = pkh1
-      pparams = def {protocolParamUTxOCostPerWord = Just (Lovelace 1)}
-      prebalancedTx =
-        PreBalance.preBalanceTx pparams minUtxo fees utxoIndex ownPkh privKeys requiredSigs tx
+      balancedTx =
+        Balance.balanceTxStep minUtxo utxoIndex ownPkh tx
 
-  txInputs <$> prebalancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3])
+  txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])

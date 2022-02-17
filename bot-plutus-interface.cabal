@@ -81,7 +81,7 @@ library
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
     BotPlutusInterface.Files
-    BotPlutusInterface.PreBalance
+    BotPlutusInterface.Balance
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
     BotPlutusInterface.Server
@@ -143,7 +143,7 @@ test-suite bot-plutus-interface-test
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
     Spec.BotPlutusInterface.Contract
-    Spec.BotPlutusInterface.PreBalance
+    Spec.BotPlutusInterface.Balance
     Spec.BotPlutusInterface.UtxoParser
     Spec.BotPlutusInterface.Server
     Spec.MockContract

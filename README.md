@@ -125,13 +125,13 @@ The fake PAB consists of the following modules:
 - **BotPlutusInterface** main entry point
 - **BotPlutusInterface.Server** Servant server, handling http endpoint calls and websockets
 - **BotPlutusInterface.Contract** handling contract effects by creating the necessary files and calling cardano-cli commands (a few effects are mocked)
-- **BotPlutusInterface.PreBalance** doing some preparations so the cli can process the rest (non-ada asset balancing, addig tx inputs, adding minimum lovelaces, add signatories)
+- **BotPlutusInterface.Balance** doing some preparations so the cli can process the rest (non-ada asset balancing, addig tx inputs, adding minimum lovelaces, add signatories)
 - **BotPlutusInterface.CardanoCLI** wrappers for cardano-cli commands
 - For development purposes, I created an ssh wrapper, so I can call relay these commands through an ssh connection. This is not nice, unsafe, and pretty slow, avoid using it if you can.
 - **BotPlutusInterface.UtxoParser** parse the output of the `cardano-cli query utxo` command
 - **BotPlutusInterface.Files** functions for handling script, datum and redeemer files
 - **BotPlutusInterface.Types** configuration for the fake pab
-- **BotPlutusInterface.PreBalance** prepare a transaction before sending to the cli for balancing. This includes:
+- **BotPlutusInterface.Balance** prepare a transaction before sending to the cli for balancing. This includes:
   - adding tx inputs to cover fees and outputs
   - adding collaterals,
   - modifying tx outs to contain the minimum amount of lovelaces

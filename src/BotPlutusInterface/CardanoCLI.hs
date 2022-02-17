@@ -2,7 +2,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.CardanoCLI (
-  BuildMode (..),
   submitTx,
   calculateMinUtxo,
   calculateMinFee,
@@ -80,6 +79,7 @@ import Ledger.TxId (TxId (..))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.Contract.CardanoAPI (toCardanoAddress)
+import Plutus.V1.Ledger.Ada (fromValue, getLovelace)
 import Plutus.V1.Ledger.Api (
   BuiltinData,
   CurrencySymbol (..),
@@ -190,27 +190,17 @@ calculateMinFee pabConf tx =
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
         }
 
-data BuildMode = BuildRaw Integer | BuildAuto
-  deriving stock (Show)
-
-isRawBuildMode :: BuildMode -> Bool
-isRawBuildMode (BuildRaw _) = True
-isRawBuildMode _ = False
-
 -- | Build a tx body and write it to disk
 buildTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
   Map PubKeyHash DummyPrivKey ->
-  PubKeyHash ->
-  BuildMode ->
   Tx ->
   Eff effs (Either Text ())
-buildTx pabConf privKeys ownPkh buildMode tx =
+buildTx pabConf privKeys tx =
   callCommand @w $ ShellArgs "cardano-cli" opts (const ())
   where
-    ownAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
     requiredSigners =
       concatMap
         ( \pubKey ->
@@ -226,20 +216,14 @@ buildTx pabConf privKeys ownPkh buildMode tx =
         (Map.keys (Ledger.txSignatures tx))
     opts =
       mconcat
-        [ ["transaction", if isRawBuildMode buildMode then "build-raw" else "build", "--alonzo-era"]
-        , txInOpts pabConf buildMode (txInputs tx)
+        [ ["transaction", "build-raw", "--alonzo-era"]
+        , txInOpts pabConf (txInputs tx)
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
-        , mintOpts pabConf buildMode (txMintScripts tx) (txRedeemers tx) (txMint tx)
+        , mintOpts pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
         , validRangeOpts (txValidRange tx)
         , requiredSigners
-        , case buildMode of
-            BuildRaw fee -> ["--fee", showText fee]
-            BuildAuto ->
-              mconcat
-                [ ["--change-address", unsafeSerialiseAddress pabConf.pcNetwork ownAddr]
-                , networkOpt pabConf
-                ]
+        , ["--fee", showText . getLovelace . fromValue $ txFee tx]
         , mconcat
             [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             , ["--out-file", txFilePath pabConf "raw" tx]
@@ -289,8 +273,8 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInOpts :: PABConfig -> BuildMode -> Set TxIn -> [Text]
-txInOpts pabConf buildMode =
+txInOpts :: PABConfig -> Set TxIn -> [Text]
+txInOpts pabConf =
   concatMap
     ( \(TxIn txOutRef txInType) ->
         mconcat
@@ -315,9 +299,10 @@ txInOpts pabConf buildMode =
                         [ "--tx-in-redeemer-file"
                         , redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
                         ]
-                      , if isRawBuildMode buildMode
-                          then ["--tx-in-execution-units", exBudgetToCliArg exBudget]
-                          else []
+                      ,
+                        [ "--tx-in-execution-units"
+                        , exBudgetToCliArg exBudget
+                        ]
                       ]
               Just ConsumePublicKeyAddress -> []
               Just ConsumeSimpleScriptAddress -> []
@@ -331,8 +316,8 @@ txInCollateralOpts =
   concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef]) . Set.toList
 
 -- Minting options
-mintOpts :: PABConfig -> BuildMode -> Set Scripts.MintingPolicy -> Redeemers -> Value -> [Text]
-mintOpts pabConf buildMode mintingPolicies redeemers mintValue =
+mintOpts :: PABConfig -> Set Scripts.MintingPolicy -> Redeemers -> Value -> [Text]
+mintOpts pabConf mintingPolicies redeemers mintValue =
   mconcat
     [ mconcat $
         concatMap
@@ -348,9 +333,7 @@ mintOpts pabConf buildMode mintingPolicies redeemers mintValue =
                   toOpts r =
                     [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
                     , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Ledger.redeemerHash r)]
-                    , if isRawBuildMode buildMode
-                        then ["--mint-execution-units", exBudgetToCliArg (exBudget r)]
-                        else []
+                    , ["--mint-execution-units", exBudgetToCliArg (exBudget r)]
                     ]
                in mconcat $ maybeToList $ fmap toOpts redeemer
           )

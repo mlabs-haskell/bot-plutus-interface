@@ -3,6 +3,7 @@
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
+import BotPlutusInterface.Balance qualified as PreBalance
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (
   PABEffect,
@@ -15,7 +16,6 @@ import BotPlutusInterface.Effects (
  )
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.PreBalance qualified as PreBalance
 import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug, Warn), Tip (slot))
 import Control.Lens ((^.))
 import Control.Monad (void)
@@ -162,7 +162,7 @@ handlePABReq contractEnv req = do
   printLog @w Debug $ show resp
   pure resp
 
--- | This is not identical to the real balancing, we only do a pre-balance at this stage
+-- | This will FULLY balance a transaction
 balanceTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -171,7 +171,7 @@ balanceTx ::
   Eff effs BalanceTxResponse
 balanceTx contractEnv unbalancedTx = do
   eitherPreBalancedTx <-
-    PreBalance.preBalanceTxIO @w
+    PreBalance.balanceTxIO @w
       contractEnv.cePABConfig
       (contractEnv.cePABConfig.pcOwnPubKeyHash)
       unbalancedTx
@@ -194,14 +194,13 @@ writeBalancedTx contractEnv (Right tx) = do
     void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
     privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
-    let ownPkh = pabConf.pcOwnPubKeyHash
     let requiredSigners = Map.keys $ tx ^. Tx.signatures
-    let skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
-    let signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
+        skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
+        signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
     lift $ CardanoCLI.uploadFiles @w pabConf
 
-    newEitherT $ CardanoCLI.buildTx @w pabConf privKeys ownPkh CardanoCLI.BuildAuto tx
+    newEitherT $ CardanoCLI.buildTx @w pabConf privKeys tx
 
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners

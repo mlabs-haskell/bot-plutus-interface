@@ -1,8 +1,9 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module BotPlutusInterface.PreBalance (
-  preBalanceTx,
-  preBalanceTxIO,
+module BotPlutusInterface.Balance (
+  balanceTxStep,
+  balanceTxIO,
+  withFee,
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
@@ -10,12 +11,11 @@ import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissing, printLog
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
-import Cardano.Api.Shelley (Lovelace (Lovelace), ProtocolParameters (protocolParamUTxOCostPerWord))
 import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
-import Data.Either.Combinators (maybeToRight, rightToMaybe)
+import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
 import Data.List (partition, (\\))
 import Data.Map (Map)
@@ -47,27 +47,26 @@ import Ledger.Tx (
   TxOutRef (..),
  )
 import Ledger.Tx qualified as Tx
-import Ledger.Value (Value (Value), getValue)
+import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
   TokenName (..),
  )
-import PlutusTx.AssocMap qualified as AssocMap
 import Prelude
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
  assets
 -}
-preBalanceTxIO ::
+balanceTxIO ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
   Eff effs (Either Text Tx)
-preBalanceTxIO pabConf ownPkh unbalancedTx =
+balanceTxIO pabConf ownPkh unbalancedTx =
   runEitherT $
     do
       utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
@@ -83,16 +82,36 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
 
       lift $ printLog @w Debug $ show utxoIndex
 
-      loop utxoIndex privKeys requiredSigs [] tx
+      -- Adds required collaterals, only needs to happen once
+      -- Also adds signatures for fee calculation
+      preBalancedTx <- hoistEither $ addTxCollaterals utxoIndex tx >>= addSignatories ownPkh privKeys requiredSigs
+
+      -- Balance the tx
+      (balancedTx, minUtxos) <- loop utxoIndex privKeys [] preBalancedTx
+
+      -- Get current Ada change
+      let adaChange = getAdaChange utxoIndex balancedTx
+      -- If we have change but no change UTxO, we need to add an output for it
+      -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
+      balancedTxWithChange <-
+        if adaChange /= 0 && not (hasChangeUTxO ownPkh balancedTx)
+          then fst <$> loop utxoIndex privKeys minUtxos (addOutput ownPkh balancedTx)
+          else pure balancedTx
+
+      -- Get the updated change, add it to the tx
+      let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
+          fullyBalancedTx = addAdaChange ownPkh finalAdaChange balancedTxWithChange
+
+      -- finally, we must update the signatories
+      hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
     loop ::
       Map TxOutRef TxOut ->
       Map PubKeyHash DummyPrivKey ->
-      [PubKeyHash] ->
       [(TxOut, Integer)] ->
       Tx ->
-      EitherT Text (Eff effs) Tx
-    loop utxoIndex privKeys requiredSigs prevMinUtxos tx = do
+      EitherT Text (Eff effs) (Tx, [(TxOut, Integer)])
+    loop utxoIndex privKeys prevMinUtxos tx = do
       void $ lift $ Files.writeAll @w pabConf tx
       nextMinUtxos <-
         newEitherT $
@@ -102,20 +121,25 @@ preBalanceTxIO pabConf ownPkh unbalancedTx =
 
       lift $ printLog @w Debug $ "Min utxos: " ++ show minUtxos
 
+      -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
-        hoistEither $ preBalanceTx pabConf.pcProtocolParams minUtxos 0 utxoIndex ownPkh privKeys requiredSigs tx
+        hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` 0
 
       lift $ createDirectoryIfMissing @w False (Text.unpack pabConf.pcTxFileDir)
-      newEitherT $ CardanoCLI.buildTx @w pabConf privKeys ownPkh (CardanoCLI.BuildRaw 0) txWithoutFees
+      newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
       lift $ printLog @w Debug $ "Fees: " ++ show fees
 
-      balancedTx <- hoistEither $ preBalanceTx pabConf.pcProtocolParams minUtxos fees utxoIndex ownPkh privKeys requiredSigs tx
+      -- Rebalance the initial tx with the above fees
+      balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` fees
 
       if balancedTx == tx
-        then pure balancedTx
-        else loop utxoIndex privKeys requiredSigs minUtxos balancedTx
+        then pure (balancedTx, minUtxos)
+        else loop utxoIndex privKeys minUtxos balancedTx
+
+withFee :: Tx -> Integer -> Tx
+withFee tx fee = tx {txFee = Ada.lovelaceValueOf fee}
 
 calculateMinUtxos ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -127,24 +151,36 @@ calculateMinUtxos ::
 calculateMinUtxos pabConf datums txOuts =
   zipWithM (fmap . (,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo @w pabConf datums) txOuts
 
-preBalanceTx ::
-  ProtocolParameters ->
+balanceTxStep ::
   [(TxOut, Integer)] ->
-  Integer ->
   Map TxOutRef TxOut ->
   PubKeyHash ->
-  Map PubKeyHash DummyPrivKey ->
-  [PubKeyHash] ->
   Tx ->
   Either Text Tx
-preBalanceTx pparams minUtxos fees utxos ownPkh privKeys requiredSigs tx =
-  addTxCollaterals utxos tx
-    >>= balanceTxIns pparams utxos fees
-    >>= balanceNonAdaOuts ownPkh utxos
-    >>= Right . addLovelaces minUtxos
-    >>= balanceTxIns pparams utxos fees -- Adding more inputs if required
-    >>= balanceNonAdaOuts ownPkh utxos
-    >>= addSignatories ownPkh privKeys requiredSigs
+balanceTxStep minUtxos utxos ownPkh tx =
+  Right (addLovelaces minUtxos tx)
+    >>= balanceTxIns utxos
+    >>= handleNonAdaChange ownPkh utxos
+
+-- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
+getChange :: Map TxOutRef TxOut -> Tx -> Value
+getChange utxos tx =
+  let fees = lovelaceValue $ txFee tx
+      txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
+      inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
+      outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
+      nonMintedOutputValue = outputValue `minus` txMint tx
+      change = (inputValue `minus` nonMintedOutputValue) `minus` Ada.lovelaceValueOf fees
+   in change
+
+lovelaceValue :: Value -> Integer
+lovelaceValue = flip Value.assetClassValueOf $ Value.assetClass "" ""
+
+getAdaChange :: Map TxOutRef TxOut -> Tx -> Integer
+getAdaChange utxos = lovelaceValue . getChange utxos
+
+getNonAdaChange :: Map TxOutRef TxOut -> Tx -> Value
+getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
 
 -- | Getting the necessary utxos to cover the fees for the transaction
 collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
@@ -202,18 +238,13 @@ addLovelaces minLovelaces tx =
           $ txOutputs tx
    in tx {txOutputs = lovelacesAdded}
 
-balanceTxIns :: ProtocolParameters -> Map TxOutRef TxOut -> Integer -> Tx -> Either Text Tx
-balanceTxIns pparams utxos fees tx = do
-  Lovelace utxoCost <-
-    maybeToRight "UTxOCostPerWord parameter not found" $ protocolParamUTxOCostPerWord pparams
+balanceTxIns :: Map TxOutRef TxOut -> Tx -> Either Text Tx
+balanceTxIns utxos tx = do
   let txOuts = Tx.txOutputs tx
       nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
-      -- An ada-only UTxO entry is 29 words. More details about min utxo calculation can be found here:
-      -- https://github.com/cardano-foundation/CIPs/tree/master/CIP-0028#rationale-for-parameter-choices
-      changeMinUtxo = 29 * utxoCost
       minSpending =
         mconcat
-          [ Ada.lovelaceValueOf (fees + changeMinUtxo)
+          [ txFee tx
           , nonMintedValue
           ]
   txIns <- collectTxIns (txInputs tx) utxos minSpending
@@ -235,15 +266,11 @@ addTxCollaterals utxos tx = do
       _ -> Left "There are no utxos to be used as collateral"
     filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
 
--- | We need to balance non ada values, as the cardano-cli is unable to balance them (as of 2021/09/24)
-balanceNonAdaOuts :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
-balanceNonAdaOuts ownPkh utxos tx =
+-- | Ensures all non ada change goes back to user
+handleNonAdaChange :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+handleNonAdaChange ownPkh utxos tx =
   let changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
-      txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
-      inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
-      outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
-      nonMintedOutputValue = outputValue `minus` txMint tx
-      nonAdaChange = filterNonAda inputValue `minus` filterNonAda nonMintedOutputValue
+      nonAdaChange = getNonAdaChange utxos tx
       outputs =
         case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
           ([], txOuts) ->
@@ -258,6 +285,37 @@ balanceNonAdaOuts ownPkh utxos tx =
    in if isValueNat nonAdaChange
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
+
+hasChangeUTxO :: PubKeyHash -> Tx -> Bool
+hasChangeUTxO ownPkh tx =
+  any ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx
+  where
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+
+-- | Adds ada change to a transaction, assuming there is already an output going to ownPkh. Otherwise, this is identity
+addAdaChange :: PubKeyHash -> Integer -> Tx -> Tx
+addAdaChange ownPkh change tx =
+  tx
+    { txOutputs =
+        case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
+          (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
+            txOut {txOutValue = v <> Ada.lovelaceValueOf change} : (txOuts <> txOuts')
+          _ -> txOutputs tx
+    }
+  where
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+
+-- | Adds a 1 lovelace output to a transaction
+addOutput :: PubKeyHash -> Tx -> Tx
+addOutput ownPkh tx = tx {txOutputs = changeTxOut : txOutputs tx}
+  where
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+    changeTxOut =
+      TxOut
+        { txOutAddress = changeAddr
+        , txOutValue = Ada.lovelaceValueOf 1
+        , txOutDatumHash = Nothing
+        }
 
 {- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
@@ -288,14 +346,6 @@ validateRange _ = True
 
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
-
--- | Filter by key for Associated maps (why doesn't this exist?)
-filterKey :: (k -> Bool) -> AssocMap.Map k v -> AssocMap.Map k v
-filterKey f = AssocMap.mapMaybeWithKey $ \k v -> if f k then Just v else Nothing
-
--- | Filter a value to contain only non ada assets
-filterNonAda :: Value -> Value
-filterNonAda = Value . filterKey (/= Ada.adaSymbol) . getValue
 
 minus :: Value -> Value -> Value
 minus x y =
