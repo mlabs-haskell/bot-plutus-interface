@@ -34,6 +34,7 @@ import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy (Proxy))
 import Data.Row (Row)
+import Data.String (fromString)
 import Data.Text (Text, pack, unpack)
 import Data.Text.Encoding (encodeUtf8)
 import Data.UUID.V4 qualified as UUID
@@ -75,8 +76,9 @@ import Servant.API (
  )
 import Servant.API.WebSocket (WebSocketPending)
 import Servant.Server (Application, Handler, Server, err404, serve)
-import System.Directory (canonicalizePath, doesFileExist, makeAbsolute)
-import System.FilePath (takeDirectory, (</>))
+import System.Directory (doesFileExist, makeAbsolute)
+import System.FilePath ((</>))
+import Test.QuickCheck (Arbitrary (arbitrary), elements, vectorOf)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -105,6 +107,7 @@ type RawTxEndpoint =
     :> Get '[JSON] RawTx
 
 newtype TxIdCapture = TxIdCapture TxId
+  deriving newtype (Eq, Show)
 
 instance FromHttpApiData TxIdCapture where
   parseUrlPiece :: Text -> Either Text TxIdCapture
@@ -120,6 +123,9 @@ instance FromHttpApiData TxIdCapture where
 
 instance ToHttpApiData TxIdCapture where
   toUrlPiece (TxIdCapture txId) = txIdToText txId
+
+instance Arbitrary TxIdCapture where
+  arbitrary = TxIdCapture . fromString <$> vectorOf 64 (elements "0123456789abcdefABCDEF")
 
 server :: HasDefinitions t => PABConfig -> AppState -> Server (API t)
 server pabConfig state =
@@ -274,13 +280,10 @@ rawTxHandler config (TxIdCapture txId) = do
   -- Absolute path to pcTxFileDir that is specified in the config
   txFolderPath <- liftIO $ makeAbsolute (unpack config.pcTxFileDir)
 
-  -- Add/Set .raw extension on path
-  let suppliedPath :: FilePath
-      suppliedPath = txFolderPath </> unpack (txFileName txId "raw")
-  -- Resolve path indirections
-  path <- liftIO $ canonicalizePath suppliedPath
-  -- ensure it does not try to escape txFolderPath
-  assert (takeDirectory path == txFolderPath)
+  -- Create full path
+  let path :: FilePath
+      path = txFolderPath </> unpack (txFileName txId "raw")
+
   -- ensure file exists
   fileExists <- liftIO $ doesFileExist path
   assert fileExists

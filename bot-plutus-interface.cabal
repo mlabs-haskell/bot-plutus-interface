@@ -118,6 +118,7 @@ library
     , plutus-tx
     , plutus-tx-plugin
     , process
+    , QuickCheck
     , row-types
     , serialise
     , servant
@@ -186,6 +187,7 @@ test-suite bot-plutus-interface-test
     , quickcheck-instances
     , row-types
     , serialise
+    , servant
     , servant-client
     , servant-client-core
     , stm

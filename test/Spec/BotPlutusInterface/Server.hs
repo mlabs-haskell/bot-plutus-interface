@@ -15,10 +15,15 @@ import Schema (FormSchema)
 
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
+import Test.Tasty.QuickCheck (Property, testProperty, (===))
 
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types.Status (status404)
 import Network.Wai.Handler.Warp (testWithApplication)
+import Servant.API (
+  FromHttpApiData (parseUrlPiece),
+  ToHttpApiData (toUrlPiece),
+ )
 import Servant.Client (ClientEnv, ClientError (..), client, mkClientEnv, responseStatusCode, runClientM)
 import Servant.Client.Core.BaseUrl (BaseUrl (..), parseBaseUrl)
 
@@ -49,6 +54,7 @@ rawTxTests =
     [ testCase "Can fetch valid tx file" fetchTx
     , testCase "Returns 404 for missing txs" fetchMissingTx
     , testCase "Returns 404 for valid request when the endpoint is disabled" fetchWithDefaultConfig
+    , testProperty "TxId URL encoding reversible" txIdReversible
     ]
   where
     fetchTx :: IO ()
@@ -68,6 +74,9 @@ rawTxTests =
       initServerAndClient def $ \runRawTxClient -> do
         Left (FailureResponse _ res) <- runRawTxClient txHash
         responseStatusCode res @?= status404
+
+    txIdReversible :: TxIdCapture -> Property
+    txIdReversible txId = parseUrlPiece (toUrlPiece txId) === Right txId
 
 txProxy :: Proxy RawTxEndpoint
 txProxy = Proxy
