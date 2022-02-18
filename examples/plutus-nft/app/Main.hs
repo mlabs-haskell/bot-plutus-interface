@@ -66,6 +66,6 @@ main = do
           , pcDryRun = True
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
-          , pcEnableTxEndpoint = False
+          , pcEnableTxEndpoint = True
           }
   BotPlutusInterface.runPAB @MintNFTContracts pabConf

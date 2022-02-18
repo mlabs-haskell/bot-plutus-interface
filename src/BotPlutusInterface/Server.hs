@@ -6,10 +6,11 @@ module BotPlutusInterface.Server (
   WebSocketEndpoint,
   ActivateContractEndpoint,
   RawTxEndpoint,
+  TxIdCapture (TxIdCapture),
 ) where
 
 import BotPlutusInterface.Contract (runContract)
-import BotPlutusInterface.Files (txFileName)
+import BotPlutusInterface.Files (txFileName, txIdToText)
 import BotPlutusInterface.Types (
   AppState (AppState),
   ContractEnvironment (..),
@@ -25,6 +26,7 @@ import Control.Monad.Error.Class (throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON (toJSON))
 import Data.Aeson qualified as JSON
+import Data.Bifunctor (bimap)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Either.Combinators (leftToMaybe)
 import Data.Kind (Type)
@@ -32,8 +34,11 @@ import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy (Proxy))
 import Data.Row (Row)
-import Data.Text (Text, unpack)
+import Data.String (fromString)
+import Data.Text (Text, pack, unpack)
+import Data.Text.Encoding (encodeUtf8)
 import Data.UUID.V4 qualified as UUID
+import Ledger.TxId (TxId (TxId))
 import Network.WebSockets (
   Connection,
   PendingConnection,
@@ -56,11 +61,24 @@ import Plutus.PAB.Webserver.Types (
   ContractActivationArgs (..),
   InstanceStatusToClient (ContractFinished, NewObservableState),
  )
-import Servant.API (Capture, Get, JSON, Post, ReqBody, (:<|>) (..), (:>))
+import Plutus.V1.Ledger.Bytes (LedgerBytes (LedgerBytes), fromHex)
+import PlutusTx.Prelude (lengthOfByteString)
+import Servant.API (
+  Capture,
+  FromHttpApiData (parseUrlPiece),
+  Get,
+  JSON,
+  Post,
+  ReqBody,
+  ToHttpApiData (toUrlPiece),
+  (:<|>) ((:<|>)),
+  (:>),
+ )
 import Servant.API.WebSocket (WebSocketPending)
 import Servant.Server (Application, Handler, Server, err404, serve)
-import System.Directory (canonicalizePath, doesFileExist, makeAbsolute)
-import System.FilePath (takeDirectory, (</>))
+import System.Directory (doesFileExist, makeAbsolute)
+import System.FilePath ((</>))
+import Test.QuickCheck (Arbitrary (arbitrary), elements, vectorOf)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -85,8 +103,29 @@ type ActivateContractEndpoint a =
 
 type RawTxEndpoint =
   "raw-tx"
-    :> Capture "txId" Text
+    :> Capture "tx-id" TxIdCapture
     :> Get '[JSON] RawTx
+
+newtype TxIdCapture = TxIdCapture TxId
+  deriving newtype (Eq, Show)
+
+instance FromHttpApiData TxIdCapture where
+  parseUrlPiece :: Text -> Either Text TxIdCapture
+  parseUrlPiece t = bimap pack bytesToTxIdCapture $ checkLength =<< fromHex (encodeUtf8 t)
+    where
+      checkLength :: LedgerBytes -> Either String LedgerBytes
+      checkLength b@(LedgerBytes bs) =
+        if lengthOfByteString bs == 32
+          then Right b
+          else Left "Invalid length"
+      bytesToTxIdCapture :: LedgerBytes -> TxIdCapture
+      bytesToTxIdCapture (LedgerBytes b) = TxIdCapture $ TxId b
+
+instance ToHttpApiData TxIdCapture where
+  toUrlPiece (TxIdCapture txId) = txIdToText txId
+
+instance Arbitrary TxIdCapture where
+  arbitrary = TxIdCapture . fromString <$> vectorOf 64 (elements "0123456789abcdefABCDEF")
 
 server :: HasDefinitions t => PABConfig -> AppState -> Server (API t)
 server pabConfig state =
@@ -234,20 +273,17 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
   pure contractInstanceID
 
 -- | This handler will allow to retrieve raw transactions from the pcTxFileDir if pcEnableTxEndpoint is True
-rawTxHandler :: PABConfig -> Text -> Handler RawTx
-rawTxHandler config txId = do
+rawTxHandler :: PABConfig -> TxIdCapture -> Handler RawTx
+rawTxHandler config (TxIdCapture txId) = do
   -- Check that endpoint is enabled
   assert config.pcEnableTxEndpoint
   -- Absolute path to pcTxFileDir that is specified in the config
   txFolderPath <- liftIO $ makeAbsolute (unpack config.pcTxFileDir)
 
-  -- Add/Set .raw extension on path
-  let suppliedPath :: FilePath
-      suppliedPath = txFolderPath </> unpack (txFileName txId ".raw")
-  -- Resolve path indirections
-  path <- liftIO $ canonicalizePath suppliedPath
-  -- ensure it does not try to escape txFolderPath
-  assert (takeDirectory path == txFolderPath)
+  -- Create full path
+  let path :: FilePath
+      path = txFolderPath </> unpack (txFileName txId "raw")
+
   -- ensure file exists
   fileExists <- liftIO $ doesFileExist path
   assert fileExists
