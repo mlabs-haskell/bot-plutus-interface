@@ -1,7 +1,7 @@
 module Spec.BotPlutusInterface.Server (tests) where
 
 import BotPlutusInterface.Files (txFileName)
-import BotPlutusInterface.Server (RawTxEndpoint, app, initState)
+import BotPlutusInterface.Server (RawTxEndpoint, TxIdCapture (TxIdCapture), app, initState)
 import BotPlutusInterface.Types (
   HasDefinitions (..),
   PABConfig (..),
@@ -9,15 +9,21 @@ import BotPlutusInterface.Types (
   SomeBuiltin (..),
  )
 
+import Ledger.TxId (TxId)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
+import Test.Tasty.QuickCheck (Property, testProperty, (===))
 
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.HTTP.Types.Status (status404)
 import Network.Wai.Handler.Warp (testWithApplication)
+import Servant.API (
+  FromHttpApiData (parseUrlPiece),
+  ToHttpApiData (toUrlPiece),
+ )
 import Servant.Client (ClientEnv, ClientError (..), client, mkClientEnv, responseStatusCode, runClientM)
 import Servant.Client.Core.BaseUrl (BaseUrl (..), parseBaseUrl)
 
@@ -25,14 +31,14 @@ import Data.Aeson (FromJSON, ToJSON, encode)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
 import Data.Proxy (Proxy (..))
-import Data.Text (Text, pack, unpack)
+import Data.Text (pack, unpack)
 import Data.Void (Void, absurd)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Prelude
 
 type RawTxEndpointResponse = Either ClientError RawTx
-type RawTxTest a = (Text -> IO RawTxEndpointResponse) -> IO a
+type RawTxTest a = (TxId -> IO RawTxEndpointResponse) -> IO a
 
 tests :: TestTree
 tests =
@@ -46,9 +52,9 @@ rawTxTests =
   testGroup
     "rawTx"
     [ testCase "Can fetch valid tx file" fetchTx
-    , testCase "If an extension is supplied, it is replaced by .raw" fetchSignedTx
-    , testCase "Unable to fetch outside tx folder" fetchOutsideTxFolder
+    , testCase "Returns 404 for missing txs" fetchMissingTx
     , testCase "Returns 404 for valid request when the endpoint is disabled" fetchWithDefaultConfig
+    , testProperty "TxId URL encoding reversible" txIdReversible
     ]
   where
     fetchTx :: IO ()
@@ -57,16 +63,10 @@ rawTxTests =
         result <- runRawTxClient txHash
         result @?= Right rawTx
 
-    fetchSignedTx :: IO ()
-    fetchSignedTx = do
+    fetchMissingTx :: IO ()
+    fetchMissingTx = do
       initServerAndClient enableTxEndpointConfig $ \runRawTxClient -> do
-        result <- runRawTxClient $ txHash <> ".signed"
-        result @?= Right rawTx
-
-    fetchOutsideTxFolder :: IO ()
-    fetchOutsideTxFolder = do
-      initServerAndClient enableTxEndpointConfig $ \runRawTxClient -> do
-        Left (FailureResponse _ res) <- runRawTxClient "../somefile"
+        Left (FailureResponse _ res) <- runRawTxClient txHash2
         responseStatusCode res @?= status404
 
     fetchWithDefaultConfig :: IO ()
@@ -74,6 +74,9 @@ rawTxTests =
       initServerAndClient def $ \runRawTxClient -> do
         Left (FailureResponse _ res) <- runRawTxClient txHash
         responseStatusCode res @?= status404
+
+    txIdReversible :: TxIdCapture -> Property
+    txIdReversible txId = parseUrlPiece (toUrlPiece txId) === Right txId
 
 txProxy :: Proxy RawTxEndpoint
 txProxy = Proxy
@@ -95,16 +98,19 @@ initServerAndClient config test = do
       let clientEnv :: ClientEnv
           clientEnv = mkClientEnv manager $ baseUrl {baseUrlPort = port}
 
-          runRawTxClient :: Text -> IO RawTxEndpointResponse
-          runRawTxClient hash = runClientM (client txProxy hash) clientEnv
+          runRawTxClient :: TxId -> IO RawTxEndpointResponse
+          runRawTxClient txId = runClientM (client txProxy (TxIdCapture txId)) clientEnv
 
       testToRun runRawTxClient
 
-txHash :: Text
-txHash = "test"
+txHash :: TxId
+txHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+txHash2 :: TxId
+txHash2 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 testTxFileName :: FilePath
-testTxFileName = unpack $ txFileName txHash ".raw"
+testTxFileName = unpack $ txFileName txHash "raw"
 
 rawTx :: RawTx
 rawTx =

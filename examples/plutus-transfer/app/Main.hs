@@ -65,5 +65,6 @@ main = do
           , pcDryRun = True
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
+          , pcEnableTxEndpoint = True
           }
   BotPlutusInterface.runPAB @TransferContracts pabConf

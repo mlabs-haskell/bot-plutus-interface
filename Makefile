@@ -3,7 +3,7 @@
 # In most cases you should execute Make after entering nix-shell.
 
 .PHONY: hoogle pab_servers_all pab_servers_all pab_db clean_db \
-	build test accept_pirs watch ghci readme_contents \
+	nix_build build test accept_pirs watch ghci readme_contents \
 	format lint requires_nix_shell 
 
 usage:
@@ -16,6 +16,7 @@ usage:
 	@echo
 	@echo "Available commands:"
 	@echo "  hoogle              -- Start local hoogle"
+	@echo "  nix_build           -- Run nix build -L on all targets"
 	@echo "  build               -- Run cabal v2-build"
 	@echo "  watch               -- Track files: bot-plutus-interface.cabal, src/* and run 'make build' on change"
 	@echo "  test                -- Run cabal v2-test"
@@ -43,6 +44,9 @@ hoogle: requires_nix_shell
 ifdef FLAGS
 GHC_FLAGS = --ghc-options "$(FLAGS)"
 endif
+
+nix_build:
+	nix build -L .#check.x86_64-linux .#plutus-transfer:exe:plutus-transfer-pab .#plutus-game:exe:plutus-game-pab .#plutus-nft:exe:plutus-nft-pab
 
 build: requires_nix_shell
 	cabal v2-build $(GHC_FLAGS)
