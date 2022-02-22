@@ -13,6 +13,7 @@ import BotPlutusInterface.Effects (
   printLog,
   queryChainIndex,
   threadDelay,
+  uploadDir,
  )
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
@@ -170,10 +171,12 @@ balanceTx ::
   UnbalancedTx ->
   Eff effs BalanceTxResponse
 balanceTx contractEnv unbalancedTx = do
+  let pabConf = contractEnv.cePABConfig
+  uploadDir @w pabConf.pcSigningKeyFileDir
   eitherPreBalancedTx <-
     PreBalance.balanceTxIO @w
-      contractEnv.cePABConfig
-      (contractEnv.cePABConfig.pcOwnPubKeyHash)
+      pabConf
+      pabConf.pcOwnPubKeyHash
       unbalancedTx
 
   pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
@@ -188,17 +191,18 @@ writeBalancedTx ::
 writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
 writeBalancedTx contractEnv (Right tx) = do
   let pabConf = contractEnv.cePABConfig
+  uploadDir @w pabConf.pcSigningKeyFileDir
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
 
   eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Right) $ do
     void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
+    lift $ uploadDir @w pabConf.pcScriptFileDir
+
     privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
     let requiredSigners = Map.keys $ tx ^. Tx.signatures
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
         signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
-
-    lift $ CardanoCLI.uploadFiles @w pabConf
 
     newEitherT $ CardanoCLI.buildTx @w pabConf privKeys tx
 
