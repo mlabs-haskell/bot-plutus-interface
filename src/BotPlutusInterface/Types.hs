@@ -70,7 +70,7 @@ data PABConfig = PABConfig
     pcPort :: !Port
   , -- | Enables the raw tx getter endpoint, allowing any user to read all `raw` transaction files within `pcTxFileDir` (unsigned)
     pcEnableTxEndpoint :: !Bool
-  , pcRemoteTemporaryTxFiles :: !Bool
+  , pcRemoveTemporaryTxFiles :: !Bool
   }
   deriving stock (Show, Eq)
 
@@ -133,7 +133,7 @@ instance Default PABConfig where
       , pcOwnPubKeyHash = ""
       , pcPort = 9080
       , pcEnableTxEndpoint = False
-      , pcRemoteTemporaryTxFiles = True
+      , pcRemoveTemporaryTxFiles = True
       }
 
 data RawTx = RawTx

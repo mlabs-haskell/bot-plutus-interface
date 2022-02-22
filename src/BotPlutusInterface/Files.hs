@@ -134,7 +134,7 @@ removeTxFileCLI ::
   Tx.Tx ->
   Eff effs ()
 removeTxFileCLI pabConf tx =
-  when pabConf.pcRemoteTemporaryTxFiles $ removeFileCLI @w $ Text.unpack $ txFilePath pabConf "raw" tx
+  when pabConf.pcRemoveTemporaryTxFiles $ removeFileCLI @w $ Text.unpack $ txFilePath pabConf "raw" tx
 
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile ::
