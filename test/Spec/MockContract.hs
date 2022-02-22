@@ -74,7 +74,7 @@ import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
+import Control.Lens (at, (%~), (&), (.~), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, reinterpret2, run)
@@ -281,6 +281,8 @@ runPABEffectPure initState req =
       mockCreateDirectoryIfMissing createParents filePath
     go (CreateDirectoryIfMissingCLI createParents filePath) =
       mockCreateDirectoryIfMissing createParents filePath
+    go (RemoveFileCLI filepath) =
+      mockRemoveFile filepath
     go (PrintLog logLevel msg) = mockPrintLog logLevel msg
     go (UpdateInstanceState msg) = mockUpdateInstanceState msg
     go (LogToContract msg) = mockLogToContract msg
@@ -470,6 +472,10 @@ mockWriteFileJSON filepath value = do
   modify @(MockContractState w) (files . at filepath ?~ fileContent)
 
   pure $ Right ()
+
+mockRemoveFile :: forall (w :: Type). FilePath -> MockContract w ()
+mockRemoveFile filepath =
+  modify @(MockContractState w) (files . at filepath .~ Nothing)
 
 mockWriteFileTextEnvelope ::
   forall (w :: Type) (a :: Type).

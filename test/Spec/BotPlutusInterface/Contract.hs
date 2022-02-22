@@ -67,6 +67,7 @@ import Spec.MockContract (
   verificationKey1,
   verificationKey3,
  )
+import System.FilePath (isExtensionOf)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
 import Prelude
@@ -108,7 +109,8 @@ sendAda = do
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    assertTxFileCount state 1
     assertCommandHistory
       state
       [
@@ -189,7 +191,8 @@ sendAdaNoChange = do
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    assertTxFileCount state 1
     assertCommandHistory
       state
       [
@@ -222,7 +225,8 @@ sendAdaStaking = do
               Constraints.mustPayToPubKeyAddress paymentPkh2 stakePkh3 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    assertTxFileCount state 1
     assertCommandHistory
       state
       [
@@ -303,7 +307,8 @@ multisigSupport = do
         submitTx constraints
 
   -- Building and siging the tx should include both signing keys
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    assertTxFileCount state 1
     assertCommandHistory
       state
       [
@@ -367,6 +372,7 @@ withoutSigning = do
 
   -- Building and siging the tx should include both signing keys
   assertContractWithTxId contract initState $ \state outTxId -> do
+    assertTxFileCount state 1
     assertCommandHistory
       state
       [
@@ -411,7 +417,8 @@ sendTokens = do
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    assertTxFileCount state 1
     assertCommandHistory
       state
       [
@@ -455,7 +462,8 @@ sendTokensWithoutName = do
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "" 5)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    assertTxFileCount state 1
     assertCommandHistory
       state
       [
@@ -542,6 +550,8 @@ mintTokens = do
           |]
         )
       ]
+
+    assertTxFileCount state 1
 
     assertFiles
       state
@@ -630,6 +640,8 @@ spendToValidator = do
           |]
         )
       ]
+
+    assertTxFileCount state 1
 
     assertFiles
       state
@@ -727,6 +739,8 @@ redeemFromValidator = do
         )
       ]
 
+    assertTxFileCount state 1
+
     assertFiles
       state
       [ [text|./result-scripts/datum-${datumHash'}.json|]
@@ -756,17 +770,18 @@ multiTx = do
 
   case result of
     Left errMsg -> assertFailure (show errMsg)
-    Right [tx1, tx2] ->
+    Right [tx1, tx2] -> do
       let outTxId1 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx1
           outTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx2
-       in assertFiles
-            state
-            [ [text|./signing-keys/signing-key-${pkh1'}.skey|]
-            , [text|./txs/tx-${outTxId1}.raw|]
-            , [text|./txs/tx-${outTxId2}.raw|]
-            , [text|./txs/tx-${outTxId1}.signed|]
-            , [text|./txs/tx-${outTxId2}.signed|]
-            ]
+      assertTxFileCount state 2
+      assertFiles
+        state
+        [ [text|./signing-keys/signing-key-${pkh1'}.skey|]
+        , [text|./txs/tx-${outTxId1}.raw|]
+        , [text|./txs/tx-${outTxId2}.raw|]
+        , [text|./txs/tx-${outTxId1}.signed|]
+        , [text|./txs/tx-${outTxId2}.signed|]
+        ]
     Right _ -> assertFailure "Wrong number of txs"
 
 withValidRange :: Assertion
@@ -783,7 +798,8 @@ withValidRange = do
                 <> Constraints.mustValidateIn (interval (POSIXTime 1643636293000) (POSIXTime 1646314693000))
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContractWithTxId contract initState $ \state outTxId -> do
+    assertTxFileCount state 1
     assertCommandHistory
       state
       [
@@ -869,6 +885,19 @@ assertFiles state expectedFiles =
         , show expectedFiles
         , "got:"
         , show (Map.keys (state ^. files))
+        ]
+
+assertTxFileCount :: forall (w :: Type). MockContractState w -> Int -> Assertion
+assertTxFileCount state n =
+  assertBool errorMsg $ txFileCount == n
+  where
+    txFileCount = length $ filter (isExtensionOf "raw") $ Map.keys $ state ^. files
+    errorMsg =
+      mconcat
+        [ "Expected "
+        , show n
+        , " transaction file(s) but got "
+        , show txFileCount
         ]
 
 assertContractWithTxId ::

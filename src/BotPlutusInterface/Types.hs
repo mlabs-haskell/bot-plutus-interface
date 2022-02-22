@@ -60,11 +60,17 @@ data PABConfig = PABConfig
     pcProtocolParamsFile :: !Text
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
-  , pcLogLevel :: !LogLevel
-  , pcOwnPubKeyHash :: !PubKeyHash
-  , pcTipPollingInterval :: !Natural
-  , pcPort :: !Port
-  , pcEnableTxEndpoint :: !Bool
+  , -- | Determines logs printed to console
+    pcLogLevel :: !LogLevel
+  , -- | Address to pull UTxOs from and send change to. All transactions are signed by this address
+    pcOwnPubKeyHash :: !PubKeyHash
+  , -- | Time in microseconds between each tip request
+    pcTipPollingInterval :: !Natural
+  , -- | PAB endpoints port
+    pcPort :: !Port
+  , -- | Enables the raw tx getter endpoint, allowing any user to read all `raw` transaction files within `pcTxFileDir` (unsigned)
+    pcEnableTxEndpoint :: !Bool
+  , pcRemoteTemporaryTxFiles :: !Bool
   }
   deriving stock (Show, Eq)
 
@@ -127,6 +133,7 @@ instance Default PABConfig where
       , pcOwnPubKeyHash = ""
       , pcPort = 9080
       , pcEnableTxEndpoint = False
+      , pcRemoteTemporaryTxFiles = True
       }
 
 data RawTx = RawTx

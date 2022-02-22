@@ -8,6 +8,7 @@ module BotPlutusInterface.Effects (
   handlePABEffect,
   createDirectoryIfMissing,
   createDirectoryIfMissingCLI,
+  removeFileCLI,
   queryChainIndex,
   listDirectory,
   threadDelay,
@@ -63,6 +64,7 @@ data PABEffect (w :: Type) (r :: Type) where
   CreateDirectoryIfMissing :: Bool -> FilePath -> PABEffect w ()
   -- Same as above but creates folder on the CLI machine, be that local or remote.
   CreateDirectoryIfMissingCLI :: Bool -> FilePath -> PABEffect w ()
+  RemoveFileCLI :: FilePath -> PABEffect w ()
   PrintLog :: LogLevel -> String -> PABEffect w ()
   UpdateInstanceState :: Activity -> PABEffect w ()
   LogToContract :: (ToJSON w, Monoid w) => w -> PABEffect w ()
@@ -96,12 +98,16 @@ handlePABEffect contractEnv =
           case contractEnv.cePABConfig.pcCliLocation of
             Local -> callLocalCommand shellArgs
             Remote ipAddr -> callRemoteCommand ipAddr shellArgs
-        CreateDirectoryIfMissing createParents filePath ->
-          Directory.createDirectoryIfMissing createParents filePath
-        CreateDirectoryIfMissingCLI createParents filePath ->
+        CreateDirectoryIfMissing createParents filepath ->
+          Directory.createDirectoryIfMissing createParents filepath
+        CreateDirectoryIfMissingCLI createParents filepath ->
           case contractEnv.cePABConfig.pcCliLocation of
-            Local -> Directory.createDirectoryIfMissing createParents filePath
-            Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
+            Local -> Directory.createDirectoryIfMissing createParents filepath
+            Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filepath
+        RemoveFileCLI filepath ->
+          case contractEnv.cePABConfig.pcCliLocation of
+            Local -> Directory.removeFile filepath
+            Remote ipAddr -> removeFileRemote ipAddr filepath
         PrintLog logLevel txt -> printLog' contractEnv.cePABConfig.pcLogLevel logLevel txt
         UpdateInstanceState s -> do
           atomically $
@@ -151,6 +157,10 @@ createDirectoryIfMissingRemote ipAddr createParents path =
 quotes :: forall (a :: Type). (IsString a, Semigroup a) => a -> a
 quotes str = fromString "\"" <> str <> fromString "\""
 
+removeFileRemote :: Text -> FilePath -> IO ()
+removeFileRemote ipAddr path =
+  void $ readProcessEither "ssh" [Text.unpack ipAddr, "rm", path]
+
 readProcessEither :: FilePath -> [String] -> IO (Either Text String)
 readProcessEither path args =
   mapToEither <$> readProcessWithExitCode path args ""
@@ -185,6 +195,13 @@ createDirectoryIfMissingCLI ::
   FilePath ->
   Eff effs ()
 createDirectoryIfMissingCLI createParents path = send @(PABEffect w) $ CreateDirectoryIfMissingCLI createParents path
+
+removeFileCLI ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  FilePath ->
+  Eff effs ()
+removeFileCLI path = send @(PABEffect w) $ RemoveFileCLI path
 
 printLog ::
   forall (w :: Type) (effs :: [Type -> Type]).

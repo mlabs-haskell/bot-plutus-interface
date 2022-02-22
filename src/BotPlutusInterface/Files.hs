@@ -1,25 +1,26 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
 module BotPlutusInterface.Files (
-  policyScriptFilePath,
   DummyPrivKey (FromSKey, FromVKey),
+  datumJsonFilePath,
+  mkDummyPrivateKey,
+  policyScriptFilePath,
+  readPrivateKeys,
+  redeemerJsonFilePath,
+  removeTxFileCLI,
+  signingKeyFilePath,
+  skeyToDummyPrivKey,
+  txFileName,
+  txFilePath,
+  txIdToText,
   unDummyPrivateKey,
   validatorScriptFilePath,
-  readPrivateKeys,
-  signingKeyFilePath,
-  txFilePath,
-  txFileName,
-  txIdToText,
+  vkeyToDummyPrivKey,
   writeAll,
+  writeDatumJsonFile,
   writePolicyScriptFile,
-  redeemerJsonFilePath,
-  mkDummyPrivateKey,
   writeRedeemerJsonFile,
   writeValidatorScriptFile,
-  datumJsonFilePath,
-  skeyToDummyPrivKey,
-  vkeyToDummyPrivKey,
-  writeDatumJsonFile,
 ) where
 
 import BotPlutusInterface.Effects (
@@ -27,6 +28,7 @@ import BotPlutusInterface.Effects (
   createDirectoryIfMissing,
   listDirectory,
   readFileTextEnvelope,
+  removeFileCLI,
   writeFileJSON,
   writeFileTextEnvelope,
  )
@@ -49,6 +51,7 @@ import Cardano.Api.Shelley (
  )
 import Cardano.Crypto.Wallet qualified as Crypto
 import Codec.Serialise qualified as Codec
+import Control.Monad (when)
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
@@ -123,6 +126,15 @@ txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext
 
 txIdToText :: TxId.TxId -> Text
 txIdToText = encodeByteString . fromBuiltin . TxId.getTxId
+
+removeTxFileCLI ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  Tx.Tx ->
+  Eff effs ()
+removeTxFileCLI pabConf tx =
+  when pabConf.pcRemoteTemporaryTxFiles $ removeFileCLI @w $ Text.unpack $ txFilePath pabConf "raw" tx
 
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile ::

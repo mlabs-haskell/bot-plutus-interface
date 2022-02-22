@@ -84,6 +84,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       -- We need this folder on the CLI machine, which may not be the local machine
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack pabConf.pcTxFileDir)
+      void $ lift $ Files.writeAll @w pabConf tx
 
       -- Adds required collaterals, only needs to happen once
       -- Also adds signatures for fee calculation
@@ -115,7 +116,6 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       Tx ->
       EitherT Text (Eff effs) (Tx, [(TxOut, Integer)])
     loop utxoIndex privKeys prevMinUtxos tx = do
-      void $ lift $ Files.writeAll @w pabConf tx
       nextMinUtxos <-
         newEitherT $
           calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
@@ -130,6 +130,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
+      lift $ Files.removeTxFileCLI @w pabConf txWithoutFees
 
       lift $ printLog @w Debug $ "Fees: " ++ show fees
 
