@@ -83,6 +83,7 @@ main = do
           , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
           , pcPort = 9080
           , pcProtocolParams = protocolParams
+          , pcTipPollingInterval = 10_000_000
           , -- | Slot configuration of the network, the default value can be used for the mainnet
             pcSlotConfig = def
           , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
@@ -97,6 +98,7 @@ main = do
           , pcLogLevel = Debug
           , -- Protocol params file location relative to the cardano-cli working directory (needed for the cli)
           , pcProtocolParamsFile = "./protocol.json"
+          , pcEnableTxEndpoint = True
           }
   BotPlutusInterface.runPAB @MyContracts pabConf
 ```
