@@ -228,7 +228,7 @@ awaitSlot ::
   Slot ->
   Eff effs Slot
 awaitSlot contractEnv s@(Slot n) = do
-  threadDelay @w 10_000_000
+  threadDelay @w (fromIntegral contractEnv.cePABConfig.pcTipPollingInterval)
   tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
   case tip of
     Right tip'
