@@ -7,7 +7,6 @@ module BotPlutusInterface.CardanoCLI (
   calculateMinFee,
   buildTx,
   signTx,
-  uploadFiles,
   validatorScriptFilePath,
   unsafeSerialiseAddress,
   policyScriptFilePath,
@@ -15,7 +14,7 @@ module BotPlutusInterface.CardanoCLI (
   queryTip,
 ) where
 
-import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, uploadDir)
+import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand)
 import BotPlutusInterface.Files (
   DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
@@ -92,19 +91,6 @@ import Plutus.V1.Ledger.Api (
 import Plutus.V1.Ledger.Api qualified as Plutus
 import PlutusTx.Builtins (fromBuiltin)
 import Prelude
-
--- | Upload script files to remote server
-uploadFiles ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  PABConfig ->
-  Eff effs ()
-uploadFiles pabConf =
-  mapM_
-    (uploadDir @w)
-    [ pabConf.pcScriptFileDir
-    , pabConf.pcSigningKeyFileDir
-    ]
 
 -- | Getting information of the latest block
 queryTip ::

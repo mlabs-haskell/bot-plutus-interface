@@ -31,6 +31,7 @@ import GHC.Generics (Generic)
 import Ledger (PubKeyHash)
 import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
+import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import Plutus.PAB.Effects.Contract.Builtin (
   HasDefinitions (..),
@@ -61,6 +62,7 @@ data PABConfig = PABConfig
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
   , pcOwnPubKeyHash :: !PubKeyHash
+  , pcTipPollingInterval :: !Natural
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
   }
@@ -115,6 +117,7 @@ instance Default PABConfig where
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = def
       , pcSlotConfig = def
+      , pcTipPollingInterval = 10_000_000
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"
       , pcTxFileDir = "./txs"
