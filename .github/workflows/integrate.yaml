@@ -76,4 +76,4 @@ jobs:
             dist-newstyle
           key: ${{ runner.os }}-cabal
       - name: Build the full ci derivation
-        run: make nix_build
+        run: make nix_build_lib && make nix_build_examples

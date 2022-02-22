@@ -68,7 +68,7 @@
             # We use the ones from Nixpkgs, since they are cached reliably.
             # Eventually we will probably want to build these with haskell.nix.
             nativeBuildInputs =
-              [ pkgs.cabal-install pkgs.hlint pkgs.haskellPackages.fourmolu ];
+              [ pkgs.cabal-install pkgs.hlint pkgs.haskellPackages.fourmolu pkgs.jq pkgs.websocat ];
 
             additional = ps: [
               ps.base-deriving-via
