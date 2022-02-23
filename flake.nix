@@ -126,8 +126,8 @@
         allow-newer: size-based:template-haskell
       '';
 
-      haskellModule = system:
-        let pkgs = nixpkgsFor system; in
+      haskellModules = [(
+        { pkgs, ... }:
         {
           packages = {
             marlowe.flags.defer-plugin-errors = true;
@@ -143,7 +143,8 @@
               pkgs.buildPackages.buildPackages.gitMinimal
             ];
           };
-        };
+        }
+      )];
 
       extraSources = [
         {
@@ -329,11 +330,11 @@
             exactDeps = true;
             nativeBuildInputs = [ pkgs'.cabal-install pkgs'.hlint pkgs'.haskellPackages.fourmolu pkgs'.jq pkgs'.websocat ];
           };
-          modules = [(haskellModule system)];
+          modules = haskellModules;
         };
 
     in {
-      inherit cabalProjectLocal extraSources haskellModule;
+      inherit cabalProjectLocal extraSources haskellModules;
 
       project = perSystem projectFor;
       flake = perSystem (system: (projectFor system).flake { });
