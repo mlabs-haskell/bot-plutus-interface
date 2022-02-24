@@ -47,10 +47,10 @@ GHC_FLAGS = --ghc-options "$(FLAGS)"
 endif
 
 nix_build_lib:
-	nix build -L .#check.x86_64-linux
+	nix build -L --recreate-lock-file .#check.x86_64-linux 
 
 nix_build_examples:
-	nix build -L .#plutus-transfer:exe:plutus-transfer-pab .#plutus-game:exe:plutus-game-pab .#plutus-nft:exe:plutus-nft-pab
+	nix build -L --recreate-lock-file .#plutus-transfer:exe:plutus-transfer-pab .#plutus-game:exe:plutus-game-pab .#plutus-nft:exe:plutus-nft-pab
 
 build: requires_nix_shell
 	cabal v2-build $(GHC_FLAGS)
