@@ -28,7 +28,7 @@ import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
-import Ledger.Constraints.OffChain (UnbalancedTx (..), fromScriptOutput)
+import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Interval (
   Extended (Finite, NegInf, PosInf),
@@ -71,7 +71,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
     do
       utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
-      let utxoIndex = fmap Tx.toTxOut utxos <> fmap (Ledger.toTxOut . fromScriptOutput) (unBalancedTxUtxoIndex unbalancedTx)
+      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
       tx <-
         hoistEither $
