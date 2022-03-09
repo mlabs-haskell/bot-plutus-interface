@@ -78,6 +78,7 @@ library
     BotPlutusInterface
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
+    BotPlutusInterface.Config
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
     BotPlutusInterface.Files
@@ -92,6 +93,7 @@ library
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , config-schema
     , containers
     , data-default
     , data-default-class
@@ -123,6 +125,7 @@ library
     , serialise
     , servant
     , servant-client
+    , servant-client-core
     , servant-server
     , servant-websockets
     , split
