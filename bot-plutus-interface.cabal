@@ -94,6 +94,7 @@ library
     , cardano-crypto
     , cardano-ledger-alonzo
     , config-schema
+    , config-value
     , containers
     , data-default
     , data-default-class
@@ -119,8 +120,10 @@ library
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
+    , pretty
     , process
     , QuickCheck
+    , regex-compat
     , row-types
     , serialise
     , servant
@@ -131,6 +134,7 @@ library
     , split
     , stm
     , text                       ^>=1.2.4.0
+    , tostring
     , transformers
     , transformers-either
     , uuid
