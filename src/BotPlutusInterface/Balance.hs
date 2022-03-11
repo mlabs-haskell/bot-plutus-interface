@@ -128,7 +128,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       txWithoutFees <-
         hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` 0
 
-      newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
+      void $ newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
       fees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
       lift $ printLog @w Debug $ "Fees: " ++ show fees

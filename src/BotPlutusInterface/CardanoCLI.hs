@@ -33,7 +33,7 @@ import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
-import Data.Bifunctor (second)
+import Data.Bifunctor (first, second)
 import Data.Bool (bool)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Lazy.Char8 qualified as Char8
@@ -45,7 +45,7 @@ import Data.Kind (Type)
 import Data.List (nub, sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -243,11 +243,14 @@ buildTx ::
   PABConfig ->
   Map PubKeyHash DummyPrivKey ->
   Tx ->
-  Eff effs (Either Text ())
+  Eff effs (Either Text ExBudget)
 buildTx pabConf privKeys tx = do
   eTxInfo <- buildTxInfo @w pabConf tx
   case eTxInfo of
-    Right txInfo -> callCommand @w $ ShellArgs "cardano-cli" (opts txInfo) (const ())
+    Right txInfo -> do
+      let (ins, valBudget) = txInOpts pabConf txInfo (txInputs tx)
+          (mints, mintBudget) = mintOpts pabConf txInfo (txMintScripts tx) (txRedeemers tx) (txMint tx)
+      callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const $ valBudget <> mintBudget)
     Left e -> return $ Left e
   where
     requiredSigners =
@@ -263,13 +266,13 @@ buildTx pabConf privKeys tx = do
                     []
         )
         (Map.keys (Ledger.txSignatures tx))
-    opts txInfo =
+    opts ins mints =
       mconcat
         [ ["transaction", "build-raw", "--alonzo-era"]
-        , txInOpts pabConf txInfo (txInputs tx)
+        , ins
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
-        , mintOpts pabConf txInfo (txMintScripts tx) (txRedeemers tx) (txMint tx)
+        , mints
         , validRangeOpts (txValidRange tx)
         , requiredSigners
         , ["--fee", showText . getLovelace . fromValue $ txFee tx]
@@ -322,80 +325,90 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInOpts :: PABConfig -> TxInfo -> Set TxIn -> [Text]
+txInOpts :: PABConfig -> TxInfo -> Set TxIn -> ([Text], ExBudget)
 txInOpts pabConf txInfo =
-  concatMap
+  foldMap
     ( \(TxIn txOutRef txInType) ->
-        mconcat
-          [ ["--tx-in", txOutRefToCliArg txOutRef]
-          , case txInType of
-              Just (ConsumeScriptAddress validator redeemer datum) ->
-                let scriptContext = ScriptContext txInfo $ Plutus.Spending txOutRef
-                    exBudget =
-                      fromRight (ExBudget (ExCPU 0) (ExMemory 0)) $
-                        calculateExBudget
-                          (Scripts.unValidatorScript validator)
-                          [Plutus.getRedeemer redeemer, Plutus.getDatum datum, Plutus.toBuiltinData scriptContext]
-                 in mconcat
-                      [
-                        [ "--tx-in-script-file"
-                        , validatorScriptFilePath pabConf (Ledger.validatorHash validator)
-                        ]
-                      ,
-                        [ "--tx-in-datum-file"
-                        , datumJsonFilePath pabConf (Ledger.datumHash datum)
-                        ]
-                      ,
-                        [ "--tx-in-redeemer-file"
-                        , redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
-                        ]
-                      ,
-                        [ "--tx-in-execution-units"
-                        , exBudgetToCliArg exBudget
-                        ]
-                      ]
-              Just ConsumePublicKeyAddress -> []
-              Just ConsumeSimpleScriptAddress -> []
-              Nothing -> []
-          ]
+        let (opts, exBudget) = scriptInputs txOutRef txInType
+         in (,exBudget) $
+              mconcat
+                [ ["--tx-in", txOutRefToCliArg txOutRef]
+                , opts
+                ]
     )
     . Set.toList
+  where
+    scriptInputs :: TxOutRef -> Maybe TxInType -> ([Text], ExBudget)
+    scriptInputs txOutRef txInType =
+      case txInType of
+        Just (ConsumeScriptAddress validator redeemer datum) ->
+          let scriptContext = ScriptContext txInfo $ Plutus.Spending txOutRef
+              exBudget =
+                fromRight mempty $
+                  calculateExBudget
+                    (Scripts.unValidatorScript validator)
+                    [Plutus.getRedeemer redeemer, Plutus.getDatum datum, Plutus.toBuiltinData scriptContext]
+           in (,exBudget) $
+                mconcat
+                  [
+                    [ "--tx-in-script-file"
+                    , validatorScriptFilePath pabConf (Ledger.validatorHash validator)
+                    ]
+                  ,
+                    [ "--tx-in-datum-file"
+                    , datumJsonFilePath pabConf (Ledger.datumHash datum)
+                    ]
+                  ,
+                    [ "--tx-in-redeemer-file"
+                    , redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
+                    ]
+                  ,
+                    [ "--tx-in-execution-units"
+                    , exBudgetToCliArg exBudget
+                    ]
+                  ]
+        Just ConsumePublicKeyAddress -> mempty
+        Just ConsumeSimpleScriptAddress -> mempty
+        Nothing -> mempty
 
 txInCollateralOpts :: Set TxIn -> [Text]
 txInCollateralOpts =
   concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef]) . Set.toList
 
 -- Minting options
-mintOpts :: PABConfig -> TxInfo -> Set Scripts.MintingPolicy -> Redeemers -> Value -> [Text]
+mintOpts :: PABConfig -> TxInfo -> Set Scripts.MintingPolicy -> Redeemers -> Value -> ([Text], ExBudget)
 mintOpts pabConf txInfo mintingPolicies redeemers mintValue =
-  mconcat
-    [ mconcat $
-        concatMap
+  let scriptOpts =
+        foldMap
           ( \(idx, policy) ->
               let redeemerPtr = RedeemerPtr Mint idx
                   redeemer = Map.lookup redeemerPtr redeemers
                   curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
                   scriptContext = ScriptContext txInfo $ Plutus.Minting curSymbol
                   exBudget r =
-                    fromRight (ExBudget (ExCPU 0) (ExMemory 0)) $
+                    fromRight mempty $
                       calculateExBudget
                         (Scripts.unMintingPolicyScript policy)
                         [Plutus.getRedeemer r, Plutus.toBuiltinData scriptContext]
                   toOpts r =
-                    [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
-                    , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Ledger.redeemerHash r)]
-                    , ["--mint-execution-units", exBudgetToCliArg (exBudget r)]
-                    ]
-               in mconcat $ maybeToList $ fmap toOpts redeemer
+                    let budget = exBudget r
+                     in (,budget) $
+                          mconcat
+                            [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
+                            , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Ledger.redeemerHash r)]
+                            , ["--mint-execution-units", exBudgetToCliArg budget]
+                            ]
+               in orMempty $ fmap toOpts redeemer
           )
           $ zip [0 ..] $ Set.toList mintingPolicies
-    , if not (Value.isZero mintValue)
-        then
-          [ "--mint"
-          , valueToCliArg mintValue
-          ]
-        else []
-    ]
+      mintOpt =
+        if not (Value.isZero mintValue)
+          then ["--mint", valueToCliArg mintValue]
+          else []
+   in first (<> mintOpt) scriptOpts
+
+orMempty :: forall (m :: Type). Monoid m => Maybe m -> m
+orMempty = fromMaybe mempty
 
 -- | This function does not check if the range is valid, for that see `PreBalance.validateRange`
 validRangeOpts :: SlotRange -> [Text]
