@@ -477,6 +477,7 @@ unsafeSerialiseAddress network address =
 
 calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
 calculateExBudget script builtinData = do
+  -- TODO, pull this from the protocol, they're the same for now but may not always be
   modelParams <- maybeToRight "Cost model params invalid." Plutus.defaultCostModelParams
   let serialisedScript = ShortByteString.toShort $ LazyByteString.toStrict $ Codec.serialise script
       pData = map Plutus.builtinDataToData builtinData
