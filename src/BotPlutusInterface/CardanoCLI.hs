@@ -14,7 +14,7 @@ module BotPlutusInterface.CardanoCLI (
   queryTip,
 ) where
 
-import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand)
+import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand, queryChainIndex)
 import BotPlutusInterface.Files (
   DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
@@ -24,7 +24,7 @@ import BotPlutusInterface.Files (
   txFilePath,
   validatorScriptFilePath,
  )
-import BotPlutusInterface.Types (PABConfig, Tip)
+import BotPlutusInterface.Types (PABConfig (pcSlotConfig), Tip)
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
 import Codec.Serialise qualified as Codec
@@ -33,6 +33,7 @@ import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
+import Data.Bifunctor (second)
 import Data.Bool (bool)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Lazy.Char8 qualified as Char8
@@ -41,7 +42,7 @@ import Data.Either (fromRight)
 import Data.Either.Combinators (mapLeft, maybeToRight)
 import Data.Hex (hex)
 import Data.Kind (Type)
-import Data.List (sort)
+import Data.List (nub, sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, maybeToList)
@@ -63,6 +64,7 @@ import Ledger.Interval (
  )
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
+import Ledger.TimeSlot (slotRangeToPOSIXTimeRange)
 import Ledger.Tx (
   ChainIndexTxOut,
   RedeemerPtr (..),
@@ -77,7 +79,9 @@ import Ledger.Tx (
 import Ledger.TxId (TxId (..))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
+import Plutus.ChainIndex.Tx (txOutRefMap)
 import Plutus.Contract.CardanoAPI (toCardanoAddress)
+import Plutus.Contract.Effects (ChainIndexQuery (TxsFromTxIds), ChainIndexResponse (TxIdsResponse))
 import Plutus.V1.Ledger.Ada (fromValue, getLovelace)
 import Plutus.V1.Ledger.Api (
   BuiltinData,
@@ -86,7 +90,10 @@ import Plutus.V1.Ledger.Api (
   ExCPU (..),
   ExMemory (..),
   Script,
+  ScriptContext (ScriptContext),
   TokenName (..),
+  TxInInfo (TxInInfo),
+  TxInfo (TxInfo),
  )
 import Plutus.V1.Ledger.Api qualified as Plutus
 import PlutusTx.Builtins (fromBuiltin)
@@ -176,6 +183,59 @@ calculateMinFee pabConf tx =
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
         }
 
+queryTxOuts ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  [TxId] ->
+  Eff effs (Either Text (Map TxOutRef TxOut))
+queryTxOuts txIds = do
+  res <- queryChainIndex @w $ TxsFromTxIds txIds
+  return $ case res of
+    TxIdsResponse chainTxs -> Right $ foldMap (fmap fst . txOutRefMap) chainTxs
+    _ -> Left "Wrong PAB response"
+
+-- There is no match txOutRefs request, and we don't want a separate PAB query per input.
+-- So, for efficiency, we're going to query the transactions for all inputs combined,
+-- then pick out the outputs we care about
+getTxInInfos ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  [TxOutRef] ->
+  Eff effs (Either Text [TxInInfo])
+getTxInInfos txOutRefs = do
+  let ids = nub $ txOutRefId <$> txOutRefs
+  eAllOutRefs <- queryTxOuts @w ids
+  return $
+    eAllOutRefs >>= \allOutRefs ->
+      sequence $ (\ref -> toEither $ TxInInfo ref <$> Map.lookup ref allOutRefs) <$> txOutRefs
+  where
+    toEither :: Maybe TxInInfo -> Either Text TxInInfo
+    toEither = maybeToRight "Couldn't find TxOut"
+
+buildTxInfo ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  Tx ->
+  Eff effs (Either Text TxInfo)
+buildTxInfo pabConf tx = do
+  let txOutRefs = txInRef <$> Set.toList (txInputs tx)
+  eTxInInfos <- getTxInInfos @w txOutRefs
+  return $
+    (`second` eTxInInfos) $ \txInInfos ->
+      TxInfo
+        { txInfoInputs = txInInfos
+        , txInfoOutputs = txOutputs tx
+        , txInfoFee = txFee tx
+        , txInfoMint = txMint tx
+        , txInfoDCert = [] -- We don't support staking or stake redeeming at this time
+        , txInfoWdrl = []
+        , txInfoValidRange = slotRangeToPOSIXTimeRange (pcSlotConfig pabConf) $ txValidRange tx
+        , txInfoSignatories = Ledger.pubKeyHash <$> Map.keys (txSignatures tx)
+        , txInfoData = Map.toList $ txData tx
+        , txInfoId = Ledger.txId tx
+        }
+
 -- | Build a tx body and write it to disk
 buildTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -184,8 +244,11 @@ buildTx ::
   Map PubKeyHash DummyPrivKey ->
   Tx ->
   Eff effs (Either Text ())
-buildTx pabConf privKeys tx =
-  callCommand @w $ ShellArgs "cardano-cli" opts (const ())
+buildTx pabConf privKeys tx = do
+  eTxInfo <- buildTxInfo @w pabConf tx
+  case eTxInfo of
+    Right txInfo -> callCommand @w $ ShellArgs "cardano-cli" (opts txInfo) (const ())
+    Left e -> return $ Left e
   where
     requiredSigners =
       concatMap
@@ -200,13 +263,13 @@ buildTx pabConf privKeys tx =
                     []
         )
         (Map.keys (Ledger.txSignatures tx))
-    opts =
+    opts txInfo =
       mconcat
         [ ["transaction", "build-raw", "--alonzo-era"]
-        , txInOpts pabConf (txInputs tx)
+        , txInOpts pabConf txInfo (txInputs tx)
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
-        , mintOpts pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
+        , mintOpts pabConf txInfo (txMintScripts tx) (txRedeemers tx) (txMint tx)
         , validRangeOpts (txValidRange tx)
         , requiredSigners
         , ["--fee", showText . getLovelace . fromValue $ txFee tx]
@@ -259,19 +322,20 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInOpts :: PABConfig -> Set TxIn -> [Text]
-txInOpts pabConf =
+txInOpts :: PABConfig -> TxInfo -> Set TxIn -> [Text]
+txInOpts pabConf txInfo =
   concatMap
     ( \(TxIn txOutRef txInType) ->
         mconcat
           [ ["--tx-in", txOutRefToCliArg txOutRef]
           , case txInType of
               Just (ConsumeScriptAddress validator redeemer datum) ->
-                let exBudget =
+                let scriptContext = ScriptContext txInfo $ Plutus.Spending txOutRef
+                    exBudget =
                       fromRight (ExBudget (ExCPU 0) (ExMemory 0)) $
                         calculateExBudget
                           (Scripts.unValidatorScript validator)
-                          [Plutus.getRedeemer redeemer, Plutus.getDatum datum]
+                          [Plutus.getRedeemer redeemer, Plutus.getDatum datum, Plutus.toBuiltinData scriptContext]
                  in mconcat
                       [
                         [ "--tx-in-script-file"
@@ -302,8 +366,8 @@ txInCollateralOpts =
   concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef]) . Set.toList
 
 -- Minting options
-mintOpts :: PABConfig -> Set Scripts.MintingPolicy -> Redeemers -> Value -> [Text]
-mintOpts pabConf mintingPolicies redeemers mintValue =
+mintOpts :: PABConfig -> TxInfo -> Set Scripts.MintingPolicy -> Redeemers -> Value -> [Text]
+mintOpts pabConf txInfo mintingPolicies redeemers mintValue =
   mconcat
     [ mconcat $
         concatMap
@@ -311,11 +375,12 @@ mintOpts pabConf mintingPolicies redeemers mintValue =
               let redeemerPtr = RedeemerPtr Mint idx
                   redeemer = Map.lookup redeemerPtr redeemers
                   curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
+                  scriptContext = ScriptContext txInfo $ Plutus.Minting curSymbol
                   exBudget r =
                     fromRight (ExBudget (ExCPU 0) (ExMemory 0)) $
                       calculateExBudget
                         (Scripts.unMintingPolicyScript policy)
-                        [Plutus.getRedeemer r]
+                        [Plutus.getRedeemer r, Plutus.toBuiltinData scriptContext]
                   toOpts r =
                     [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
                     , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Ledger.redeemerHash r)]
@@ -401,7 +466,7 @@ calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
 calculateExBudget script builtinData = do
   modelParams <- maybeToRight "Cost model params invalid." Plutus.defaultCostModelParams
   let serialisedScript = ShortByteString.toShort $ LazyByteString.toStrict $ Codec.serialise script
-  let pData = map Plutus.builtinDataToData builtinData
+      pData = map Plutus.builtinDataToData builtinData
   mapLeft showText $
     snd $
       Plutus.evaluateScriptCounting Plutus.Verbose modelParams serialisedScript pData

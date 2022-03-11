@@ -518,7 +518,7 @@ mintTokens = do
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --mint-execution-units (297830,1100)
+          --mint-execution-units (387149,1400)
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
@@ -534,7 +534,7 @@ mintTokens = do
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --mint-execution-units (297830,1100)
+          --mint-execution-units (387149,1400)
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 200
@@ -701,7 +701,7 @@ redeemFromValidator = do
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --tx-in-execution-units (387149,1400)
+          --tx-in-execution-units (476468,1700)
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -716,7 +716,7 @@ redeemFromValidator = do
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --tx-in-execution-units (387149,1400)
+          --tx-in-execution-units (476468,1700)
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+450
           --tx-out ${addr2}+500
