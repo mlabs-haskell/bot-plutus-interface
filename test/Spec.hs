@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Spec.BotPlutusInterface.Balance qualified
+import Spec.BotPlutusInterface.Config qualified
 import Spec.BotPlutusInterface.Contract qualified
 import Spec.BotPlutusInterface.Server qualified
 import Spec.BotPlutusInterface.UtxoParser qualified
@@ -19,7 +20,8 @@ tests :: TestTree
 tests =
   testGroup
     "BotPlutusInterface"
-    [ Spec.BotPlutusInterface.Contract.tests
+    [ Spec.BotPlutusInterface.Config.tests
+    , Spec.BotPlutusInterface.Contract.tests
     , Spec.BotPlutusInterface.UtxoParser.tests
     , Spec.BotPlutusInterface.Balance.tests
     , Spec.BotPlutusInterface.Server.tests

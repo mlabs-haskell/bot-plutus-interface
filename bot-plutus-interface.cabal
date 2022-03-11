@@ -151,6 +151,7 @@ test-suite bot-plutus-interface-test
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
     Spec.BotPlutusInterface.Contract
+    Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Balance
     Spec.BotPlutusInterface.UtxoParser
     Spec.BotPlutusInterface.Server
@@ -165,6 +166,8 @@ test-suite bot-plutus-interface-test
     , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto-class
+    , config-schema
+    , config-value
     , containers
     , data-default
     , data-default-class
