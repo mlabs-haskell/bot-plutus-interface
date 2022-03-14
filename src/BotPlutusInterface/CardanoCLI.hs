@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# OPTIONS_GHC -w #-}
 
 module BotPlutusInterface.CardanoCLI (
   submitTx,
@@ -475,15 +476,19 @@ unsafeSerialiseAddress network address =
     Right a -> a
     Left _ -> error "Couldn't create address"
 
+-- calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
+-- calculateExBudget script builtinData = do
+--   -- TODO, pull this from the protocol, they're the same for now but may not always be
+--   modelParams <- maybeToRight "Cost model params invalid." Plutus.defaultCostModelParams
+--   let serialisedScript = ShortByteString.toShort $ LazyByteString.toStrict $ Codec.serialise script
+--       pData = map Plutus.builtinDataToData builtinData
+--   mapLeft showText $
+--     snd $
+--       Plutus.evaluateScriptCounting Plutus.Verbose modelParams serialisedScript pData
+
 calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
 calculateExBudget script builtinData = do
-  -- TODO, pull this from the protocol, they're the same for now but may not always be
-  modelParams <- maybeToRight "Cost model params invalid." Plutus.defaultCostModelParams
-  let serialisedScript = ShortByteString.toShort $ LazyByteString.toStrict $ Codec.serialise script
-      pData = map Plutus.builtinDataToData builtinData
-  mapLeft showText $
-    snd $
-      Plutus.evaluateScriptCounting Plutus.Verbose modelParams serialisedScript pData
+  mapLeft showText $ fst <$> Scripts.evaluateScript (Scripts.applyArguments script $ Plutus.builtinDataToData <$> builtinData)
 
 exBudgetToCliArg :: ExBudget -> Text
 exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
