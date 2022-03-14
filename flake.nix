@@ -81,14 +81,17 @@
         "github:input-output-hk/ouroboros-network/d2d219a86cda42787325bb8c20539a75c2667132";
       flake = false;
     };
+    # Patched plutus for metadata support. We need this until `plutus-apps` will update `plutus`,
+    # rewrite of `plutus-ledger-constraints`, and possibly some bpi adjustments afterwards.
+    # tldr: Dependency hell
     plutus = {
       url =
-        "github:input-output-hk/plutus/cc72a56eafb02333c96f662581b57504f8f8992f";
+        "github:mlabs-haskell/plutus/1a3c3a761cf048371c52a34b004f8b3fcf0dab43";
       flake = false;
     };
     plutus-apps = {
       url =
-        "github:input-output-hk/plutus-apps/7f543e21d4945a2024e46c572303b9c1684a5832";
+        "github:mlabs-haskell/plutus-apps/82c0725c4d05398ae76d71927cc60aa23db1a11d";
       flake = false;
     };
     purescript-bridge = {
