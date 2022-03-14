@@ -13,16 +13,12 @@ import BotPlutusInterface.Types (
   endpointsToSchemas,
  )
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
-import Cardano.PlutusExample.NFT (
-  NFTSchema,
-  mintNft,
- )
+import Cardano.PlutusExample.NFT
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Default (def)
 import Data.Maybe (fromMaybe)
-import Ledger.Value (TokenName)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
@@ -37,14 +33,37 @@ instance HasDefinitions MintNFTContracts where
 
   getContract :: (MintNFTContracts -> SomeBuiltin)
   getContract = \case
-    MintNFT tokenName ->
+    MintNFT p ->
       SomeBuiltin $
-        mintNft tokenName
+        mintNft p
 
-newtype MintNFTContracts = MintNFT TokenName
+newtype MintNFTContracts = MintNFT MintParams
   deriving stock (Show)
 
 $(deriveJSON defaultOptions ''MintNFTContracts)
+
+{-
+{
+  "caID": {
+    "mpName": "Awesome NFT",
+    "mpDescription": "My awesome NFT",
+    "mpImage": "ipfs://QmPu9vsCw7UZcUKMLVFcj1WpJQXVFKrJXo5cEBajK6tYQT",
+    "mpTokenName": {
+      "unTokenName": "NFT"
+    },
+    "mpPubKeyHash": {
+      "unPaymentPubKeyHash": {
+        "getPubKeyHash": "49839770109f411eb1308dd99a28bc5b820e6a69d16aecda6282b4c7"
+      }
+    },
+    "mpStakeHash": {
+      "unStakePubKeyHash": {
+        "getPubKeyHash": "1b53992caf87760501080d490fd12a4723c6e650584899ac28fd6346"
+      }
+    }
+  }
+}
+-}
 
 main :: IO ()
 main = do
@@ -60,13 +79,14 @@ main = do
           , pcProtocolParams = protocolParams
           , pcTipPollingInterval = 10_000_000
           , pcSlotConfig = def
-          , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+          , pcOwnPubKeyHash = "3f3464650beb5324d0e463ebe81fbe1fd519b6438521e96d0d35bd75"
           , pcScriptFileDir = "./scripts"
           , pcSigningKeyFileDir = "./signing-keys"
           , pcTxFileDir = "./txs"
-          , pcDryRun = True
+          , pcDryRun = False
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
           , pcEnableTxEndpoint = True
+          , pcMetadataDir = "./metadata"
           }
   BotPlutusInterface.runPAB @MintNFTContracts pabConf
