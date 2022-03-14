@@ -18,6 +18,7 @@ import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand)
 import BotPlutusInterface.Files (
   DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
+  metadataFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
   signingKeyFilePath,
@@ -89,7 +90,7 @@ import Plutus.V1.Ledger.Api (
   TokenName (..),
  )
 import Plutus.V1.Ledger.Api qualified as Plutus
-import PlutusTx.Builtins (fromBuiltin)
+import PlutusTx.Builtins (BuiltinByteString, fromBuiltin)
 import Prelude
 
 -- | Getting information of the latest block
@@ -208,6 +209,7 @@ buildTx pabConf privKeys tx =
         , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mintOpts pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
         , validRangeOpts (txValidRange tx)
+        , metadataOpts pabConf (txMetadata tx)
         , requiredSigners
         , ["--fee", showText . getLovelace . fromValue $ txFee tx]
         , mconcat
@@ -417,3 +419,8 @@ showText = Text.pack . show
 -- toWalletKey :: Wallet -> Text
 -- toWalletKey =
 --   decodeUtf8 . convertToBase Base16 . hash @ByteString @Blake2b_160 . unXPub . walletXPub
+
+metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]
+metadataOpts _ Nothing = mempty
+metadataOpts pabConf (Just meta) =
+  ["--metadata-json-file", metadataFilePath pabConf meta]

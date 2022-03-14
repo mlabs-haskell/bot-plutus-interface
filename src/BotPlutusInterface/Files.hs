@@ -10,6 +10,7 @@ module BotPlutusInterface.Files (
   txFilePath,
   txFileName,
   txIdToText,
+  metadataFilePath,
   writeAll,
   writePolicyScriptFile,
   redeemerJsonFilePath,
@@ -28,6 +29,7 @@ import BotPlutusInterface.Effects (
   listDirectory,
   readFileTextEnvelope,
   writeFileJSON,
+  writeFileRaw,
   writeFileTextEnvelope,
  )
 import BotPlutusInterface.Types (PABConfig)
@@ -53,6 +55,7 @@ import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
+import Data.ByteString.Hash (blake2b)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
@@ -60,7 +63,7 @@ import Data.Kind (Type)
 import Data.List (sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (catMaybes, mapMaybe, maybeToList)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -85,6 +88,7 @@ import Plutus.V1.Ledger.Api (
  )
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
+import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import System.FilePath (takeExtension, (</>))
 import Prelude
 
@@ -124,6 +128,12 @@ txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext
 txIdToText :: TxId.TxId -> Text
 txIdToText = encodeByteString . fromBuiltin . TxId.getTxId
 
+-- | Path of stored metadata files
+metadataFilePath :: PABConfig -> BuiltinByteString -> Text
+metadataFilePath pabConf (BuiltinByteString meta) =
+  let h = encodeByteString $ blake2b meta
+   in pabConf.pcMetadataDir <> "/metadata-" <> h <> ".json"
+
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -148,6 +158,17 @@ writeValidatorScriptFile pabConf validatorScript =
       filepath = validatorScriptFilePath pabConf (Ledger.validatorHash validatorScript)
    in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
+-- | Writes metadata file under the given folder
+writeMetadataFile ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  BuiltinByteString ->
+  Eff effs (Either (FileError ()) Text)
+writeMetadataFile pabConf metadata =
+  let filepath = metadataFilePath pabConf metadata
+   in fmap (const filepath) <$> writeFileRaw @w (Text.unpack filepath) metadata
+
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -157,6 +178,7 @@ writeAll ::
   Eff effs (Either (FileError ()) [Text])
 writeAll pabConf tx = do
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
+  createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
   let (validatorScripts, redeemers, datums) =
         unzip3 $ mapMaybe Tx.inScripts $ Set.toList $ Tx.txInputs tx
@@ -172,6 +194,7 @@ writeAll pabConf tx = do
         , map (writeValidatorScriptFile @w pabConf) validatorScripts
         , map (writeDatumJsonFile @w pabConf) allDatums
         , map (writeRedeemerJsonFile @w pabConf) allRedeemers
+        , map (writeMetadataFile @w pabConf) (maybeToList $ Tx.txMetadata tx)
         ]
 
   pure $ sequence results

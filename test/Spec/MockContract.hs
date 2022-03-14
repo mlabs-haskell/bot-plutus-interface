@@ -117,6 +117,7 @@ import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import PlutusTx.Builtins (fromBuiltin)
+import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
@@ -287,6 +288,7 @@ runPABEffectPure initState req =
     go (ThreadDelay microseconds) = mockThreadDelay microseconds
     go (ReadFileTextEnvelope asType filepath) = mockReadFileTextEnvelope asType filepath
     go (WriteFileJSON filepath value) = mockWriteFileJSON filepath value
+    go (WriteFileRaw filepath value) = mockWriteFileRaw filepath value
     go (WriteFileTextEnvelope filepath envelopeDescr contents) =
       mockWriteFileTextEnvelope filepath envelopeDescr contents
     go (ListDirectory dir) = mockListDirectory dir
@@ -467,6 +469,13 @@ mockReadFileTextEnvelope ttoken filepath = do
 mockWriteFileJSON :: forall (w :: Type). FilePath -> JSON.Value -> MockContract w (Either (FileError ()) ())
 mockWriteFileJSON filepath value = do
   let fileContent = JsonFile value
+  modify @(MockContractState w) (files . at filepath ?~ fileContent)
+
+  pure $ Right ()
+
+mockWriteFileRaw :: forall (w :: Type). FilePath -> BuiltinByteString -> MockContract w (Either (FileError ()) ())
+mockWriteFileRaw filepath (BuiltinByteString value) = do
+  let fileContent = OtherFile $ encodeByteString value
   modify @(MockContractState w) (files . at filepath ?~ fileContent)
 
   pure $ Right ()
