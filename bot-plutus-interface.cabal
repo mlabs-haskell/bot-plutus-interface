@@ -79,6 +79,11 @@ library
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.Config
+    BotPlutusInterface.Config.Base
+    BotPlutusInterface.Config.Cardano.Api
+    BotPlutusInterface.Config.Cardano.Api.Shelley
+    BotPlutusInterface.Config.Ledger
+    BotPlutusInterface.Config.Types
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
     BotPlutusInterface.Files

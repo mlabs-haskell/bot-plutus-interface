@@ -1,6 +1,7 @@
 module Spec.BotPlutusInterface.Config (tests) where
 
 import BotPlutusInterface.Config
+import BotPlutusInterface.Config.Types
 import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
 import Cardano.Api.Shelley
 import Config.Schema
