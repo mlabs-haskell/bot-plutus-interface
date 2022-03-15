@@ -98,10 +98,11 @@ serializeDeserialize' spec = deserialize' spec . serialize
 
 pabConfigExample :: PABConfig
 pabConfigExample =
-  def{ pcCliLocation = Remote "localhost"
-     , pcChainIndexUrl = BaseUrl Https "127.0.0.1" 8080 ""
-     , pcNetwork = Mainnet
-     , pcProtocolParams =
+  PABConfig
+    { pcCliLocation = Remote "localhost"
+    , pcChainIndexUrl = BaseUrl Https "127.0.0.1" 8080 ""
+    , pcNetwork = Mainnet
+    , pcProtocolParams =
         ProtocolParameters
           { protocolParamProtocolVersion = (4, 1)
           , protocolParamDecentralization = 2 % 4
@@ -139,15 +140,15 @@ pabConfigExample =
           , protocolParamCollateralPercent = Just 1017
           , protocolParamMaxCollateralInputs = Just 1018
           }
-     , pcSlotConfig = SlotConfig {scSlotLength = 1019, scSlotZeroTime = POSIXTime 1020}
-     , pcTipPollingInterval = 1021
-     , pcScriptFileDir = "./result-scripts2"
-     , pcSigningKeyFileDir = "./signing-keys2"
-     , pcTxFileDir = "./txs2"
-     , pcDryRun = False
-     , pcProtocolParamsFile = "./protocol.json3"
-     , pcLogLevel = Debug
-     , pcOwnPubKeyHash = PubKeyHash "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
-     , pcPort = 1021
-     , pcEnableTxEndpoint = True
-     }
+    , pcSlotConfig = SlotConfig {scSlotLength = 1019, scSlotZeroTime = POSIXTime 1020}
+    , pcTipPollingInterval = 1021
+    , pcScriptFileDir = "./result-scripts2"
+    , pcSigningKeyFileDir = "./signing-keys2"
+    , pcTxFileDir = "./txs2"
+    , pcDryRun = False
+    , pcProtocolParamsFile = "./protocol.json3"
+    , pcLogLevel = Debug
+    , pcOwnPubKeyHash = PubKeyHash "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+    , pcPort = 1021
+    , pcEnableTxEndpoint = True
+    }

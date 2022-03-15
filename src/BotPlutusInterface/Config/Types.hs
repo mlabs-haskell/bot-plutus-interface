@@ -1,11 +1,10 @@
 module BotPlutusInterface.Config.Types (
   ToValue (..),
-  optSectionFromDef,
-  optSectionWithDef',
-  optSectionFromDef',
+  sectionWithDefault,
+  sectionWithDefault',
+  serialize,
   deserialize',
   deserialize,
-  serialize,
 ) where
 
 import Config
@@ -13,7 +12,6 @@ import Config.Schema
 import Config.Schema.Load.Error
 import Control.Exception (displayException)
 import Data.Bifunctor (first)
-import Data.Default
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -23,36 +21,13 @@ import Prelude
 class ToValue a where
   toValue :: a -> Value ()
 
-optSectionWithDef' ::
-  (Show b) =>
-  b ->
-  Text ->
-  ValueSpec b ->
-  Text ->
-  SectionsSpec b
-optSectionWithDef' def_ section spec desc =
-  let defDesc = "(default: " <> Text.pack (show def_) <> ")"
-      desc' = desc <> if Text.null desc then "" else " " <> defDesc
-   in fromMaybe def_ <$> optSection' section spec desc'
+sectionWithDefault :: HasSpec a => a -> Text -> Text -> SectionsSpec a
+sectionWithDefault def_ section =
+  sectionWithDefault' def_ section anySpec
 
-optSectionFromDef ::
-  (Default a, Show b, HasSpec b) =>
-  (a -> b) ->
-  Text ->
-  Text ->
-  SectionsSpec b
-optSectionFromDef getter section =
-  optSectionWithDef' (getter def) section anySpec
-
-optSectionFromDef' ::
-  (Default a, Show b) =>
-  (a -> b) ->
-  Text ->
-  ValueSpec b ->
-  Text ->
-  SectionsSpec b
-optSectionFromDef' getter =
-  optSectionWithDef' (getter def)
+sectionWithDefault' :: a -> Text -> ValueSpec a -> Text -> SectionsSpec a
+sectionWithDefault' def_ section spec desc =
+  fromMaybe def_ <$> optSection' section spec desc
 
 serialize :: (ToValue a) => a -> String
 serialize = renderStyle style {lineLength = 200} . pretty . toValue

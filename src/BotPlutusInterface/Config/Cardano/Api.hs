@@ -40,6 +40,9 @@ instance ToValue PraosNonce where
 instance ToValue EpochNo where
   toValue (EpochNo x) = Number () $ integerToNumber $ toInteger x
 
+instance HasSpec EpochNo where
+  anySpec = EpochNo <$> anySpec
+
 instance ToValue NetworkId where
   toValue Mainnet = Atom () "mainnet"
   toValue (Testnet (NetworkMagic nid)) =

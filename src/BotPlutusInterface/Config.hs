@@ -20,10 +20,8 @@ import BotPlutusInterface.Types
 import Config
 import Config.Schema
 import Data.Default
-import Data.Maybe (fromMaybe)
 import Data.String
 import Data.Text qualified as Text
-import Servant.Client.Core (showBaseUrl)
 import Prelude
 
 instance ToValue CLILocation where
@@ -91,80 +89,72 @@ instance HasSpec PABConfig where
   anySpec = pabConfigSpec
 
 pabConfigSpec :: ValueSpec PABConfig
-pabConfigSpec = sectionsSpec "" $ do
+pabConfigSpec = sectionsSpec "PABConfig" $ do
   pcCliLocation <-
-    optSectionFromDef'
-      pcCliLocation
+    sectionWithDefault'
+      (pcCliLocation def)
       "cliLocation"
       cliLocationSpec
-      "Calling the cli through ssh"
+      "Calling the cli through ssh when set to Remote"
 
   pcChainIndexUrl <-
-    let def_ = pcChainIndexUrl def
-        desc =
-          Text.concat
-            ["chain index URL (default: ", Text.pack $ showBaseUrl def_, ")"]
-     in fromMaybe def_ <$> optSection "chainIndexUrl" desc
+    sectionWithDefault (pcChainIndexUrl def) "chainIndexUrl" ""
 
-  pcNetwork <- optSectionFromDef pcNetwork "networkId" ""
+  pcNetwork <-
+    sectionWithDefault (pcNetwork def) "networkId" ""
 
   pcProtocolParams <-
-    optSectionFromDef
-      pcProtocolParams
-      "protocolParams"
-      ""
+    sectionWithDefault (pcProtocolParams def) "protocolParams" ""
 
   pcSlotConfig <-
-    optSectionFromDef
-      pcSlotConfig
-      "slotConfig"
-      "slot config"
+    sectionWithDefault (pcSlotConfig def) "slotConfig" ""
 
   pcScriptFileDir <-
-    optSectionFromDef
-      pcScriptFileDir
+    sectionWithDefault
+      (pcScriptFileDir def)
       "scriptFileDir"
       "Directory name of the script and data files"
 
   pcSigningKeyFileDir <-
-    optSectionFromDef
-      pcSigningKeyFileDir
+    sectionWithDefault
+      (pcSigningKeyFileDir def)
       "signingKeyFileDir"
       "Directory name of the signing key files"
 
   pcTxFileDir <-
-    optSectionFromDef
-      pcTxFileDir
+    sectionWithDefault
+      (pcTxFileDir def)
       "txFileDir"
       "Directory name of the transaction files"
 
   pcProtocolParamsFile <-
-    optSectionFromDef
-      pcProtocolParamsFile
+    sectionWithDefault
+      (pcProtocolParamsFile def)
       "protocolParamsFile"
       "Protocol params file location relative to the cardano-cli working directory (needed for the cli)"
 
   pcDryRun <-
-    optSectionFromDef'
-      pcDryRun
+    sectionWithDefault'
+      (pcDryRun def)
       "dryRun"
       trueOrFalseSpec
       "Dry run mode will build the tx, but skip the submit step"
 
   pcLogLevel <-
-    optSectionFromDef' pcLogLevel "logLevel" logLevelSpec ""
+    sectionWithDefault' (pcLogLevel def) "logLevel" logLevelSpec ""
 
   pcOwnPubKeyHash <-
-    optSectionFromDef pcOwnPubKeyHash "ownPubKeyHash" ""
+    sectionWithDefault (pcOwnPubKeyHash def) "ownPubKeyHash" ""
 
   pcTipPollingInterval <-
-    optSectionFromDef' pcTipPollingInterval "tipPollingInterval" naturalSpec ""
+    sectionWithDefault' (pcTipPollingInterval def) "tipPollingInterval" naturalSpec ""
 
   pcPort <-
-    optSectionFromDef' pcPort "port" portSpec ""
+    sectionWithDefault' (pcPort def) "port" portSpec ""
 
   pcEnableTxEndpoint <-
-    optSectionFromDef' pcEnableTxEndpoint "enableTxEndpoint" trueOrFalseSpec ""
+    sectionWithDefault' (pcEnableTxEndpoint def) "enableTxEndpoint" trueOrFalseSpec ""
+
   pure PABConfig {..}
 
 docPABConfig :: String

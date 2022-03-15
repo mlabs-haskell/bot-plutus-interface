@@ -8,10 +8,10 @@ module BotPlutusInterface.Config.Cardano.Api.Shelley () where
 import BotPlutusInterface.Config.Base
 import BotPlutusInterface.Config.Cardano.Api ()
 import BotPlutusInterface.Config.Types
-import Cardano.Api (EpochNo (EpochNo))
 import Cardano.Api.Shelley (ProtocolParameters (..))
 import Config
 import Config.Schema
+import Data.Default
 import Data.Text qualified as Text
 import Numeric.Natural (Natural)
 import Prelude
@@ -92,167 +92,165 @@ instance ToValue ProtocolParameters where
 instance HasSpec ProtocolParameters where
   anySpec = sectionsSpec "ProtocolParameters" $ do
     protocolParamProtocolVersion <-
-      optSectionFromDef'
-        protocolParamProtocolVersion
+      sectionWithDefault'
+        (protocolParamProtocolVersion def)
         "protocolVersion"
         protocolVersionSpec
         "Protocol version, major and minor. Updating the major version is used to trigger hard forks."
 
     protocolParamDecentralization <-
-      optSectionFromDef'
-        protocolParamDecentralization
+      sectionWithDefault'
+        (protocolParamDecentralization def)
         "decentralization"
         customRationalSpec
         "The decentralization parameter. This is fraction of slots that belong to the BFT overlay schedule, rather than the Praos schedule. So 1 means fully centralised, while 0 means fully decentralised."
 
     protocolParamExtraPraosEntropy <-
-      optSectionFromDef'
-        protocolParamExtraPraosEntropy
+      sectionWithDefault'
+        (protocolParamExtraPraosEntropy def)
         "extraPraosEntropy"
         (maybeSpec anySpec)
         "Extra entropy for the Praos per-epoch nonce."
 
     protocolParamMaxBlockHeaderSize <-
-      optSectionFromDef
-        protocolParamMaxBlockHeaderSize
+      sectionWithDefault
+        (protocolParamMaxBlockHeaderSize def)
         "maxBlockHeaderSize"
         "The maximum permitted size of a block header."
 
     protocolParamMaxBlockBodySize <-
-      optSectionFromDef
-        protocolParamMaxBlockBodySize
+      sectionWithDefault
+        (protocolParamMaxBlockBodySize def)
         "maxBlockBodySize"
         "The maximum permitted size of the block body (that is, the block payload, without the block header)."
 
     protocolParamMaxTxSize <-
-      optSectionFromDef
-        protocolParamMaxTxSize
+      sectionWithDefault
+        (protocolParamMaxTxSize def)
         "maxTxSize"
         "The maximum permitted size of the block body (that is, the block payload, without the block header)."
 
     protocolParamTxFeeFixed <-
-      optSectionFromDef
-        protocolParamTxFeeFixed
+      sectionWithDefault
+        (protocolParamTxFeeFixed def)
         "txFeeFixed"
         "The constant factor for the minimum fee calculation."
 
     protocolParamTxFeePerByte <-
-      optSectionFromDef
-        protocolParamTxFeePerByte
+      sectionWithDefault
+        (protocolParamTxFeePerByte def)
         "txFeePerByte"
         "The linear factor for the minimum fee calculation."
 
     protocolParamMinUTxOValue <-
-      optSectionFromDef'
-        protocolParamMinUTxOValue
+      sectionWithDefault'
+        (protocolParamMinUTxOValue def)
         "minUTxOValue"
         (maybeSpec anySpec)
         "The minimum permitted value for new UTxO entries, ie for transaction outputs."
 
     protocolParamStakePoolDeposit <-
-      optSectionFromDef
-        protocolParamStakePoolDeposit
+      sectionWithDefault
+        (protocolParamStakePoolDeposit def)
         "stakePoolDeposit"
         "The deposit required to register a stake pool."
 
     protocolParamStakeAddressDeposit <-
-      optSectionFromDef
-        protocolParamStakeAddressDeposit
+      sectionWithDefault
+        (protocolParamStakeAddressDeposit def)
         "stakeAddressDeposit"
         "The deposit required to register a stake address."
 
     protocolParamMinPoolCost <-
-      optSectionFromDef
-        protocolParamMinPoolCost
+      sectionWithDefault
+        (protocolParamMinPoolCost def)
         "minPoolCost"
         "The minimum value that stake pools are permitted to declare for their cost parameter."
 
     protocolParamPoolRetireMaxEpoch <-
-      optSectionFromDef'
-        protocolParamPoolRetireMaxEpoch
+      sectionWithDefault
+        (protocolParamPoolRetireMaxEpoch def)
         "poolRetireMaxEpoch"
-        (EpochNo <$> anySpec)
         "The maximum number of epochs into the future that stake pools are permitted to schedule a retirement."
 
     protocolParamStakePoolTargetNum <-
-      optSectionFromDef
-        protocolParamStakePoolTargetNum
+      sectionWithDefault
+        (protocolParamStakePoolTargetNum def)
         "stakePoolTargetNum"
         "The equilibrium target number of stake pools."
 
     protocolParamPoolPledgeInfluence <-
-      optSectionFromDef'
-        protocolParamPoolPledgeInfluence
+      sectionWithDefault'
+        (protocolParamPoolPledgeInfluence def)
         "poolPledgeInfluence"
         customRationalSpec
         "The influence of the pledge in stake pool rewards."
 
     protocolParamMonetaryExpansion <-
-      optSectionFromDef'
-        protocolParamMonetaryExpansion
+      sectionWithDefault'
+        (protocolParamMonetaryExpansion def)
         "monetaryExpansion"
         customRationalSpec
         "The monetary expansion rate. This determines the fraction of the reserves that are added to the fee pot each epoch."
 
     protocolParamTreasuryCut <-
-      optSectionFromDef'
-        protocolParamTreasuryCut
+      sectionWithDefault'
+        (protocolParamTreasuryCut def)
         "treasuryCut"
         customRationalSpec
         "The fraction of the fee pot each epoch that goes to the treasury."
 
     protocolParamUTxOCostPerWord <-
-      optSectionFromDef'
-        protocolParamUTxOCostPerWord
+      sectionWithDefault'
+        (protocolParamUTxOCostPerWord def)
         "UTxOCostPerWord"
         (maybeSpec anySpec)
         "Cost in ada per word of UTxO storage."
 
     protocolParamCostModels <-
-      optSectionFromDef'
-        protocolParamCostModels
+      sectionWithDefault
+        (protocolParamCostModels def)
         "costModels"
-        anySpec
         "Cost models for script languages that use them."
 
     protocolParamPrices <-
-      optSectionFromDef'
-        protocolParamPrices
+      sectionWithDefault'
+        (protocolParamPrices def)
         "prices"
         (maybeSpec anySpec)
         "Price of execution units for script languages that use them."
 
     protocolParamMaxTxExUnits <-
-      optSectionFromDef'
-        protocolParamMaxTxExUnits
+      sectionWithDefault'
+        (protocolParamMaxTxExUnits def)
         "maxTxExUnits"
         (maybeSpec anySpec)
         "Max total script execution resources units allowed per tx."
 
     protocolParamMaxBlockExUnits <-
-      optSectionFromDef'
-        protocolParamMaxBlockExUnits
+      sectionWithDefault'
+        (protocolParamMaxBlockExUnits def)
         "maxBlockExUnits"
         (maybeSpec anySpec)
         "Max size of a Value in a tx output."
 
     protocolParamMaxValueSize <-
-      optSectionFromDef'
-        protocolParamMaxValueSize
+      sectionWithDefault'
+        (protocolParamMaxValueSize def)
         "maxValueSize"
         (maybeSpec naturalSpec)
         "Max size of a Value in a tx output."
 
     protocolParamCollateralPercent <-
-      optSectionFromDef'
-        protocolParamCollateralPercent
+      sectionWithDefault'
+        (protocolParamCollateralPercent def)
         "collateralPercent"
         (maybeSpec naturalSpec)
         "The percentage of the script contribution to the txfee that must be provided as collateral inputs when including Plutus scripts."
 
     protocolParamMaxCollateralInputs <-
-      optSectionFromDef'
-        protocolParamMaxCollateralInputs
+      sectionWithDefault'
+        (protocolParamMaxCollateralInputs def)
         "maxCollateralInputs"
         (maybeSpec naturalSpec)
         "The maximum number of collateral inputs allowed in a transaction."
