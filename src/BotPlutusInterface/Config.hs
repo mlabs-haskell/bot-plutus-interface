@@ -5,20 +5,21 @@
 {-# OPTIONS -fno-warn-orphans  #-}
 
 module BotPlutusInterface.Config (
-  serialize,
-  deserialize,
-  deserialize',
   docPABConfig,
   loadPABConfig,
   savePABConfig,
   ToValue (..),
   customRationalSpec,
+  serialize,
+  deserialize,
+  deserialize',
 ) where
 
 import BotPlutusInterface.Types
 
+import BotPlutusInterface.Types
 import Cardano.Api (
-  AnyPlutusScriptVersion,
+  AnyPlutusScriptVersion (..),
   CostModel (..),
   EpochNo (EpochNo),
   ExecutionUnitPrices (..),
@@ -28,12 +29,12 @@ import Cardano.Api (
   NetworkMagic (..),
   PraosNonce,
  )
-import Cardano.Api.Shelley (ProtocolParameters (..), makePraosNonce)
+import Cardano.Api.Shelley (ProtocolParameters (..))
 import Config
 import Config.Schema
 import Config.Schema.Load.Error
 import Control.Exception (displayException)
-import Data.Aeson (eitherDecode, encode)
+import Data.Aeson (FromJSON, ToJSON, eitherDecode, encode)
 import Data.Bifunctor (first)
 import Data.Default
 import Data.Map (Map)
@@ -44,14 +45,12 @@ import Data.String
 import Data.String.ToString
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Encoding (decodeUtf8)
 import Ledger.TimeSlot (SlotConfig (..))
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.V1.Ledger.Api (POSIXTime (..), fromBuiltin)
-import PlutusTx.Builtins.Class (stringToBuiltinByteString)
 import Servant.Client.Core (BaseUrl (..), parseBaseUrl, showBaseUrl)
-import Text.PrettyPrint (render)
+import Text.PrettyPrint (Style (..), render, renderStyle, style)
 import Text.Regex
 import Wallet.API (PubKeyHash (..))
 import Prelude
@@ -93,8 +92,26 @@ customRationalSpec =
   where
     ratioRE = mkRegex "^ *([0-9]+) *% *([0-9]+) *$"
 
+toValueTextViaJSON :: (ToJSON a) => a -> Value ()
+toValueTextViaJSON = Text () . Text.pack . filter (/= '"') . toString . encode
+
+textSpecViaJSON :: (FromJSON a) => Text -> ValueSpec a
+textSpecViaJSON name =
+  customSpec
+    name
+    textSpec
+    ( \s -> case eitherDecode $ fromString $ wrap $ toString s of
+        Left err -> Left $ "parse error: " <> fromString err
+        Right res -> Right res
+    )
+  where
+    wrap s = "\"" <> s <> "\""
+
+instance HasSpec PraosNonce where
+  anySpec = textSpecViaJSON "PraosNonce"
+
 instance ToValue PraosNonce where
-  toValue = Text () . Text.pack . show
+  toValue = toValueTextViaJSON
 
 instance ToValue EpochNo where
   toValue (EpochNo x) = Number () $ integerToNumber $ toInteger x
@@ -125,7 +142,8 @@ logLevelSpec =
 
 instance ToValue NetworkId where
   toValue Mainnet = Atom () "mainnet"
-  toValue (Testnet (NetworkMagic nid)) = Number () $ integerToNumber $ toInteger nid
+  toValue (Testnet (NetworkMagic nid)) =
+    Number () $ integerToNumber $ toInteger nid
 
 networkIdSpec :: ValueSpec NetworkId
 networkIdSpec =
@@ -212,7 +230,9 @@ anyPlutusScriptVersionSpec =
     (first Text.pack . eitherDecode . fromString . show)
 
 instance ToValue CostModel where
-  toValue (CostModel m) = Sections () $ map (\(k, i) -> Section () k (toValue i)) $ Map.assocs m
+  toValue (CostModel m) =
+    Sections () $
+      map (\(k, i) -> Section () k (toValue i)) $ Map.assocs m
 
 costModelSpec :: ValueSpec CostModel
 costModelSpec = CostModel . Map.fromList <$> assocSpec integerSpec
@@ -297,7 +317,7 @@ protocolParamsSpec = sectionsSpec "ProtocolParameters" $ do
     optSectionFromDef'
       protocolParamExtraPraosEntropy
       "extraPraosEntropy"
-      (maybeSpec (makePraosNonce . fromString <$> stringSpec))
+      (maybeSpec anySpec)
       "Extra entropy for the Praos per-epoch nonce."
 
   protocolParamMaxBlockHeaderSize <-
@@ -458,12 +478,23 @@ instance ToValue SlotConfig where
 
 slotConfigSpec :: ValueSpec SlotConfig
 slotConfigSpec = sectionsSpec "slotConfig - configure the length (ms) of one slot and the beginning of the first slot." $ do
-  scSlotLength <- reqSection' "slotLength" integerSpec "Length (number of milliseconds) of one slot"
-  scSlotZeroTime <- reqSection' "slotZeroTime" (POSIXTime <$> integerSpec) "Beginning of slot 0 (in milliseconds)"
+  scSlotLength <-
+    reqSection'
+      "slotLength"
+      integerSpec
+      "Length (number of milliseconds) of one slot"
+  scSlotZeroTime <-
+    reqSection'
+      "slotZeroTime"
+      (POSIXTime <$> integerSpec)
+      "Beginning of slot 0 (in milliseconds)"
   pure SlotConfig {..}
 
 instance ToValue BaseUrl where
   toValue = Text () . Text.pack . showBaseUrl
+
+instance HasSpec BaseUrl where
+  anySpec = baseUrlSpec
 
 baseUrlSpec :: ValueSpec BaseUrl
 baseUrlSpec =
@@ -476,10 +507,13 @@ baseUrlSpec =
     )
 
 instance ToValue PubKeyHash where
-  toValue = Text () . decodeUtf8 . fromBuiltin . getPubKeyHash
+  toValue = Text () . Text.pack . toString . fromBuiltin . getPubKeyHash
+
+instance HasSpec PubKeyHash where
+  anySpec = pubKeyHashSpec
 
 pubKeyHashSpec :: ValueSpec PubKeyHash
-pubKeyHashSpec = PubKeyHash . stringToBuiltinByteString <$> stringSpec
+pubKeyHashSpec = PubKeyHash . fromString <$> stringSpec
 
 {- ORMOLU_DISABLE -}
 instance ToValue PABConfig where
@@ -538,25 +572,59 @@ instance HasSpec PABConfig where
 
 pabConfigSpec :: ValueSpec PABConfig
 pabConfigSpec = sectionsSpec "" $ do
-  pcCliLocation <- optSectionFromDef' pcCliLocation "cliLocation" cliLocationSpec "Calling the cli through ssh"
+  pcCliLocation <-
+    optSectionFromDef'
+      pcCliLocation
+      "cliLocation"
+      cliLocationSpec
+      "Calling the cli through ssh"
   pcChainIndexUrl <-
     let def_ = pcChainIndexUrl def
-        desc = Text.concat ["chain index URL (default: ", Text.pack $ showBaseUrl def_, ")"]
-     in fromMaybe def_ <$> optSection' "chainIndexUrl" baseUrlSpec desc
+        desc =
+          Text.concat
+            ["chain index URL (default: ", Text.pack $ showBaseUrl def_, ")"]
+     in fromMaybe def_ <$> optSection "chainIndexUrl" desc
   pcNetwork <- optSectionFromDef' pcNetwork "networkId" networkIdSpec ""
-  pcProtocolParams <- optSectionFromDef' pcProtocolParams "protocolParams" protocolParamsSpec ""
+  pcProtocolParams <-
+    optSectionFromDef'
+      pcProtocolParams
+      "protocolParams"
+      protocolParamsSpec
+      ""
 
-  pcSlotConfig <- optSectionFromDef' pcSlotConfig "slotConfig" slotConfigSpec "slot config"
+  pcSlotConfig <-
+    optSectionFromDef'
+      pcSlotConfig
+      "slotConfig"
+      slotConfigSpec
+      "slot config"
 
-  pcScriptFileDir <- optSectionFromDef pcScriptFileDir "scriptFileDir" "Directory name of the script and data files"
+  pcScriptFileDir <-
+    optSectionFromDef
+      pcScriptFileDir
+      "scriptFileDir"
+      "Directory name of the script and data files"
   pcSigningKeyFileDir <-
-    optSectionFromDef pcSigningKeyFileDir "signingKeyFileDir" "Directory name of the signing key files"
+    optSectionFromDef
+      pcSigningKeyFileDir
+      "signingKeyFileDir"
+      "Directory name of the signing key files"
   pcTxFileDir <-
-    optSectionFromDef pcTxFileDir "txFileDir" "Directory name of the transaction files"
+    optSectionFromDef
+      pcTxFileDir
+      "txFileDir"
+      "Directory name of the transaction files"
   pcProtocolParamsFile <-
-    optSectionFromDef pcProtocolParamsFile "protocolParamsFile" "Protocol params file location relative to the cardano-cli working directory (needed for the cli)"
+    optSectionFromDef
+      pcProtocolParamsFile
+      "protocolParamsFile"
+      "Protocol params file location relative to the cardano-cli working directory (needed for the cli)"
   pcDryRun <-
-    optSectionFromDef' pcDryRun "dryRun" trueOrFalseSpec "Dry run mode will build the tx, but skip the submit step"
+    optSectionFromDef'
+      pcDryRun
+      "dryRun"
+      trueOrFalseSpec
+      "Dry run mode will build the tx, but skip the submit step"
   pcLogLevel <-
     optSectionFromDef' pcLogLevel "logLevel" logLevelSpec ""
   pcOwnPubKeyHash <-
@@ -569,22 +637,39 @@ pabConfigSpec = sectionsSpec "" $ do
     optSectionFromDef' pcEnableTxEndpoint "enableTxEndpoint" trueOrFalseSpec ""
   pure PABConfig {..}
 
-optSectionWithDef' :: (Show b) => b -> Text -> ValueSpec b -> Text -> SectionsSpec b
+optSectionWithDef' ::
+  (Show b) =>
+  b ->
+  Text ->
+  ValueSpec b ->
+  Text ->
+  SectionsSpec b
 optSectionWithDef' def_ section spec desc =
   let defDesc = "(default: " <> Text.pack (show def_) <> ")"
       desc' = desc <> if Text.null desc then "" else " " <> defDesc
    in fromMaybe def_ <$> optSection' section spec desc'
 
-optSectionFromDef :: (Default a, Show b, HasSpec b) => (a -> b) -> Text -> Text -> SectionsSpec b
+optSectionFromDef ::
+  (Default a, Show b, HasSpec b) =>
+  (a -> b) ->
+  Text ->
+  Text ->
+  SectionsSpec b
 optSectionFromDef getter section =
   optSectionWithDef' (getter def) section anySpec
 
-optSectionFromDef' :: (Default a, Show b) => (a -> b) -> Text -> ValueSpec b -> Text -> SectionsSpec b
+optSectionFromDef' ::
+  (Default a, Show b) =>
+  (a -> b) ->
+  Text ->
+  ValueSpec b ->
+  Text ->
+  SectionsSpec b
 optSectionFromDef' getter =
   optSectionWithDef' (getter def)
 
 serialize :: (ToValue a) => a -> String
-serialize = render . pretty . toValue
+serialize = (renderStyle style {lineLength = 200}) . pretty . toValue
 
 deserialize :: (HasSpec a) => String -> Either String a
 deserialize = deserialize' anySpec
@@ -600,5 +685,5 @@ docPABConfig = show $ generateDocs pabConfigSpec
 loadPABConfig :: FilePath -> IO (Either String PABConfig)
 loadPABConfig fn = deserialize <$> readFile fn
 
-savePABConfig :: ToValue a => FilePath -> a -> IO ()
+savePABConfig :: FilePath -> PABConfig -> IO ()
 savePABConfig fn conf = writeFile fn $ serialize conf
