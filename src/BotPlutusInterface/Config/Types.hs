@@ -22,13 +22,30 @@ import Prelude
 class ToValue a where
   toValue :: a -> Value ()
 
-sectionWithDefault :: HasSpec a => a -> Text -> Text -> SectionsSpec a
+sectionWithDefault ::
+  ToValue a =>
+  HasSpec a =>
+  a ->
+  Text ->
+  Text ->
+  SectionsSpec a
 sectionWithDefault def_ section =
   sectionWithDefault' def_ section anySpec
 
-sectionWithDefault' :: a -> Text -> ValueSpec a -> Text -> SectionsSpec a
+sectionWithDefault' ::
+  ToValue a =>
+  a ->
+  Text ->
+  ValueSpec a ->
+  Text ->
+  SectionsSpec a
 sectionWithDefault' def_ section spec desc =
-  fromMaybe def_ <$> optSection' section spec desc
+  let defStr = Text.pack $ render $ pretty $ toValue def_
+      defHelp =
+        if Text.isInfixOf "\n" defStr
+          then " (see default in example)"
+          else " (default: " <> defStr <> ")"
+   in fromMaybe def_ <$> optSection' section spec (desc <> defHelp)
 
 withNamePrefixSpec :: Text -> ValueSpec a -> ValueSpec a
 withNamePrefixSpec prefox spec = customSpec prefox spec Right
