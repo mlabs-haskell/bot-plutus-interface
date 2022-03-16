@@ -6,7 +6,7 @@
 module BotPlutusInterface.Config.Ledger () where
 
 import BotPlutusInterface.Config.Base ()
-import BotPlutusInterface.Config.Types (ToValue (..))
+import BotPlutusInterface.Config.Types (ToValue (..), withNamePrefixSpec)
 import BotPlutusInterface.Types ()
 import Config
 import Config.Schema
@@ -25,7 +25,7 @@ instance HasSpec PubKeyHash where
   anySpec = pubKeyHashSpec
 
 pubKeyHashSpec :: ValueSpec PubKeyHash
-pubKeyHashSpec = PubKeyHash . fromString <$> stringSpec
+pubKeyHashSpec = PubKeyHash . fromString <$> withNamePrefixSpec "PubKeyHash" stringSpec
 
 instance ToValue POSIXTime where
   toValue = toValue . getPOSIXTime
@@ -34,23 +34,23 @@ instance ToValue SlotConfig where
   toValue (SlotConfig scSlotLength scSlotZeroTime) =
     Sections
       ()
-      [ Section () "slotLength" $ toValue scSlotLength
-      , Section () "slotZeroTime" $ toValue scSlotZeroTime
+      [ Section () "length" $ toValue scSlotLength
+      , Section () "zeroTime" $ toValue scSlotZeroTime
       ]
 
 instance HasSpec SlotConfig where
   anySpec = slotConfigSpec
 
 slotConfigSpec :: ValueSpec SlotConfig
-slotConfigSpec = sectionsSpec "slotConfig - configure the length (ms) of one slot and the beginning of the first slot." $ do
+slotConfigSpec = sectionsSpec "SlotConfig configuration" $ do
   scSlotLength <-
     reqSection'
-      "slotLength"
+      "length"
       integerSpec
       "Length (number of milliseconds) of one slot"
   scSlotZeroTime <-
     reqSection'
-      "slotZeroTime"
+      "zeroTime"
       (POSIXTime <$> integerSpec)
       "Beginning of slot 0 (in milliseconds)"
   pure SlotConfig {..}

@@ -77,10 +77,19 @@ instance HasSpec ExecutionUnitPrices where
   anySpec = executionUnitPricesSpec
 
 executionUnitPricesSpec :: ValueSpec ExecutionUnitPrices
-executionUnitPricesSpec = sectionsSpec "The prices for 'ExecutionUnits' as a fraction of a 'Lovelace'." $ do
-  priceExecutionSteps <- reqSection' "steps" customRationalSpec ""
-  priceExecutionMemory <- reqSection' "memory" customRationalSpec ""
-  pure ExecutionUnitPrices {..}
+executionUnitPricesSpec =
+  sectionsSpec "ExecutionUnitPrices configuration" $ do
+    priceExecutionSteps <-
+      reqSection'
+        "steps"
+        customRationalSpec
+        "The prices for ExecutionUnits as a fraction of a Lovelace."
+    priceExecutionMemory <-
+      reqSection'
+        "memory"
+        customRationalSpec
+        "The prices for ExecutionUnits as a fraction of a Lovelace."
+    pure ExecutionUnitPrices {..}
 
 instance ToValue ExecutionUnits where
   toValue (ExecutionUnits executionSteps executionMemory) =
@@ -95,9 +104,15 @@ instance HasSpec ExecutionUnits where
 
 executionUnitsSpec :: ValueSpec ExecutionUnits
 executionUnitsSpec =
-  sectionsSpec "The units for how long a script executes for and how much memory it uses." $ do
-    executionSteps <- reqSection "steps" "This corresponds roughly to the time to execute a script."
-    executionMemory <- reqSection "memory" "This corresponds roughly to the peak memory used during script execution."
+  sectionsSpec "ExecutionUnits configuration" $ do
+    executionSteps <-
+      reqSection
+        "steps"
+        "This corresponds roughly to the time to execute a script."
+    executionMemory <-
+      reqSection
+        "memory"
+        "This corresponds roughly to the peak memory used during script execution."
     pure ExecutionUnits {..}
 
 instance ToValue (Map AnyPlutusScriptVersion CostModel) where
@@ -116,7 +131,7 @@ instance HasSpec (Map AnyPlutusScriptVersion CostModel) where
 versionCostModelSpec :: ValueSpec (Map AnyPlutusScriptVersion CostModel)
 versionCostModelSpec = Map.fromList <$> listSpec pair
   where
-    pair = sectionsSpec "" $ do
+    pair = sectionsSpec "CostModel configuration" $ do
       ver <- reqSection' "scriptVersion" anyPlutusScriptVersionSpec ""
       cost <- reqSection' "costModel" costModelSpec ""
       pure (ver, cost)

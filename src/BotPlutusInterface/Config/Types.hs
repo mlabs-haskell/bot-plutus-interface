@@ -2,6 +2,7 @@ module BotPlutusInterface.Config.Types (
   ToValue (..),
   sectionWithDefault,
   sectionWithDefault',
+  withNamePrefixSpec,
   serialize,
   deserialize',
   deserialize,
@@ -28,6 +29,9 @@ sectionWithDefault def_ section =
 sectionWithDefault' :: a -> Text -> ValueSpec a -> Text -> SectionsSpec a
 sectionWithDefault' def_ section spec desc =
   fromMaybe def_ <$> optSection' section spec desc
+
+withNamePrefixSpec :: Text -> ValueSpec a -> ValueSpec a
+withNamePrefixSpec prefox spec = customSpec prefox spec Right
 
 serialize :: (ToValue a) => a -> String
 serialize = renderStyle style {lineLength = 200} . pretty . toValue

@@ -4,6 +4,8 @@ module BotPlutusInterface.Config.Base (
   maybeSpec,
   customRationalSpec,
   portSpec,
+  pathSpec,
+  filepathSpec,
   toValueTextViaJSON,
   textSpecViaJSON,
 ) where
@@ -50,7 +52,7 @@ instance ToValue Rational where
 customRationalSpec :: ValueSpec Rational
 customRationalSpec =
   customSpec
-    "Ratio"
+    "Ratio number (\"1 % 2\") in"
     stringSpec
     ( \x -> case matchRegex ratioRE x of
         Just [n, d] ->
@@ -63,6 +65,12 @@ customRationalSpec =
     )
   where
     ratioRE = mkRegex "^ *([0-9]+) *% *([0-9]+) *$"
+
+pathSpec :: ValueSpec Text
+pathSpec = withNamePrefixSpec "path" anySpec
+
+filepathSpec :: ValueSpec Text
+filepathSpec = withNamePrefixSpec "filepath" anySpec
 
 toValueTextViaJSON :: (ToJSON a) => a -> Value ()
 toValueTextViaJSON = Text () . Text.pack . filter (/= '"') . toString . encode
@@ -88,7 +96,7 @@ instance HasSpec BaseUrl where
 baseUrlSpec :: ValueSpec BaseUrl
 baseUrlSpec =
   customSpec
-    "URL"
+    "url"
     anySpec
     ( \x -> case parseBaseUrl $ Text.unpack x of
         Left e -> Left $ Text.pack $ show e
@@ -99,4 +107,4 @@ instance ToValue Port where
   toValue = Number () . integerToNumber . toInteger
 
 portSpec :: ValueSpec Port
-portSpec = fromEnum <$> naturalSpec
+portSpec = fromEnum <$> customSpec "port" naturalSpec Right

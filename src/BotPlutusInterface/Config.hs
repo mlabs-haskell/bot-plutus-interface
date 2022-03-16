@@ -11,7 +11,7 @@ module BotPlutusInterface.Config (
   customRationalSpec,
 ) where
 
-import BotPlutusInterface.Config.Base (customRationalSpec, portSpec)
+import BotPlutusInterface.Config.Base (customRationalSpec, filepathSpec, pathSpec, portSpec)
 import BotPlutusInterface.Config.Cardano.Api ()
 import BotPlutusInterface.Config.Cardano.Api.Shelley ()
 import BotPlutusInterface.Config.Ledger ()
@@ -32,7 +32,7 @@ instance ToValue CLILocation where
 cliLocationSpec :: ValueSpec CLILocation
 cliLocationSpec =
   Local <$ atomSpec "local"
-    <!> Remote <$> anySpec
+    <!> Remote <$> withNamePrefixSpec "destination" anySpec
 
 instance ToValue LogLevel where
   toValue = Atom () . MkAtom . Text.toLower . Text.pack . show
@@ -95,7 +95,7 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       (pcCliLocation def)
       "cliLocation"
       cliLocationSpec
-      "Calling the cli through ssh when set to Remote"
+      "calling the cli through ssh when set to destination"
 
   pcChainIndexUrl <-
     sectionWithDefault (pcChainIndexUrl def) "chainIndexUrl" ""
@@ -110,28 +110,35 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
     sectionWithDefault (pcSlotConfig def) "slotConfig" ""
 
   pcScriptFileDir <-
-    sectionWithDefault
+    sectionWithDefault'
       (pcScriptFileDir def)
       "scriptFileDir"
+      pathSpec
       "Directory name of the script and data files"
 
   pcSigningKeyFileDir <-
-    sectionWithDefault
+    sectionWithDefault'
       (pcSigningKeyFileDir def)
       "signingKeyFileDir"
+      pathSpec
       "Directory name of the signing key files"
 
   pcTxFileDir <-
-    sectionWithDefault
+    sectionWithDefault'
       (pcTxFileDir def)
       "txFileDir"
+      pathSpec
       "Directory name of the transaction files"
 
   pcProtocolParamsFile <-
-    sectionWithDefault
+    sectionWithDefault'
       (pcProtocolParamsFile def)
       "protocolParamsFile"
-      "Protocol params file location relative to the cardano-cli working directory (needed for the cli)"
+      filepathSpec
+      $ Text.concat
+        [ "Protocol params file location relative to the cardano-cli working directory (needed for the cli) in JSON format. "
+        , "BE AWARE: can overwrite the 'pcProtocolParams' section."
+        ]
 
   pcDryRun <-
     sectionWithDefault'

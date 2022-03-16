@@ -22,7 +22,7 @@ instance ToValue (Natural, Natural) where
 protocolVersionSpec :: ValueSpec (Natural, Natural)
 protocolVersionSpec =
   customSpec
-    "protocol version"
+    ""
     (listSpec naturalSpec)
     ( \case
         [major, minor] -> Right (major, minor)
@@ -90,7 +90,7 @@ instance ToValue ProtocolParameters where
 {- ORMOLU_ENABLE -}
 
 instance HasSpec ProtocolParameters where
-  anySpec = sectionsSpec "ProtocolParameters" $ do
+  anySpec = sectionsSpec "ProtocolParameters configuration" $ do
     protocolParamProtocolVersion <-
       sectionWithDefault'
         (protocolParamProtocolVersion def)
@@ -128,7 +128,7 @@ instance HasSpec ProtocolParameters where
       sectionWithDefault
         (protocolParamMaxTxSize def)
         "maxTxSize"
-        "The maximum permitted size of the block body (that is, the block payload, without the block header)."
+        "The maximum permitted size of a transaction."
 
     protocolParamTxFeeFixed <-
       sectionWithDefault
@@ -153,13 +153,13 @@ instance HasSpec ProtocolParameters where
       sectionWithDefault
         (protocolParamStakePoolDeposit def)
         "stakePoolDeposit"
-        "The deposit required to register a stake pool."
+        "The deposit required to register a stake address."
 
     protocolParamStakeAddressDeposit <-
       sectionWithDefault
         (protocolParamStakeAddressDeposit def)
         "stakeAddressDeposit"
-        "The deposit required to register a stake address."
+        "The deposit required to register a stake pool."
 
     protocolParamMinPoolCost <-
       sectionWithDefault
@@ -232,7 +232,7 @@ instance HasSpec ProtocolParameters where
         (protocolParamMaxBlockExUnits def)
         "maxBlockExUnits"
         (maybeSpec anySpec)
-        "Max size of a Value in a tx output."
+        "Max total script execution resources units allowed per block"
 
     protocolParamMaxValueSize <-
       sectionWithDefault'
