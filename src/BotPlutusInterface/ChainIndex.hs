@@ -4,7 +4,7 @@ module BotPlutusInterface.ChainIndex (handleChainIndexReq) where
 
 import BotPlutusInterface.Types (PABConfig)
 import Data.Kind (Type)
-import Network.HTTP.Client (defaultManagerSettings, newManager)
+import Network.HTTP.Client (ManagerSettings (managerResponseTimeout), defaultManagerSettings, newManager, responseTimeoutNone)
 import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Api (
   TxoAtAddressRequest (TxoAtAddressRequest),
@@ -65,7 +65,7 @@ handleChainIndexReq pabConf = \case
 
 chainIndexQuery' :: forall (a :: Type). PABConfig -> ClientM a -> IO (Either ClientError a)
 chainIndexQuery' pabConf endpoint = do
-  manager' <- newManager defaultManagerSettings
+  manager' <- newManager defaultManagerSettings {managerResponseTimeout = responseTimeoutNone}
   runClientM endpoint $ mkClientEnv manager' pabConf.pcChainIndexUrl
 
 chainIndexQueryMany :: forall (a :: Type). PABConfig -> ClientM a -> IO a

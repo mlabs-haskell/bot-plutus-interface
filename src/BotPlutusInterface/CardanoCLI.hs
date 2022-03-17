@@ -43,7 +43,7 @@ import Data.Either (fromRight)
 import Data.Either.Combinators (mapLeft, maybeToRight)
 import Data.Hex (hex)
 import Data.Kind (Type)
-import Data.List (nub, sort)
+import Data.List (nub, sort, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
@@ -97,7 +97,9 @@ import Plutus.V1.Ledger.Api (
   TxInfo (TxInfo),
  )
 import Plutus.V1.Ledger.Api qualified as Plutus
+import PlutusTx.AssocMap qualified as AMap
 import PlutusTx.Builtins (fromBuiltin)
+import PlutusTx.Prelude qualified as PPrelude
 import Prelude
 
 -- | Getting information of the latest block
@@ -192,8 +194,11 @@ queryTxOuts ::
 queryTxOuts txIds = do
   res <- queryChainIndex @w $ TxsFromTxIds txIds
   return $ case res of
-    TxIdsResponse chainTxs -> Right $ foldMap (fmap fst . txOutRefMap) chainTxs
+    TxIdsResponse chainTxs -> Right $ foldMap (fmap (sortTxOut . fst) . txOutRefMap) chainTxs
     _ -> Left "Wrong PAB response"
+  where
+    sortTxOut :: TxOut -> TxOut
+    sortTxOut txOut = txOut {txOutValue = sortValue $ txOutValue txOut}
 
 -- There is no match txOutRefs request, and we don't want a separate PAB query per input.
 -- So, for efficiency, we're going to query the transactions for all inputs combined,
@@ -220,22 +225,29 @@ buildTxInfo ::
   Tx ->
   Eff effs (Either Text TxInfo)
 buildTxInfo pabConf tx = do
-  let txOutRefs = txInRef <$> Set.toList (txInputs tx)
+  let txOutRefs = txInRef <$> Set.toList (txInputs tx) -- This will already be in order, for Sets listify acsending
   eTxInInfos <- getTxInInfos @w txOutRefs
   return $
     (`second` eTxInInfos) $ \txInInfos ->
       TxInfo
         { txInfoInputs = txInInfos
         , txInfoOutputs = txOutputs tx
-        , txInfoFee = txFee tx
-        , txInfoMint = txMint tx
+        , txInfoFee = sortValue $ txFee tx
+        , txInfoMint = sortValue $ txMint tx
         , txInfoDCert = [] -- We don't support staking or stake redeeming at this time
         , txInfoWdrl = []
         , txInfoValidRange = slotRangeToPOSIXTimeRange (pcSlotConfig pabConf) $ txValidRange tx
-        , txInfoSignatories = Ledger.pubKeyHash <$> Map.keys (txSignatures tx)
-        , txInfoData = Map.toList $ txData tx
+        , txInfoSignatories = sort $ Ledger.pubKeyHash <$> Map.keys (txSignatures tx)
+        , txInfoData = sortOn fst $ Map.toList $ txData tx
         , txInfoId = Ledger.txId tx
         }
+
+-- | Sorts the internal maps
+sortValue :: Value -> Value
+sortValue (Value.Value m) = Value.Value $ sortMap $ sortMap PPrelude.<$> m
+  where
+    sortMap :: forall (k :: Type) (v :: Type). Ord k => AMap.Map k v -> AMap.Map k v
+    sortMap = AMap.fromList . sortOn fst . AMap.toList
 
 -- | Build a tx body and write it to disk
 buildTx ::
@@ -476,19 +488,19 @@ unsafeSerialiseAddress network address =
     Right a -> a
     Left _ -> error "Couldn't create address"
 
--- calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
--- calculateExBudget script builtinData = do
---   -- TODO, pull this from the protocol, they're the same for now but may not always be
---   modelParams <- maybeToRight "Cost model params invalid." Plutus.defaultCostModelParams
---   let serialisedScript = ShortByteString.toShort $ LazyByteString.toStrict $ Codec.serialise script
---       pData = map Plutus.builtinDataToData builtinData
---   mapLeft showText $
---     snd $
---       Plutus.evaluateScriptCounting Plutus.Verbose modelParams serialisedScript pData
-
 calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
 calculateExBudget script builtinData = do
-  mapLeft showText $ fst <$> Scripts.evaluateScript (Scripts.applyArguments script $ Plutus.builtinDataToData <$> builtinData)
+  -- TODO, pull this from the protocol, they're the same for now but may not always be
+  modelParams <- maybeToRight "Cost model params invalid." Plutus.defaultCostModelParams
+  let serialisedScript = ShortByteString.toShort $ LazyByteString.toStrict $ Codec.serialise script
+      pData = map Plutus.builtinDataToData builtinData
+  mapLeft showText $
+    snd $
+      Plutus.evaluateScriptCounting Plutus.Verbose modelParams serialisedScript pData
+
+-- calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
+-- calculateExBudget script builtinData = do
+--   mapLeft showText $ fst <$> Scripts.evaluateScript (Scripts.applyArguments script $ Plutus.builtinDataToData <$> builtinData)
 
 exBudgetToCliArg :: ExBudget -> Text
 exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
