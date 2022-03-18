@@ -98,10 +98,7 @@ baseUrlSpec =
   customSpec
     "url"
     anySpec
-    ( \x -> case parseBaseUrl $ Text.unpack x of
-        Left e -> Left $ Text.pack $ show e
-        Right url -> Right url
-    )
+    (first Text.showText . parseBaseUrl . Text.unpack)
 
 instance ToValue Port where
   toValue = Number () . integerToNumber . toInteger
