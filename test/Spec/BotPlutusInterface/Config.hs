@@ -1,10 +1,22 @@
 module Spec.BotPlutusInterface.Config (tests) where
 
-import BotPlutusInterface.Config
+import BotPlutusInterface.Config ()
+import BotPlutusInterface.Config.Base (customRationalSpec)
 import BotPlutusInterface.Config.Types
 import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
-import Cardano.Api.Shelley
-import Config.Schema
+import Cardano.Api (
+  AnyPlutusScriptVersion (..),
+  CostModel (..),
+  EpochNo (EpochNo),
+  ExecutionUnitPrices (..),
+  ExecutionUnits (..),
+  Lovelace (..),
+  NetworkId (Mainnet),
+  PlutusScriptVersion (PlutusScriptV2),
+  makePraosNonce,
+ )
+import Cardano.Api.Shelley (ProtocolParameters (..))
+import Config.Schema (HasSpec (anySpec), ValueSpec)
 import Data.Default (def)
 import Data.Either (isLeft)
 import Data.Map qualified as Map

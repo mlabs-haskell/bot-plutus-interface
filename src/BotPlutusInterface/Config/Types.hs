@@ -1,22 +1,45 @@
+{- |Flow:
+
+ @
+      Config.parse               Config.Schema.HasSpec a
+ Text ------------> Config.Value ----------------------> a
+                                                         |
+                                                         v
+ Text <----------------------- Config.Value <----------- a
+       Text.PrettyPrint.pretty                ToValue a
+ @
+-}
 module BotPlutusInterface.Config.Types (
-  ToValue (..),
+  -- *Serialization
+  ToValue (toValue),
+
+  -- *Deserialization
+  withNamePrefixSpec,
   sectionWithDefault,
   sectionWithDefault',
-  withNamePrefixSpec,
+
+  -- *Marshaling
   serialize,
   deserialize',
   deserialize,
 ) where
 
-import Config
-import Config.Schema
-import Config.Schema.Load.Error
+import Config (Value, parse, pretty)
+import Config.Schema (
+  HasSpec (anySpec),
+  SectionsSpec,
+  ValueSpec,
+  customSpec,
+  loadValue,
+  optSection',
+ )
+import Config.Schema.Load.Error (prettyValueSpecMismatch)
 import Control.Exception (displayException)
 import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Text.PrettyPrint (Style (..), render, renderStyle, style)
+import Text.PrettyPrint (Style (lineLength), render, renderStyle, style)
 import Prelude
 
 class ToValue a where

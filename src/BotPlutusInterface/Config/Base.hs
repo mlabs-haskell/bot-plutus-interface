@@ -1,30 +1,47 @@
 {-# OPTIONS -fno-warn-orphans  #-}
 
 module BotPlutusInterface.Config.Base (
+  -- *Serialization
   maybeSpec,
   customRationalSpec,
   portSpec,
   pathSpec,
   filepathSpec,
-  toValueTextViaJSON,
   textSpecViaJSON,
+
+  -- *Deserialization
+  toValueTextViaJSON,
+  enumToAtom,
 ) where
 
-import BotPlutusInterface.Config.Types
+import BotPlutusInterface.Config.Types (ToValue (toValue), withNamePrefixSpec)
 import BotPlutusInterface.Types ()
-import Config
-import Config.Schema
+import Config (
+  Atom (MkAtom),
+  Value (Atom, Number, Text),
+  integerToNumber,
+ )
+import Config.Schema (
+  HasSpec (anySpec),
+  ValueSpec,
+  atomSpec,
+  customSpec,
+  naturalSpec,
+  stringSpec,
+  textSpec,
+  (<!>),
+ )
 import Data.Aeson (FromJSON, ToJSON, eitherDecode, encode)
 import Data.Bifunctor (first)
 import Data.Ratio ((%))
-import Data.String
-import Data.String.ToString
+import Data.String (fromString)
+import Data.String.ToString (toString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Servant.Client.Core (BaseUrl (..), parseBaseUrl, showBaseUrl)
-import Text.Regex
+import Text.Regex (matchRegex, mkRegex)
 import Prelude
 
 instance ToValue Bool where
@@ -41,6 +58,9 @@ instance ToValue Text where
 
 instance (ToValue a) => ToValue (Maybe a) where
   toValue = maybe (Atom () "nothing") toValue
+
+enumToAtom :: forall a. Show a => a -> Value ()
+enumToAtom = Atom () . MkAtom . Text.toLower . Text.pack . show
 
 maybeSpec :: ValueSpec a -> ValueSpec (Maybe a)
 maybeSpec spec =

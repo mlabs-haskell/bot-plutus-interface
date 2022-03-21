@@ -1,5 +1,4 @@
 {-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS -fno-warn-orphans  #-}
@@ -8,25 +7,38 @@ module BotPlutusInterface.Config (
   docPABConfig,
   loadPABConfig,
   savePABConfig,
-  customRationalSpec,
 ) where
 
-import BotPlutusInterface.Config.Base (customRationalSpec, filepathSpec, pathSpec, portSpec)
+import BotPlutusInterface.Config.Base (enumToAtom, filepathSpec, pathSpec, portSpec)
 import BotPlutusInterface.Config.Cardano.Api ()
 import BotPlutusInterface.Config.Cardano.Api.Shelley ()
 import BotPlutusInterface.Config.Ledger ()
-import BotPlutusInterface.Config.Types
-import BotPlutusInterface.Types
-import Config
-import Config.Schema
-import Data.Default
-import Data.String
+import BotPlutusInterface.Config.Types (
+  ToValue (toValue),
+  deserialize,
+  sectionWithDefault,
+  sectionWithDefault',
+  serialize,
+  withNamePrefixSpec,
+ )
+import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
+import Config (Section (Section), Value (Atom, Sections, Text))
+import Config.Schema (
+  HasSpec (anySpec),
+  ValueSpec,
+  atomSpec,
+  generateDocs,
+  naturalSpec,
+  sectionsSpec,
+  trueOrFalseSpec,
+  (<!>),
+ )
+import Data.Default (def)
 import Data.Text qualified as Text
 import Prelude
 
 instance ToValue CLILocation where
-  toValue Local =
-    Atom () "local"
+  toValue Local = Atom () "local"
   toValue (Remote url) = Text () url
 
 cliLocationSpec :: ValueSpec CLILocation
@@ -35,7 +47,7 @@ cliLocationSpec =
     <!> Remote <$> withNamePrefixSpec "destination" anySpec
 
 instance ToValue LogLevel where
-  toValue = Atom () . MkAtom . Text.toLower . Text.pack . show
+  toValue = enumToAtom
 
 logLevelSpec :: ValueSpec LogLevel
 logLevelSpec =

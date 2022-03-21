@@ -6,16 +6,23 @@
 module BotPlutusInterface.Config.Ledger () where
 
 import BotPlutusInterface.Config.Base ()
-import BotPlutusInterface.Config.Types (ToValue (..), withNamePrefixSpec)
+import BotPlutusInterface.Config.Types (ToValue (toValue), withNamePrefixSpec)
 import BotPlutusInterface.Types ()
-import Config
-import Config.Schema
-import Data.String
-import Data.String.ToString
+import Config (Section (Section), Value (Sections, Text))
+import Config.Schema (
+  HasSpec (anySpec),
+  ValueSpec,
+  integerSpec,
+  reqSection',
+  sectionsSpec,
+  stringSpec,
+ )
+import Data.String (fromString)
+import Data.String.ToString (toString)
 import Data.Text qualified as Text
-import Ledger.TimeSlot (SlotConfig (..))
-import Plutus.V1.Ledger.Api (POSIXTime (..), fromBuiltin)
-import Wallet.API (PubKeyHash (..))
+import Ledger.TimeSlot (SlotConfig (SlotConfig), scSlotLength, scSlotZeroTime)
+import Plutus.V1.Ledger.Api (POSIXTime (POSIXTime), fromBuiltin, getPOSIXTime)
+import Wallet.API (PubKeyHash (PubKeyHash), getPubKeyHash)
 import Prelude
 
 instance ToValue PubKeyHash where

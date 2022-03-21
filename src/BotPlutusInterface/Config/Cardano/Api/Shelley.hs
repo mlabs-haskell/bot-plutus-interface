@@ -5,13 +5,24 @@
 
 module BotPlutusInterface.Config.Cardano.Api.Shelley () where
 
-import BotPlutusInterface.Config.Base
+import BotPlutusInterface.Config.Base (customRationalSpec, maybeSpec)
 import BotPlutusInterface.Config.Cardano.Api ()
-import BotPlutusInterface.Config.Types
+import BotPlutusInterface.Config.Types (
+  ToValue (toValue),
+  sectionWithDefault,
+  sectionWithDefault',
+ )
 import Cardano.Api.Shelley (ProtocolParameters (..))
-import Config
-import Config.Schema
-import Data.Default
+import Config (Section (Section), Value (List, Sections))
+import Config.Schema (
+  HasSpec (anySpec),
+  ValueSpec,
+  customSpec,
+  listSpec,
+  naturalSpec,
+  sectionsSpec,
+ )
+import Data.Default (def)
 import Data.Text qualified as Text
 import Numeric.Natural (Natural)
 import Prelude

@@ -6,28 +6,50 @@
 
 module BotPlutusInterface.Config.Cardano.Api () where
 
-import BotPlutusInterface.Config.Base
-import BotPlutusInterface.Config.Types
+import BotPlutusInterface.Config.Base (
+  customRationalSpec,
+  textSpecViaJSON,
+  toValueTextViaJSON,
+ )
+import BotPlutusInterface.Config.Types (ToValue (toValue))
 import BotPlutusInterface.Types ()
 import Cardano.Api (
-  AnyPlutusScriptVersion (..),
-  CostModel (..),
+  AnyPlutusScriptVersion,
+  CostModel (CostModel),
   EpochNo (EpochNo),
-  ExecutionUnitPrices (..),
-  ExecutionUnits (..),
-  Lovelace (..),
+  ExecutionUnitPrices (ExecutionUnitPrices, priceExecutionMemory, priceExecutionSteps),
+  ExecutionUnits (ExecutionUnits, executionMemory, executionSteps),
+  Lovelace (Lovelace),
   NetworkId (Mainnet, Testnet),
-  NetworkMagic (..),
+  NetworkMagic (NetworkMagic),
   PraosNonce,
  )
-import Config
-import Config.Schema
+import Config (
+  Section (Section),
+  Value (Atom, List, Number, Sections, Text),
+  integerToNumber,
+ )
+import Config.Schema (
+  HasSpec (anySpec),
+  ValueSpec,
+  assocSpec,
+  atomSpec,
+  customSpec,
+  integerSpec,
+  listSpec,
+  naturalSpec,
+  reqSection,
+  reqSection',
+  sectionsSpec,
+  stringSpec,
+  (<!>),
+ )
 import Data.Aeson (eitherDecode, encode)
 import Data.Bifunctor (first)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.String
-import Data.String.ToString
+import Data.String (fromString)
+import Data.String.ToString (toString)
 import Data.Text qualified as Text
 import Prelude
 
