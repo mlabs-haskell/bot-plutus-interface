@@ -15,6 +15,7 @@ import BotPlutusInterface.Types ()
 import Config
 import Config.Schema
 import Data.Aeson (FromJSON, ToJSON, eitherDecode, encode)
+import Data.Bifunctor (first)
 import Data.Ratio ((%))
 import Data.String
 import Data.String.ToString
@@ -98,7 +99,7 @@ baseUrlSpec =
   customSpec
     "url"
     anySpec
-    (first Text.showText . parseBaseUrl . Text.unpack)
+    (first (Text.pack . show) . parseBaseUrl . Text.unpack)
 
 instance ToValue Port where
   toValue = Number () . integerToNumber . toInteger
