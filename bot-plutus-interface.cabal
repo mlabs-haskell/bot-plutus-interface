@@ -92,6 +92,7 @@ library
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-prelude
     , containers
     , data-default
     , data-default-class

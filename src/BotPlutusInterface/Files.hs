@@ -50,6 +50,7 @@ import Cardano.Api.Shelley (
   scriptDataToJson,
  )
 import Cardano.Crypto.Wallet qualified as Crypto
+import Cardano.Prelude ((<<$>>))
 import Codec.Serialise qualified as Codec
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
@@ -167,7 +168,7 @@ writeMetadataFile ::
   Eff effs (Either (FileError ()) Text)
 writeMetadataFile pabConf metadata =
   let filepath = metadataFilePath pabConf metadata
-   in fmap (const filepath) <$> writeFileRaw @w (Text.unpack filepath) metadata
+   in const filepath <<$>> writeFileRaw @w (Text.unpack filepath) metadata
 
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::

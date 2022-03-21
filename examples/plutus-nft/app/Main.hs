@@ -42,29 +42,6 @@ newtype MintNFTContracts = MintNFT MintParams
 
 $(deriveJSON defaultOptions ''MintNFTContracts)
 
-{-
-{
-  "caID": {
-    "mpName": "Awesome NFT",
-    "mpDescription": "My awesome NFT",
-    "mpImage": "ipfs://QmPu9vsCw7UZcUKMLVFcj1WpJQXVFKrJXo5cEBajK6tYQT",
-    "mpTokenName": {
-      "unTokenName": "NFT"
-    },
-    "mpPubKeyHash": {
-      "unPaymentPubKeyHash": {
-        "getPubKeyHash": "49839770109f411eb1308dd99a28bc5b820e6a69d16aecda6282b4c7"
-      }
-    },
-    "mpStakeHash": {
-      "unStakePubKeyHash": {
-        "getPubKeyHash": "1b53992caf87760501080d490fd12a4723c6e650584899ac28fd6346"
-      }
-    }
-  }
-}
--}
-
 main :: IO ()
 main = do
   protocolParams <-
