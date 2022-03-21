@@ -56,13 +56,13 @@ instance ToValue Integer where
 instance ToValue Text where
   toValue = Text ()
 
-instance (ToValue a) => ToValue (Maybe a) where
+instance ToValue a => ToValue (Maybe a) where
   toValue = maybe (Atom () "nothing") toValue
 
 enumToAtom :: forall a. Show a => a -> Value ()
 enumToAtom = Atom () . MkAtom . Text.toLower . Text.pack . show
 
-maybeSpec :: ValueSpec a -> ValueSpec (Maybe a)
+maybeSpec :: forall a. ValueSpec a -> ValueSpec (Maybe a)
 maybeSpec spec =
   Nothing <$ atomSpec "nothing"
     <!> Just <$> spec
@@ -93,10 +93,10 @@ pathSpec = withNamePrefixSpec "path" anySpec
 filepathSpec :: ValueSpec Text
 filepathSpec = withNamePrefixSpec "filepath" anySpec
 
-toValueTextViaJSON :: (ToJSON a) => a -> Value ()
+toValueTextViaJSON :: forall a. ToJSON a => a -> Value ()
 toValueTextViaJSON = Text () . Text.pack . filter (/= '"') . toString . encode
 
-textSpecViaJSON :: (FromJSON a) => Text -> ValueSpec a
+textSpecViaJSON :: forall a. FromJSON a => Text -> ValueSpec a
 textSpecViaJSON name =
   customSpec
     name
