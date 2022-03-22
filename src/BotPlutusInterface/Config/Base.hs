@@ -31,7 +31,8 @@ import Config.Schema (
   textSpec,
   (<!>),
  )
-import Data.Aeson (FromJSON, ToJSON, eitherDecode, encode)
+import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson qualified as JSON
 import Data.Bifunctor (first)
 import Data.Ratio ((%))
 import Data.String (fromString)
@@ -94,14 +95,14 @@ filepathSpec :: ValueSpec Text
 filepathSpec = withNamePrefixSpec "filepath" anySpec
 
 toValueTextViaJSON :: forall a. ToJSON a => a -> Value ()
-toValueTextViaJSON = Text () . Text.pack . filter (/= '"') . toString . encode
+toValueTextViaJSON = Text () . Text.pack . filter (/= '"') . toString . JSON.encode
 
 textSpecViaJSON :: forall a. FromJSON a => Text -> ValueSpec a
 textSpecViaJSON name =
   customSpec
     name
     textSpec
-    ( \s -> case eitherDecode $ fromString $ wrap $ toString s of
+    ( \s -> case JSON.eitherDecode $ fromString $ wrap $ toString s of
         Left err -> Left $ "parse error: " <> fromString err
         Right res -> Right res
     )
