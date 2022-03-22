@@ -134,6 +134,7 @@
 
       cabalProjectLocal = ''
         allow-newer: size-based:template-haskell
+        constraints: hedgehog >= 1.0.2 && < 1.1
       '';
 
       haskellModules = [(
