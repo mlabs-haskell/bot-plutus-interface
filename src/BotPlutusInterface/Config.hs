@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS -fno-warn-orphans  #-}
@@ -11,7 +12,10 @@ module BotPlutusInterface.Config (
 
 import BotPlutusInterface.Config.Base (enumToAtom, filepathSpec, pathSpec, portSpec)
 import BotPlutusInterface.Config.Cardano.Api ()
-import BotPlutusInterface.Config.Cardano.Api.Shelley ()
+import BotPlutusInterface.Config.Cardano.Api.Shelley (
+  readProtocolParametersJSON,
+  writeProtocolParametersJSON,
+ )
 import BotPlutusInterface.Config.Ledger ()
 import BotPlutusInterface.Config.Types (
   ToValue (toValue),
@@ -34,7 +38,7 @@ import Config.Schema (
   (<!>),
  )
 import Data.Default (def)
-import Data.Text qualified as Text
+import Data.String.ToString (toString)
 import Prelude
 
 instance ToValue CLILocation where
@@ -64,7 +68,7 @@ instance ToValue PABConfig where
         pcCliLocation
         pcChainIndexUrl
         pcNetwork
-        pcProtocolParams
+        _pcProtocolParams
         pcSlotConfig
         pcScriptFileDir
         pcSigningKeyFileDir
@@ -82,7 +86,8 @@ instance ToValue PABConfig where
         [ Section () "cliLocation"        $ toValue pcCliLocation
         , Section () "chainIndexUrl"      $ toValue pcChainIndexUrl
         , Section () "networkId"          $ toValue pcNetwork
-        , Section () "protocolParams"     $ toValue pcProtocolParams
+        -- due to conflict, should be stored in pcProtocolParamsFile .json file
+        -- , Section () "protocolParams"     $ toValue pcProtocolParams
         , Section () "slotConfig"         $ toValue pcSlotConfig
         , Section () "scriptFileDir"      $ toValue pcScriptFileDir
         , Section () "signingKeyFileDir"  $ toValue pcSigningKeyFileDir
@@ -115,8 +120,11 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
   pcNetwork <-
     sectionWithDefault (pcNetwork def) "networkId" ""
 
-  pcProtocolParams <-
-    sectionWithDefault (pcProtocolParams def) "protocolParams" ""
+  -- due to conflict with pcProtocolParams, should got from
+  -- pcProtocolParamsFile .json file
+  -- pcProtocolParams <-
+  --   sectionWithDefault (pcProtocolParams def) "protocolParams" ""
+  let pcProtocolParams = def
 
   pcSlotConfig <-
     sectionWithDefault (pcSlotConfig def) "slotConfig" ""
@@ -147,10 +155,7 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       (pcProtocolParamsFile def)
       "protocolParamsFile"
       filepathSpec
-      $ Text.concat
-        [ "Protocol params file location relative to the cardano-cli working directory (needed for the cli) in JSON format. "
-        , "BE AWARE: can overwrite the 'pcProtocolParams' section."
-        ]
+      "Protocol params file location relative to the cardano-cli working directory (needed for the cli) in JSON format. "
 
   pcDryRun <-
     sectionWithDefault'
@@ -180,7 +185,16 @@ docPABConfig :: String
 docPABConfig = show $ generateDocs pabConfigSpec
 
 loadPABConfig :: FilePath -> IO (Either String PABConfig)
-loadPABConfig fn = deserialize <$> readFile fn
+loadPABConfig fn = do
+  deserialize <$> readFile fn >>= \case
+    Left err -> return $ Left $ "PABConfig: " <> fn <> ": " <> err
+    Right conf@PABConfig {pcProtocolParamsFile} -> do
+      readProtocolParametersJSON (toString pcProtocolParamsFile)
+        >>= return . \case
+          Left err -> Left $ "protocolParamsFile: " <> toString pcProtocolParamsFile <> ": " <> err
+          Right pcProtocolParams -> Right conf{pcProtocolParams}
 
 savePABConfig :: FilePath -> PABConfig -> IO ()
-savePABConfig fn conf = writeFile fn $ serialize conf
+savePABConfig fn conf@PABConfig {pcProtocolParams, pcProtocolParamsFile} = do
+  writeProtocolParametersJSON (toString pcProtocolParamsFile) pcProtocolParams
+  writeFile fn $ serialize conf

@@ -1,6 +1,8 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Spec.BotPlutusInterface.Config (tests) where
 
-import BotPlutusInterface.Config ()
+import BotPlutusInterface.Config (loadPABConfig, savePABConfig)
 import BotPlutusInterface.Config.Base (customRationalSpec)
 import BotPlutusInterface.Config.Types
 import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
@@ -21,9 +23,12 @@ import Data.Default (def)
 import Data.Either (isLeft)
 import Data.Map qualified as Map
 import Data.Ratio ((%))
+import Data.Text qualified as Text
 import Ledger.TimeSlot (SlotConfig (..))
 import Plutus.V1.Ledger.Api (POSIXTime (..))
 import Servant.Client.Core (BaseUrl (..), Scheme (Https))
+import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?), (@?=))
 import Wallet.API (PubKeyHash (..))
@@ -41,8 +46,19 @@ tests =
         "PABConfig default serialize/deserialize"
         (serializeDeserialize def @?= Right (def :: PABConfig))
     , testCase
-        "PABConfig example serialize/deserialize"
-        (serializeDeserialize pabConfigExample @?= Right pabConfigExample)
+        "PABConfig example serialize/deserialize (without pcProtocolParams)"
+        ( serializeDeserialize pabConfigExample
+            @?= Right pabConfigExample{pcProtocolParams = def}
+        )
+    , testCase
+        "PABConfig example serialize/deserialize (without pcProtocolParams)"
+        $ withSystemTempDirectory "PABConfig-test" $ \path -> do
+          let confFile = path </> "conf.value"
+              pcProtocolParamsFile = Text.pack $ path </> "protocol.json"
+              conf = pabConfigExample {pcProtocolParamsFile}
+          savePABConfig confFile conf
+          Right conf' <- loadPABConfig confFile
+          conf' @?= conf
     , testPubKeyHash
     , testPraosNonce
     , testRationalSerializeDeserialize

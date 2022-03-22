@@ -3,7 +3,11 @@
 
 {-# OPTIONS -fno-warn-orphans  #-}
 
-module BotPlutusInterface.Config.Cardano.Api.Shelley () where
+module BotPlutusInterface.Config.Cardano.Api.Shelley (
+  -- *Utils
+  readProtocolParametersJSON,
+  writeProtocolParametersJSON,
+) where
 
 import BotPlutusInterface.Config.Base (customRationalSpec, maybeSpec)
 import BotPlutusInterface.Config.Cardano.Api ()
@@ -22,6 +26,8 @@ import Config.Schema (
   naturalSpec,
   sectionsSpec,
  )
+import Data.Aeson qualified as JSON
+import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Default (def)
 import Data.Text qualified as Text
 import Numeric.Natural (Natural)
@@ -267,3 +273,10 @@ instance HasSpec ProtocolParameters where
         "The maximum number of collateral inputs allowed in a transaction."
 
     pure ProtocolParameters {..}
+
+readProtocolParametersJSON :: FilePath -> IO (Either String ProtocolParameters)
+readProtocolParametersJSON fn = JSON.eitherDecode <$> LazyByteString.readFile fn
+
+writeProtocolParametersJSON :: FilePath -> ProtocolParameters -> IO ()
+writeProtocolParametersJSON fn params =
+  LazyByteString.writeFile fn $ JSON.encode params
