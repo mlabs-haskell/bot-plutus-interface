@@ -42,7 +42,7 @@
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/814df2c146f5d56f8c35a681fe75e85b905aed5d";
+        "github:input-output-hk/cardano-node/73f9a746362695dc2cb63ba757fbcabb81733d23";
       # flake = false; -- we need it to be available in shell
     };
     cardano-prelude = {
@@ -52,7 +52,7 @@
     };
     cardano-wallet = {
       url =
-        "github:input-output-hk/cardano-wallet/a5085acbd2670c24251cf8d76a4e83c77a2679ba";
+        "github:input-output-hk/cardano-wallet/f6d4db733c4e47ee11683c343b440552f59beff7";
       flake = false;
     };
     # We don't actually need this. Removing this might make caching worse?
@@ -78,17 +78,17 @@
     };
     ouroboros-network = {
       url =
-        "github:input-output-hk/ouroboros-network/d2d219a86cda42787325bb8c20539a75c2667132";
+        "github:input-output-hk/ouroboros-network/4fac197b6f0d2ff60dc3486c593b68dc00969fbf";
       flake = false;
     };
     plutus = {
       url =
-        "github:input-output-hk/plutus/cc72a56eafb02333c96f662581b57504f8f8992f";
+        "github:input-output-hk/plutus/4127e9cd6e889824d724c30eae55033cb50cbf3e";
       flake = false;
     };
     plutus-apps = {
       url =
-        "github:input-output-hk/plutus-apps/7f543e21d4945a2024e46c572303b9c1684a5832";
+        "github:input-output-hk/plutus-apps/905ab07ca1515a2999529616ae7015616a7f6deb";
       flake = false;
     };
     purescript-bridge = {
@@ -104,6 +104,16 @@
     Win32-network = {
       url =
         "github:input-output-hk/Win32-network/3825d3abf75f83f406c1f7161883c438dac7277d";
+      flake = false;
+    };
+    hedgehog-extras = {
+      url =
+        "github:input-output-hk/hedgehog-extras/edf6945007177a638fbeb8802397f3a6f4e47c14";
+      flake = false;
+    };
+    ekg-forward = {
+      url =
+        "github:input-output-hk/ekg-forward/297cd9db5074339a2fb2e5ae7d0780debb670c63";
       flake = false;
     };
   };
@@ -196,7 +206,16 @@
         }
         {
           src = inputs.cardano-node;
-          subdirs = [ "cardano-api" "cardano-node" "cardano-cli" ];
+          subdirs = [ 
+            "cardano-api"
+            "cardano-cli"
+            "cardano-git-rev"
+            "cardano-node"
+            "cardano-testnet"
+            "trace-dispatcher"
+            "trace-forward"
+            "trace-resources"
+          ];
         }
         {
           src = inputs.cardano-config;
@@ -308,6 +327,14 @@
         }
         {
           src = inputs.Win32-network;
+          subdirs = [ "." ];
+        }
+        {
+          src = inputs.hedgehog-extras;
+          subdirs = [ "." ];
+        }
+        {
+          src = inputs.ekg-forward;
           subdirs = [ "." ];
         }
       ];
