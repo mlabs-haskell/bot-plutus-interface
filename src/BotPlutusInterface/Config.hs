@@ -38,6 +38,7 @@ import Config.Schema (
   (<!>),
  )
 import Data.Default (def)
+import Data.Functor ((<&>))
 import Data.String.ToString (toString)
 import Prelude
 
@@ -186,11 +187,12 @@ docPABConfig = show $ generateDocs pabConfigSpec
 
 loadPABConfig :: FilePath -> IO (Either String PABConfig)
 loadPABConfig fn = do
-  deserialize <$> readFile fn >>= \case
+  confE <- deserialize <$> readFile fn
+  case confE of
     Left err -> return $ Left $ "PABConfig: " <> fn <> ": " <> err
     Right conf@PABConfig {pcProtocolParamsFile} -> do
       readProtocolParametersJSON (toString pcProtocolParamsFile)
-        >>= return . \case
+        <&> \case
           Left err -> Left $ "protocolParamsFile: " <> toString pcProtocolParamsFile <> ": " <> err
           Right pcProtocolParams -> Right conf{pcProtocolParams}
 
