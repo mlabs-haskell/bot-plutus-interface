@@ -100,7 +100,8 @@ testPubKeyHash =
         (deserialize shash @?= Right hash)
     ]
   where
-    hash = PubKeyHash "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+    hash :: PubKeyHash
+    hash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
     shash = "\"0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546\""
 
 testPraosNonce :: TestTree
@@ -176,7 +177,7 @@ pabConfigExample =
     , pcDryRun = False
     , pcProtocolParamsFile = "./protocol.json3"
     , pcLogLevel = Debug
-    , pcOwnPubKeyHash = PubKeyHash "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+    , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
     , pcPort = 1021
     , pcEnableTxEndpoint = True
     }

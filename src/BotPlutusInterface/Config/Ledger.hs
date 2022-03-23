@@ -18,21 +18,19 @@ import Config.Schema (
   stringSpec,
  )
 import Data.String (fromString)
-import Data.String.ToString (toString)
-import Data.Text qualified as Text
 import Ledger.TimeSlot (SlotConfig (SlotConfig), scSlotLength, scSlotZeroTime)
-import Plutus.V1.Ledger.Api (POSIXTime (POSIXTime), fromBuiltin, getPOSIXTime)
-import Wallet.API (PubKeyHash (PubKeyHash), getPubKeyHash)
+import Plutus.V1.Ledger.Api (POSIXTime (POSIXTime), getPOSIXTime)
+import Wallet.API (PubKeyHash)
 import Prelude
 
 instance ToValue PubKeyHash where
-  toValue = Text () . Text.pack . toString . fromBuiltin . getPubKeyHash
+  toValue = Text () . fromString . show
 
 instance HasSpec PubKeyHash where
   anySpec = pubKeyHashSpec
 
 pubKeyHashSpec :: ValueSpec PubKeyHash
-pubKeyHashSpec = PubKeyHash . fromString <$> withNamePrefixSpec "PubKeyHash" stringSpec
+pubKeyHashSpec = fromString <$> withNamePrefixSpec "PubKeyHash" stringSpec
 
 instance ToValue POSIXTime where
   toValue = toValue . getPOSIXTime
