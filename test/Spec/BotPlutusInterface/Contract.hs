@@ -830,12 +830,12 @@ useWriter = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         txId <- submitTx constraints
-        tell $ Last $ Just $ Text.pack $ show $ Tx.txId <$> txId
+        tell $ Last $ Just $ Text.pack $ show $ Tx.getCardanoTxId txId
         pure txId
 
   assertContractWithTxId contract initState $ \state outTxId -> do
     (state ^. observableState)
-      @?= Last (Just ("Right " <> outTxId))
+      @?= Last (Just outTxId)
 
 waitNextBlock :: Assertion
 waitNextBlock = do

@@ -82,8 +82,7 @@ import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.ChainIndex.Tx (txOutRefMap)
 import Plutus.Contract.CardanoAPI (toCardanoAddress)
-import Plutus.Contract.Effects (ChainIndexQuery (TxsFromTxIds), ChainIndexResponse (TxIdsResponse))
-import Plutus.V1.Ledger.Ada (fromValue, getLovelace)
+import Plutus.Contract.Effects (ChainIndexQuery (UnspentTxOutFromRef), ChainIndexResponse (TxIdsResponse, UnspentTxOutResponse))
 import Plutus.V1.Ledger.Api (
   BuiltinData,
   CurrencySymbol (..),
@@ -186,37 +185,21 @@ calculateMinFee pabConf tx =
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
         }
 
-queryTxOuts ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  [TxId] ->
-  Eff effs (Either Text (Map TxOutRef TxOut))
-queryTxOuts txIds = do
-  res <- queryChainIndex @w $ TxsFromTxIds txIds
-  return $ case res of
-    TxIdsResponse chainTxs -> Right $ foldMap (fmap (sortTxOut . fst) . txOutRefMap) chainTxs
-    _ -> Left "Wrong PAB response"
-  where
-    sortTxOut :: TxOut -> TxOut
-    sortTxOut txOut = txOut {txOutValue = sortValue $ txOutValue txOut}
-
--- There is no match txOutRefs request, and we don't want a separate PAB query per input.
--- So, for efficiency, we're going to query the transactions for all inputs combined,
--- then pick out the outputs we care about
 getTxInInfos ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   [TxOutRef] ->
   Eff effs (Either Text [TxInInfo])
-getTxInInfos txOutRefs = do
-  let ids = nub $ txOutRefId <$> txOutRefs
-  eAllOutRefs <- queryTxOuts @w ids
-  return $
-    eAllOutRefs >>= \allOutRefs ->
-      sequence $ (\ref -> toEither $ TxInInfo ref <$> Map.lookup ref allOutRefs) <$> txOutRefs
+getTxInInfos txOutRefs =
+  sequence <$> traverse queryTxInInfo txOutRefs
   where
-    toEither :: Maybe TxInInfo -> Either Text TxInInfo
-    toEither = maybeToRight "Couldn't find TxOut"
+    queryTxInInfo :: TxOutRef -> Eff effs (Either Text TxInInfo)
+    queryTxInInfo txOutRef = do
+      res <- queryChainIndex @w $ UnspentTxOutFromRef txOutRef
+      pure $ case res of
+        UnspentTxOutResponse (Just chainIndexTxOut) ->
+          Right $ TxInInfo txOutRef (Ledger.toTxOut chainIndexTxOut)
+        _ -> Left "Wrong chain-index response"
 
 buildTxInfo ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -288,7 +271,7 @@ buildTx pabConf privKeys tx = do
         , mints
         , validRangeOpts (txValidRange tx)
         , requiredSigners
-        , ["--fee", showText . getLovelace . fromValue $ txFee tx]
+        , ["--fee", showText . Ada.getLovelace . Ada.fromValue $ txFee tx]
         , mconcat
             [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             , ["--out-file", txFilePath pabConf "raw" tx]

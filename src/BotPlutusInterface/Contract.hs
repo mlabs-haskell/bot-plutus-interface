@@ -40,7 +40,7 @@ import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
 import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
-import Ledger.Tx (CardanoTx)
+import Ledger.Tx (CardanoTx (Both, CardanoApiTx, EmulatorTx))
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
 import Plutus.Contract.Checkpoint (Checkpoint (..))
@@ -179,7 +179,7 @@ balanceTx contractEnv unbalancedTx = do
       pabConf.pcOwnPubKeyHash
       unbalancedTx
 
-  pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
+  pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . EmulatorTx) eitherPreBalancedTx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -188,13 +188,16 @@ writeBalancedTx ::
   ContractEnvironment w ->
   CardanoTx ->
   Eff effs WriteBalancedTxResponse
-writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
-writeBalancedTx contractEnv (Right tx) = do
+writeBalancedTx contractEnv cardanoTx = do
+  let tx = case cardanoTx of
+        EmulatorTx tx' -> tx'
+        Both tx' _ -> tx'
+        CardanoApiTx _ -> error "Cannot handle cardano api tx"
   let pabConf = contractEnv.cePABConfig
   uploadDir @w pabConf.pcSigningKeyFileDir
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
 
-  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Right) $ do
+  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . EmulatorTx) $ do
     void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
     lift $ uploadDir @w pabConf.pcScriptFileDir
 

@@ -38,10 +38,8 @@ handleChainIndexReq pabConf = \case
     pure $ RedeemerHashResponse Nothing
   -- RedeemerFromHash redeemerHash ->
   --   pure $ RedeemerHashResponse (Maybe Redeemer)
-  TxOutFromRef txOutRef ->
-    TxOutRefResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTxOut txOutRef)
-  TxFromTxId txId ->
-    TxIdResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTx txId)
+  UnspentTxOutFromRef txOutRef ->
+    UnspentTxOutResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getUnspentTxOut txOutRef)
   UtxoSetMembership txOutRef ->
     UtxoSetMembershipResponse <$> chainIndexQueryMany pabConf (ChainIndexClient.getIsUtxo txOutRef)
   UtxoSetAtAddress page credential ->
@@ -56,7 +54,6 @@ handleChainIndexReq pabConf = \case
         (ChainIndexClient.getUtxoSetWithCurrency (UtxoWithCurrencyRequest (Just page) assetClass))
   GetTip ->
     GetTipResponse <$> chainIndexQueryMany pabConf ChainIndexClient.getTip
-  TxsFromTxIds txIds -> TxIdsResponse <$> chainIndexQueryMany pabConf (ChainIndexClient.getTxs txIds)
   TxoSetAtAddress page credential ->
     TxoSetAtResponse
       <$> chainIndexQueryMany
