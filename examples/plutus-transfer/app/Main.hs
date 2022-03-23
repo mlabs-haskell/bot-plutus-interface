@@ -39,6 +39,7 @@ $(deriveJSON defaultOptions ''TransferContracts)
 
 main :: IO ()
 main = do
-  pabConf <- either error id
-     <$> BotPlutusInterface.loadPABConfig "config/pabConfig.value"
+  pabConf <-
+    either error id
+      <$> BotPlutusInterface.loadPABConfig "config/pabConfig.value"
   BotPlutusInterface.runPAB @TransferContracts pabConf

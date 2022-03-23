@@ -199,4 +199,4 @@ loadPABConfig fn = do
 savePABConfig :: FilePath -> PABConfig -> IO ()
 savePABConfig fn conf@PABConfig {pcProtocolParams, pcProtocolParamsFile} = do
   writeProtocolParametersJSON (toString pcProtocolParamsFile) pcProtocolParams
-  writeFile fn $ (serialize conf <> "\n")
+  writeFile fn $ serialize conf <> "\n"
