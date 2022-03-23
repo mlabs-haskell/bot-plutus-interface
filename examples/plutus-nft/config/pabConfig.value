@@ -1,0 +1,16 @@
+cliLocation:   local
+chainIndexUrl: "http://localhost:9083"
+networkId:     1097911063
+slotConfig:
+  length:   1000
+  zeroTime: 1596059091000
+scriptFileDir:      "./scripts"
+signingKeyFileDir:  "./signing-keys"
+txFileDir:          "./txs"
+protocolParamsFile: "./config/protocol.json"
+dryRun:             true
+logLevel:           debug
+ownPubKeyHash:      "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+tipPollingInterval: 10000000
+port:               9080
+enableTxEndpoint:   true
