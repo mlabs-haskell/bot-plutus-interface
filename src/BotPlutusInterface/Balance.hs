@@ -134,7 +134,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       exBudget <- newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
       nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
-      -- TODO: not fromJust here
+
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
       lift $ printLog @w Debug $ "Fees: " ++ show fees
