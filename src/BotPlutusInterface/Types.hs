@@ -63,6 +63,8 @@ data PABConfig = PABConfig
   , pcLogLevel :: !LogLevel
   , pcOwnPubKeyHash :: !PubKeyHash
   , pcTipPollingInterval :: !Natural
+  , -- | Forced budget for scripts, as optional (CPU Steps, Memory Units)
+    pcForceBudget :: !(Maybe (Integer, Integer))
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
   }
@@ -125,6 +127,7 @@ instance Default PABConfig where
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
       , pcOwnPubKeyHash = ""
+      , pcForceBudget = Nothing
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       }

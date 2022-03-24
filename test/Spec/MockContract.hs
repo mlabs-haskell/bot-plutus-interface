@@ -230,7 +230,7 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
+      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1, pcForceBudget = Just (500000, 2000)}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       }

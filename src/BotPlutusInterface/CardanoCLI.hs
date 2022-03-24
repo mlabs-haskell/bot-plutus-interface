@@ -319,6 +319,13 @@ signTx pabConf tx pubKeys =
         , ["--out-file", txFilePath pabConf "signed" tx]
         ]
 
+budgetFromConfig :: PABConfig -> ExBudget -> ExBudget
+budgetFromConfig pabConf derivedBudget =
+  maybe
+    derivedBudget
+    (\(steps, memory) -> ExBudget (ExCPU $ fromInteger steps) (ExMemory $ fromInteger memory))
+    pabConf.pcForceBudget
+
 -- Signs and writes a tx (uses the tx body written to disk as input)
 submitTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -357,10 +364,11 @@ txInOpts pabConf txInfo =
         Just (ConsumeScriptAddress validator redeemer datum) ->
           let scriptContext = ScriptContext txInfo $ Plutus.Spending txOutRef
               exBudget =
-                fromRight mempty $
-                  calculateExBudget
-                    (Scripts.unValidatorScript validator)
-                    [Plutus.getRedeemer redeemer, Plutus.getDatum datum, Plutus.toBuiltinData scriptContext]
+                budgetFromConfig pabConf $
+                  fromRight mempty $
+                    calculateExBudget
+                      (Scripts.unValidatorScript validator)
+                      [Plutus.getRedeemer redeemer, Plutus.getDatum datum, Plutus.toBuiltinData scriptContext]
            in (,exBudget) $
                 mconcat
                   [
@@ -399,10 +407,11 @@ mintOpts pabConf txInfo mintingPolicies redeemers mintValue =
                   curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
                   scriptContext = ScriptContext txInfo $ Plutus.Minting curSymbol
                   exBudget r =
-                    fromRight mempty $
-                      calculateExBudget
-                        (Scripts.unMintingPolicyScript policy)
-                        [Plutus.getRedeemer r, Plutus.toBuiltinData scriptContext]
+                    budgetFromConfig pabConf $
+                      fromRight mempty $
+                        calculateExBudget
+                          (Scripts.unMintingPolicyScript policy)
+                          [Plutus.getRedeemer r, Plutus.toBuiltinData scriptContext]
                   toOpts r =
                     let budget = exBudget r
                      in (,budget) $

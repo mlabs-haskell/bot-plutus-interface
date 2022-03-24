@@ -518,7 +518,7 @@ mintTokens = do
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --mint-execution-units (387149,1400)
+          --mint-execution-units (500000,2000)
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
@@ -531,14 +531,14 @@ mintTokens = do
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
-          --tx-out ${addr1}+610151
+          --tx-out ${addr1}+496700
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --mint-execution-units (387149,1400)
+          --mint-execution-units (500000,2000)
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 388849
+          --fee 502300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
@@ -702,7 +702,7 @@ redeemFromValidator = do
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --tx-in-execution-units (476468,1700)
+          --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -718,12 +718,12 @@ redeemFromValidator = do
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --tx-in-execution-units (476468,1700)
+          --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${inTxId}#0
-          --tx-out ${addr1}+522182
+          --tx-out ${addr1}+498350
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 478568
+          --fee 502400
           --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
