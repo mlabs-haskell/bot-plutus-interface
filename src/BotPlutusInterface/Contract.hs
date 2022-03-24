@@ -204,7 +204,7 @@ writeBalancedTx contractEnv (Right tx) = do
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
         signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-    newEitherT $ CardanoCLI.buildTx @w pabConf privKeys tx
+    void $ newEitherT $ CardanoCLI.buildTx @w pabConf privKeys tx
 
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners

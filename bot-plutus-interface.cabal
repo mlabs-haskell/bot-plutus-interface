@@ -130,6 +130,7 @@ library
     , text                       ^>=1.2.4.0
     , transformers
     , transformers-either
+    , unordered-containers
     , uuid
     , wai
     , warp
