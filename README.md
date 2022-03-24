@@ -62,45 +62,64 @@ instance HasDefinitions MyContracts where
         MyContract.contract params
 ```
 
-3. Write your main entrypoint for the application, with the preferred configurations
+3. Write your main entrypoint for the application and the configuration
 
 ```haskell
-import BotPlutusInterface.Types (CLILocation (Local), LogLevel (Debug), PABConfig (..))
-import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
-import Data.Aeson qualified as JSON
-import Data.ByteString.Lazy qualified as LazyByteString
-import Data.Default (def)
-import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
+import BotPlutusInterface qualified
+import BotPlutusInterface.Config qualified as BotPlutusInterface
+import Prelude
 
 main :: IO ()
 main = do
-  protocolParams <- JSON.decode <$> LazyByteString.readFile "protocol.json"
-  let pabConf =
-        PABConfig
-          { -- Calling the cli locally or through an ssh connection
-            pcCliLocation = Local
-          , pcNetwork = Testnet (NetworkMagic 42)
-          , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
-          , pcPort = 9080
-          , pcProtocolParams = protocolParams
-          , pcTipPollingInterval = 10_000_000
-          , -- | Slot configuration of the network, the default value can be used for the mainnet
-            pcSlotConfig = def
-          , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
-          , -- Directory name of the script and data files
-            pcScriptFileDir = "./scripts"
-          , -- Directory for the signing key file(s)
-            pcSigningKeyFileDir = "./signing-keys"
-          , -- Directory where the encoded transaction files will be saved
-            pcTxFileDir = "./txs"
-          , -- Dry run mode will build the tx, but skip the submit step
-            pcDryRun = False
-          , pcLogLevel = Debug
-          , -- Protocol params file location relative to the cardano-cli working directory (needed for the cli)
-          , pcProtocolParamsFile = "./protocol.json"
-          , pcEnableTxEndpoint = True
-          }
+  pabConf <-
+    either error id
+      <$> BotPlutusInterface.loadPABConfig "config/pabConfig.value"
   BotPlutusInterface.runPAB @MyContracts pabConf
+```
+
+Configuration format (example: <examples/plutus-game/config/pabConfig.value>): 
+
+``` console
+Top-level configuration file fields:
+    cliLocation: `local` or destination text
+        calling the cli through ssh when set to destination (default:
+        local)
+    chainIndexUrl: url text
+         (default: "http://localhost:9083")
+    networkId: `mainnet` or 32-bit unsigned integral number
+         (default: 42)
+    slotConfig: SlotConfig configuration
+         (see default in example)
+    scriptFileDir: path text
+        Directory name of the script and data files (default:
+        "./result-scripts")
+    signingKeyFileDir: path text
+        Directory name of the signing key files (default: "./signing-keys")
+    txFileDir: path text
+        Directory name of the transaction files (default: "./txs")
+    protocolParamsFile: filepath text
+        Protocol params file location relative to the cardano-cli working
+        directory (needed for the cli) in JSON format.  (default:
+        "./protocol.json")
+    dryRun: `true` or `false`
+        Dry run mode will build the tx, but skip the submit step (default:
+        true)
+    logLevel: `error` or `warn` or `notice` or `info` or `debug`
+         (default: info)
+    ownPubKeyHash: PubKeyHash text
+         (default: "")
+    tipPollingInterval: non-negative integral number
+         (default: 10000000)
+    port: port non-negative integral number
+         (default: 9080)
+    enableTxEndpoint: `true` or `false`
+         (default: false)
+
+SlotConfig configuration
+    length: REQUIRED integral number
+        Length (number of milliseconds) of one slot
+    zeroTime: REQUIRED integral number
+        Beginning of slot 0 (in milliseconds)
 ```
 
 To run the fake PAB, you need to prepare a few more things:
@@ -126,6 +145,7 @@ The fake PAB consists of the following modules:
 
 - **BotPlutusInterface** main entry point
 - **BotPlutusInterface.Server** Servant server, handling http endpoint calls and websockets
+- **BotPlutusInterface.Config** load/save PAB configuration file
 - **BotPlutusInterface.Contract** handling contract effects by creating the necessary files and calling cardano-cli commands (a few effects are mocked)
 - **BotPlutusInterface.Balance** doing some preparations so the cli can process the rest (non-ada asset balancing, addig tx inputs, adding minimum lovelaces, add signatories)
 - **BotPlutusInterface.CardanoCLI** wrappers for cardano-cli commands
