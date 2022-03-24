@@ -1,6 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# OPTIONS_GHC -w #-}
 
 module BotPlutusInterface.CardanoCLI (
   submitTx,
@@ -27,7 +26,8 @@ import BotPlutusInterface.Files (
  )
 import BotPlutusInterface.Types (PABConfig (pcSlotConfig), Tip)
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
-import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
+import Cardano.Api (AnyPlutusScriptVersion (AnyPlutusScriptVersion), CostModel (CostModel), PlutusScriptVersion (PlutusScriptV1))
+import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), ProtocolParameters (protocolParamCostModels), serialiseAddress)
 import Codec.Serialise qualified as Codec
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, Member)
@@ -367,6 +367,7 @@ txInOpts pabConf txInfo =
                 budgetFromConfig pabConf $
                   fromRight mempty $
                     calculateExBudget
+                      pabConf
                       (Scripts.unValidatorScript validator)
                       [Plutus.getRedeemer redeemer, Plutus.getDatum datum, Plutus.toBuiltinData scriptContext]
            in (,exBudget) $
@@ -410,6 +411,7 @@ mintOpts pabConf txInfo mintingPolicies redeemers mintValue =
                     budgetFromConfig pabConf $
                       fromRight mempty $
                         calculateExBudget
+                          pabConf
                           (Scripts.unMintingPolicyScript policy)
                           [Plutus.getRedeemer r, Plutus.toBuiltinData scriptContext]
                   toOpts r =
@@ -497,19 +499,21 @@ unsafeSerialiseAddress network address =
     Right a -> a
     Left _ -> error "Couldn't create address"
 
-calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
-calculateExBudget script builtinData = do
-  -- TODO, pull this from the protocol, they're the same for now but may not always be
-  modelParams <- maybeToRight "Cost model params invalid." Plutus.defaultCostModelParams
+extractCostModel :: PABConfig -> Maybe Plutus.CostModelParams
+extractCostModel pabConf =
+  unCostModel <$> Map.lookup (AnyPlutusScriptVersion PlutusScriptV1) (protocolParamCostModels pabConf.pcProtocolParams)
+  where
+    unCostModel :: CostModel -> Map Text Integer
+    unCostModel (CostModel m) = m
+
+calculateExBudget :: PABConfig -> Script -> [BuiltinData] -> Either Text ExBudget
+calculateExBudget pabConf script builtinData = do
+  modelParams <- maybeToRight "Cost model params invalid." $ extractCostModel pabConf
   let serialisedScript = ShortByteString.toShort $ LazyByteString.toStrict $ Codec.serialise script
       pData = map Plutus.builtinDataToData builtinData
   mapLeft showText $
     snd $
       Plutus.evaluateScriptCounting Plutus.Verbose modelParams serialisedScript pData
-
--- calculateExBudget :: Script -> [BuiltinData] -> Either Text ExBudget
--- calculateExBudget script builtinData = do
---   mapLeft showText $ fst <$> Scripts.evaluateScript (Scripts.applyArguments script $ Plutus.builtinDataToData <$> builtinData)
 
 exBudgetToCliArg :: ExBudget -> Text
 exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
