@@ -43,7 +43,7 @@ import Data.Either (fromRight)
 import Data.Either.Combinators (mapLeft, maybeToRight)
 import Data.Hex (hex)
 import Data.Kind (Type)
-import Data.List (nub, sort, sortOn)
+import Data.List (sort, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
@@ -80,9 +80,8 @@ import Ledger.Tx (
 import Ledger.TxId (TxId (..))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
-import Plutus.ChainIndex.Tx (txOutRefMap)
 import Plutus.Contract.CardanoAPI (toCardanoAddress)
-import Plutus.Contract.Effects (ChainIndexQuery (UnspentTxOutFromRef), ChainIndexResponse (TxIdsResponse, UnspentTxOutResponse))
+import Plutus.Contract.Effects (ChainIndexQuery (UnspentTxOutFromRef), ChainIndexResponse (UnspentTxOutResponse))
 import Plutus.V1.Ledger.Api (
   BuiltinData,
   CurrencySymbol (..),
