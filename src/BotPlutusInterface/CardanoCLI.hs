@@ -197,6 +197,7 @@ queryTxOuts txIds = do
     TxIdsResponse chainTxs -> Right $ foldMap (fmap (sortTxOut . fst) . txOutRefMap) chainTxs
     _ -> Left "Wrong PAB response"
   where
+    -- Keep values in TxOuts sorted for deterministic ToData conversion
     sortTxOut :: TxOut -> TxOut
     sortTxOut txOut = txOut {txOutValue = sortValue $ txOutValue txOut}
 
@@ -218,6 +219,9 @@ getTxInInfos txOutRefs = do
     toEither :: Maybe TxInInfo -> Either Text TxInInfo
     toEither = maybeToRight "Couldn't find TxOut"
 
+{- | Builds the TxInfo for direct Data conversion and usage "onchain"
+  Must keep all inputs and values ordered for determinism
+-}
 buildTxInfo ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
