@@ -12,20 +12,18 @@ import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
-import Cardano.Api.ProtocolParameters (ProtocolParameters)
+import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
-import Data.Aeson qualified as Aeson
 import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
-import Data.HashMap.Strict qualified as HashMap
 import Data.Kind (Type)
 import Data.List (partition, (\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -137,7 +135,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       exBudget <- newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
       nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
       -- TODO: not fromJust here
-      let fees = nonBudgettedFees + getBudgetPrice (fromJust $ getProtocolParamsPrices pabConf.pcProtocolParams) exBudget
+      let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
       lift $ printLog @w Debug $ "Fees: " ++ show fees
 
@@ -148,16 +146,8 @@ balanceTxIO pabConf ownPkh unbalancedTx =
         then pure (balancedTx, minUtxos)
         else loop utxoIndex privKeys minUtxos balancedTx
 
--- I can't seem to import the accessor for this?
--- As such, heres a disgusting hack to read the data
--- Another possibility is converting the Protocol params to Alonzo params, and reading the `Prices` field
--- (This is probably safer, I should do that)
-getProtocolParamsPrices :: ProtocolParameters -> Maybe ExecutionUnitPrices
-getProtocolParamsPrices params = do
-  (Aeson.Object o) <- pure $ Aeson.toJSON params
-  unitsValue <- HashMap.lookup "executionUnitPrices" o
-  (Aeson.Success units) <- pure $ Aeson.fromJSON unitsValue
-  pure units
+getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
+getExecutionUnitPrices pabConf = fromMaybe (ExecutionUnitPrices 0 0) $ protocolParamPrices pabConf.pcProtocolParams
 
 getBudgetPrice :: ExecutionUnitPrices -> Ledger.ExBudget -> Integer
 getBudgetPrice (ExecutionUnitPrices cpuPrice memPrice) (Ledger.ExBudget cpuUsed memUsed) =
