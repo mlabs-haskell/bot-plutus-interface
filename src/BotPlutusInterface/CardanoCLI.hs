@@ -200,6 +200,9 @@ getTxInInfos txOutRefs =
           Right $ TxInInfo txOutRef (Ledger.toTxOut chainIndexTxOut)
         _ -> Left "Wrong chain-index response"
 
+{- | Builds the TxInfo for direct Data conversion and usage "onchain"
+  Must keep all inputs and values ordered for determinism
+-}
 buildTxInfo ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
