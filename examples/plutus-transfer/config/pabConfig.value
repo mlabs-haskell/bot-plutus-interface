@@ -19,5 +19,6 @@ dryRun:             true
 logLevel:           debug
 ownPubKeyHash:      "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
 tipPollingInterval: 10000000
+forceBudget:        nothing
 port:               9080
 enableTxEndpoint:   true

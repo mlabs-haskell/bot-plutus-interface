@@ -10,7 +10,13 @@ module BotPlutusInterface.Config (
   savePABConfig,
 ) where
 
-import BotPlutusInterface.Config.Base (enumToAtom, filepathSpec, pathSpec, portSpec)
+import BotPlutusInterface.Config.Base (
+  enumToAtom,
+  filepathSpec,
+  maybeSpec,
+  pathSpec,
+  portSpec,
+ )
 import BotPlutusInterface.Config.Cardano.Api ()
 import BotPlutusInterface.Config.Cardano.Api.Shelley (
   readProtocolParametersJSON,
@@ -26,6 +32,7 @@ import BotPlutusInterface.Config.Types (
   withNamePrefixSpec,
  )
 import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
+import Cardano.Api (ExecutionUnits (..))
 import Config (Section (Section), Value (Atom, Sections, Text))
 import Config.Schema (
   HasSpec (anySpec),
@@ -62,6 +69,20 @@ logLevelSpec =
     <!> Info <$ atomSpec "info"
     <!> Debug <$ atomSpec "debug"
 
+instance ToValue (Integer, Integer) where
+  toValue = toValue . forceBudgetToExecutionUnits
+
+instance HasSpec (Maybe (Integer, Integer)) where
+  anySpec = maybeSpec (executionUnitsToForceBudget <$> anySpec)
+
+forceBudgetToExecutionUnits :: (Integer, Integer) -> ExecutionUnits
+forceBudgetToExecutionUnits (steps, memory) =
+  ExecutionUnits (fromInteger steps) (fromInteger memory)
+
+executionUnitsToForceBudget :: ExecutionUnits -> (Integer, Integer)
+executionUnitsToForceBudget (ExecutionUnits steps memory) =
+  (toInteger steps, toInteger memory)
+
 {- ORMOLU_DISABLE -}
 instance ToValue PABConfig where
   toValue
@@ -79,6 +100,7 @@ instance ToValue PABConfig where
         pcLogLevel
         pcOwnPubKeyHash
         pcTipPollingInterval
+        pcForceBudget
         pcPort
         pcEnableTxEndpoint
       ) =
@@ -98,6 +120,7 @@ instance ToValue PABConfig where
         , Section () "logLevel"           $ toValue pcLogLevel
         , Section () "ownPubKeyHash"      $ toValue pcOwnPubKeyHash
         , Section () "tipPollingInterval" $ toValue pcTipPollingInterval
+        , Section () "forceBudget"        $ toValue pcForceBudget
         , Section () "port"               $ toValue pcPort
         , Section () "enableTxEndpoint"   $ toValue pcEnableTxEndpoint
         ]
@@ -174,6 +197,12 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
   pcTipPollingInterval <-
     sectionWithDefault' (pcTipPollingInterval def) "tipPollingInterval" naturalSpec ""
 
+  pcForceBudget <-
+    sectionWithDefault
+      (pcForceBudget def)
+      "forceBudget"
+      "Forced budget for scripts, as optional (CPU Steps, Memory Units)"
+
   pcPort <-
     sectionWithDefault' (pcPort def) "port" portSpec ""
 
@@ -194,7 +223,7 @@ loadPABConfig fn = do
       readProtocolParametersJSON (toString pcProtocolParamsFile)
         <&> \case
           Left err -> Left $ "protocolParamsFile: " <> toString pcProtocolParamsFile <> ": " <> err
-          Right pcProtocolParams -> Right conf{pcProtocolParams}
+          Right pcProtocolParams -> Right conf {pcProtocolParams}
 
 savePABConfig :: FilePath -> PABConfig -> IO ()
 savePABConfig fn conf@PABConfig {pcProtocolParams, pcProtocolParamsFile} = do

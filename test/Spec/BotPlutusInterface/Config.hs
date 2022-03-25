@@ -178,6 +178,7 @@ pabConfigExample =
     , pcProtocolParamsFile = "./protocol.json3"
     , pcLogLevel = Debug
     , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+    , pcForceBudget = Just (1000,1000)
     , pcPort = 1021
     , pcEnableTxEndpoint = True
     }
