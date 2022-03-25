@@ -228,7 +228,7 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
+      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1, pcForceBudget = Just (500000, 2000)}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       }
@@ -509,12 +509,9 @@ mockQueryChainIndex = \case
   RedeemerFromHash _ ->
     -- pure $ RedeemerHashResponse Nothing
     throwError @Text "RedeemerFromHash is unimplemented"
-  TxOutFromRef txOutRef -> do
+  UnspentTxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
-    pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
-  TxFromTxId _ ->
-    -- pure $ TxIdResponse Nothing
-    throwError @Text "TxFromTxId is unimplemented"
+    pure $ UnspentTxOutResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
   UtxoSetMembership _ ->
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress pageQuery _ -> do
@@ -531,8 +528,6 @@ mockQueryChainIndex = \case
         UtxosResponse
           (state ^. tip)
           (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
-  TxsFromTxIds _ ->
-    throwError @Text "TxsFromIxIds is unimplemented"
   TxoSetAtAddress _ _ ->
     throwError @Text "TxoSetAtAddress is unimplemented"
   GetTip ->

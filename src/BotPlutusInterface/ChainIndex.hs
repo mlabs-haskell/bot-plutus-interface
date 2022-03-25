@@ -4,7 +4,7 @@ module BotPlutusInterface.ChainIndex (handleChainIndexReq) where
 
 import BotPlutusInterface.Types (PABConfig)
 import Data.Kind (Type)
-import Network.HTTP.Client (defaultManagerSettings, newManager)
+import Network.HTTP.Client (ManagerSettings (managerResponseTimeout), defaultManagerSettings, newManager, responseTimeoutNone)
 import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Api (
   TxoAtAddressRequest (TxoAtAddressRequest),
@@ -38,10 +38,8 @@ handleChainIndexReq pabConf = \case
     pure $ RedeemerHashResponse Nothing
   -- RedeemerFromHash redeemerHash ->
   --   pure $ RedeemerHashResponse (Maybe Redeemer)
-  TxOutFromRef txOutRef ->
-    TxOutRefResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTxOut txOutRef)
-  TxFromTxId txId ->
-    TxIdResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTx txId)
+  UnspentTxOutFromRef txOutRef ->
+    UnspentTxOutResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getUnspentTxOut txOutRef)
   UtxoSetMembership txOutRef ->
     UtxoSetMembershipResponse <$> chainIndexQueryMany pabConf (ChainIndexClient.getIsUtxo txOutRef)
   UtxoSetAtAddress page credential ->
@@ -56,7 +54,6 @@ handleChainIndexReq pabConf = \case
         (ChainIndexClient.getUtxoSetWithCurrency (UtxoWithCurrencyRequest (Just page) assetClass))
   GetTip ->
     GetTipResponse <$> chainIndexQueryMany pabConf ChainIndexClient.getTip
-  TxsFromTxIds txIds -> TxIdsResponse <$> chainIndexQueryMany pabConf (ChainIndexClient.getTxs txIds)
   TxoSetAtAddress page credential ->
     TxoSetAtResponse
       <$> chainIndexQueryMany
@@ -65,7 +62,7 @@ handleChainIndexReq pabConf = \case
 
 chainIndexQuery' :: forall (a :: Type). PABConfig -> ClientM a -> IO (Either ClientError a)
 chainIndexQuery' pabConf endpoint = do
-  manager' <- newManager defaultManagerSettings
+  manager' <- newManager defaultManagerSettings {managerResponseTimeout = responseTimeoutNone}
   runClientM endpoint $ mkClientEnv manager' pabConf.pcChainIndexUrl
 
 chainIndexQueryMany :: forall (a :: Type). PABConfig -> ClientM a -> IO a

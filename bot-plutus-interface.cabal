@@ -142,6 +142,7 @@ library
     , tostring
     , transformers
     , transformers-either
+    , unordered-containers
     , uuid
     , wai
     , warp

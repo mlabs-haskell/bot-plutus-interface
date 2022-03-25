@@ -11,10 +11,13 @@ import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissingCLI, print
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
+import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
+import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
+import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
 import Data.List (partition, (\\))
@@ -25,6 +28,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
+import GHC.Real (Ratio ((:%)))
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
@@ -128,8 +132,10 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       txWithoutFees <-
         hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` 0
 
-      newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
-      fees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
+      exBudget <- newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
+      nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
+
+      let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
       lift $ printLog @w Debug $ "Fees: " ++ show fees
 
@@ -139,6 +145,19 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       if balancedTx == tx
         then pure (balancedTx, minUtxos)
         else loop utxoIndex privKeys minUtxos balancedTx
+
+getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
+getExecutionUnitPrices pabConf = fromMaybe (ExecutionUnitPrices 0 0) $ protocolParamPrices pabConf.pcProtocolParams
+
+getBudgetPrice :: ExecutionUnitPrices -> Ledger.ExBudget -> Integer
+getBudgetPrice (ExecutionUnitPrices cpuPrice memPrice) (Ledger.ExBudget cpuUsed memUsed) =
+  round cpuCost + round memCost
+  where
+    cpuCost = cpuPrice `multRational` (toInteger @Ledger.SatInt $ coerce cpuUsed)
+    memCost = memPrice `multRational` (toInteger @Ledger.SatInt $ coerce memUsed)
+
+multRational :: Rational -> Integer -> Rational
+multRational (num :% denom) s = (s * num) :% denom
 
 withFee :: Tx -> Integer -> Tx
 withFee tx fee = tx {txFee = Ada.lovelaceValueOf fee}
