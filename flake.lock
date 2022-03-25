@@ -484,6 +484,7 @@
         "ghc-8.6.5-iohk": "ghc-8.6.5-iohk_2",
         "hackage": "hackage_2",
         "hpc-coveralls": "hpc-coveralls_2",
+        "hydra": "hydra",
         "nix-tools": "nix-tools_2",
         "nixpkgs": [
           "haskell-nix",
@@ -497,15 +498,16 @@
         "stackage": "stackage_2"
       },
       "locked": {
-        "lastModified": 1644944726,
-        "narHash": "sha256-jJWdP/3Ne1y1akC3m9rSO5ItRoBc4UTdVQZBCuPmmrM=",
-        "owner": "L-as",
+        "lastModified": 1648672802,
+        "narHash": "sha256-4xX4xz9aTtIiqCYRfZijGPjXdD94cJA1AIchgmD0FNU=",
+        "owner": "brainrape",
         "repo": "haskell.nix",
-        "rev": "45c583b5580c130487eb5a342679f0bdbc2b23fc",
+        "rev": "efd963232712b5e54df0fd2be7c4c82404e30676",
         "type": "github"
       },
       "original": {
-        "owner": "L-as",
+        "owner": "brainrape",
+        "ref": "fix-source-repository-package-commit",
         "repo": "haskell.nix",
         "type": "github"
       }
@@ -578,6 +580,29 @@
         "type": "github"
       }
     },
+    "hydra": {
+      "inputs": {
+        "nix": "nix",
+        "nixpkgs": [
+          "haskell-nix",
+          "hydra",
+          "nix",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1648049159,
+        "narHash": "sha256-bcI6QxDpbAmy0T8Kv13fzKE74FpLor1Q2BLT0M0zjpM=",
+        "owner": "NixOS",
+        "repo": "hydra",
+        "rev": "962bf3693907f7a334efbc29c8fafc4a7509d9cd",
+        "type": "github"
+      },
+      "original": {
+        "id": "hydra",
+        "type": "indirect"
+      }
+    },
     "iohk-monitoring-framework": {
       "flake": false,
       "locked": {
@@ -632,6 +657,43 @@
         "type": "github"
       }
     },
+    "lowdown-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1633514407,
+        "narHash": "sha256-Dw32tiMjdK9t3ETl5fzGrutQTzh2rufgZV4A/BbxuD4=",
+        "owner": "kristapsdz",
+        "repo": "lowdown",
+        "rev": "d2c2b44ff6c27b936ec27358a2653caaef8f73b8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kristapsdz",
+        "repo": "lowdown",
+        "type": "github"
+      }
+    },
+    "nix": {
+      "inputs": {
+        "lowdown-src": "lowdown-src",
+        "nixpkgs": "nixpkgs",
+        "nixpkgs-regression": "nixpkgs-regression"
+      },
+      "locked": {
+        "lastModified": 1643066034,
+        "narHash": "sha256-xEPeMcNJVOeZtoN+d+aRwolpW8mFSEQx76HTRdlhPhg=",
+        "owner": "NixOS",
+        "repo": "nix",
+        "rev": "a1cd7e58606a41fcf62bf8637804cf8306f17f62",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "2.6.0",
+        "repo": "nix",
+        "type": "github"
+      }
+    },
     "nix-tools": {
       "flake": false,
       "locked": {
@@ -662,6 +724,21 @@
         "owner": "input-output-hk",
         "repo": "nix-tools",
         "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1632864508,
+        "narHash": "sha256-d127FIvGR41XbVRDPVvozUPQ/uRHbHwvfyKHwEt5xFM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "82891b5e2c2359d7e58d08849e4c89511ab94234",
+        "type": "github"
+      },
+      "original": {
+        "id": "nixpkgs",
+        "ref": "nixos-21.05-small",
+        "type": "indirect"
       }
     },
     "nixpkgs-2003": {
@@ -758,6 +835,21 @@
         "ref": "nixpkgs-21.11-darwin",
         "repo": "nixpkgs",
         "type": "github"
+      }
+    },
+    "nixpkgs-regression": {
+      "locked": {
+        "lastModified": 1643052045,
+        "narHash": "sha256-uGJ0VXIhWKGXxkeNnq4TvV3CIOkUJ3PAoLZ3HMzNVMw=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "215d4d0fd80ca5163643b03a33fde804a29cc1e2",
+        "type": "github"
+      },
+      "original": {
+        "id": "nixpkgs",
+        "rev": "215d4d0fd80ca5163643b03a33fde804a29cc1e2",
+        "type": "indirect"
       }
     },
     "nixpkgs-unstable": {

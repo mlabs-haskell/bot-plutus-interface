@@ -2,7 +2,7 @@
   description = "bot-plutus-interface";
 
   inputs = {
-    haskell-nix.url = "github:L-as/haskell.nix";
+    haskell-nix.url = "github:brainrape/haskell.nix/fix-source-repository-package-commit";
 
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
 
@@ -126,32 +126,36 @@
         allow-newer: size-based:template-haskell
       '';
 
-      haskellModules = [(
-        { pkgs, ... }:
-        {
-          packages = {
-            marlowe.flags.defer-plugin-errors = true;
-            plutus-use-cases.flags.defer-plugin-errors = true;
-            plutus-ledger.flags.defer-plugin-errors = true;
-            plutus-contract.flags.defer-plugin-errors = true;
-            cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-            cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-            cardano-wallet-core.components.library.build-tools = [
-              pkgs.buildPackages.buildPackages.gitMinimal
-            ];
-            cardano-config.components.library.build-tools = [
-              pkgs.buildPackages.buildPackages.gitMinimal
-            ];
-          };
-        }
-      )];
+      haskellModules = [
+        (
+          { pkgs, ... }:
+          {
+            packages = {
+              marlowe.flags.defer-plugin-errors = true;
+              plutus-use-cases.flags.defer-plugin-errors = true;
+              plutus-ledger.flags.defer-plugin-errors = true;
+              plutus-contract.flags.defer-plugin-errors = true;
+              cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-wallet-core.components.library.build-tools = [
+                pkgs.buildPackages.buildPackages.gitMinimal
+              ];
+              cardano-config.components.library.build-tools = [
+                pkgs.buildPackages.buildPackages.gitMinimal
+              ];
+            };
+          }
+        )
+      ];
 
       extraSources = [
         {
+          name = "cardano-addresses";
           src = inputs.cardano-addresses;
           subdirs = [ "core" "command-line" ];
         }
         {
+          name = "cardano-base";
           src = inputs.cardano-base;
           subdirs = [
             "base-deriving-via"
@@ -167,10 +171,12 @@
           ];
         }
         {
+          name = "cardano-crypto";
           src = inputs.cardano-crypto;
           subdirs = [ "." ];
         }
         {
+          name = "cardano-ledger";
           src = inputs.cardano-ledger;
           subdirs = [
             "eras/alonzo/impl"
@@ -195,18 +201,22 @@
           ];
         }
         {
+          name = "cardano-node";
           src = inputs.cardano-node;
           subdirs = [ "cardano-api" "cardano-node" "cardano-cli" ];
         }
         {
+          name = "cardano-config";
           src = inputs.cardano-config;
           subdirs = [ "." ];
         }
         {
+          name = "cardano-prelude";
           src = inputs.cardano-prelude;
           subdirs = [ "cardano-prelude" "cardano-prelude-test" ];
         }
         {
+          name = "cardano-wallet";
           src = inputs.cardano-wallet;
           subdirs = [
             "lib/cli"
@@ -222,14 +232,17 @@
           ];
         }
         {
+          name = "flat";
           src = inputs.flat;
           subdirs = [ "." ];
         }
         {
+          name = "goblins";
           src = inputs.goblins;
           subdirs = [ "." ];
         }
         {
+          name = "iohk-monitoring-framework";
           src = inputs.iohk-monitoring-framework;
           subdirs = [
             "iohk-monitoring"
@@ -243,10 +256,12 @@
           ];
         }
         {
+          name = "optparse-applicative";
           src = inputs.optparse-applicative;
           subdirs = [ "." ];
         }
         {
+          name = "ouroboros-network";
           src = inputs.ouroboros-network;
           subdirs = [
             "io-classes"
@@ -269,6 +284,7 @@
           ];
         }
         {
+          name = "plutus";
           src = inputs.plutus;
           subdirs = [
             "plutus-core"
@@ -281,6 +297,7 @@
           ];
         }
         {
+          name = "plutus-apps";
           src = inputs.plutus-apps;
           subdirs = [
             "doc"
@@ -299,14 +316,17 @@
           ];
         }
         {
+          name = "purescript-bridge";
           src = inputs.purescript-bridge;
           subdirs = [ "." ];
         }
         {
+          name = "servant-purescript";
           src = inputs.servant-purescript;
           subdirs = [ "." ];
         }
         {
+          name = "Win32-network";
           src = inputs.Win32-network;
           subdirs = [ "." ];
         }
@@ -316,24 +336,37 @@
         let
           pkgs = nixpkgsFor system;
           pkgs' = nixpkgsFor' system;
-        in pkgs.haskell-nix.cabalProject' {
-          src = ./.;
-          inherit cabalProjectLocal extraSources;
+        in
+        pkgs.haskell-nix.cabalProject' {
           name = "bot-plutus-interface";
+          src = ./.;
           compiler-nix-name = "ghc8107";
+          index-state = "2022-01-22T00:00:00Z";
+          modules = haskellModules;
+          cabalProjectLocal = ''
+            ${cabalProjectLocal}
+            ${builtins.concatStringsSep "\n" (map (source: ''
+              source-repository-package
+                type: git
+                location: https://github.com/input-output-hk/${source.name}
+                commit: ${source.src.rev}
+                subdir: ${builtins.concatStringsSep " " source.subdirs}
+                --sha256: ${source.src.narHash}
+            '') extraSources)}
+          '';
           shell = {
             additional = ps: [
               ps.plutus-pab
             ];
             withHoogle = true;
-            tools.haskell-language-server = {};
+            tools.haskell-language-server = { };
             exactDeps = true;
             nativeBuildInputs = [ pkgs'.cabal-install pkgs'.hlint pkgs'.haskellPackages.fourmolu pkgs'.jq pkgs'.websocat ];
           };
-          modules = haskellModules;
         };
 
-    in {
+    in
+    {
       inherit cabalProjectLocal extraSources haskellModules;
 
       project = perSystem projectFor;
@@ -351,11 +384,12 @@
 
       # This will build all of the project's executables and the tests
       check = perSystem (system:
-        (nixpkgsFor system).runCommand "combined-check" {
-          nativeBuildInputs = builtins.attrValues self.checks.${system}
-            ++ builtins.attrValues self.flake.${system}.packages
-            ++ [ self.devShell.${system}.inputDerivation ];
-        } "touch $out");
+        (nixpkgsFor system).runCommand "combined-check"
+          {
+            nativeBuildInputs = builtins.attrValues self.checks.${system}
+              ++ builtins.attrValues self.flake.${system}.packages
+              ++ [ self.devShell.${system}.inputDerivation ];
+          } "touch $out");
 
       # NOTE `nix flake check` will not work at the moment due to use of
       # IFD in haskell.nix
