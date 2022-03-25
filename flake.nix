@@ -2,7 +2,7 @@
   description = "bot-plutus-interface";
 
   inputs = {
-    haskell-nix.url = "github:L-as/haskell.nix";
+    haskell-nix.url = "github:input-output-hk/haskell.nix";
 
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
 
@@ -126,32 +126,36 @@
         allow-newer: size-based:template-haskell
       '';
 
-      haskellModules = [(
-        { pkgs, ... }:
-        {
-          packages = {
-            marlowe.flags.defer-plugin-errors = true;
-            plutus-use-cases.flags.defer-plugin-errors = true;
-            plutus-ledger.flags.defer-plugin-errors = true;
-            plutus-contract.flags.defer-plugin-errors = true;
-            cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-            cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-            cardano-wallet-core.components.library.build-tools = [
-              pkgs.buildPackages.buildPackages.gitMinimal
-            ];
-            cardano-config.components.library.build-tools = [
-              pkgs.buildPackages.buildPackages.gitMinimal
-            ];
-          };
-        }
-      )];
+      haskellModules = [
+        (
+          { pkgs, ... }:
+          {
+            packages = {
+              marlowe.flags.defer-plugin-errors = true;
+              plutus-use-cases.flags.defer-plugin-errors = true;
+              plutus-ledger.flags.defer-plugin-errors = true;
+              plutus-contract.flags.defer-plugin-errors = true;
+              cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-wallet-core.components.library.build-tools = [
+                pkgs.buildPackages.buildPackages.gitMinimal
+              ];
+              cardano-config.components.library.build-tools = [
+                pkgs.buildPackages.buildPackages.gitMinimal
+              ];
+            };
+          }
+        )
+      ];
 
       extraSources = [
         {
+          name = "cardano-addresses";
           src = inputs.cardano-addresses;
           subdirs = [ "core" "command-line" ];
         }
         {
+          name = "cardano-base";
           src = inputs.cardano-base;
           subdirs = [
             "base-deriving-via"
@@ -167,10 +171,12 @@
           ];
         }
         {
+          name = "cardano-crypto";
           src = inputs.cardano-crypto;
           subdirs = [ "." ];
         }
         {
+          name = "cardano-ledger";
           src = inputs.cardano-ledger;
           subdirs = [
             "eras/alonzo/impl"
@@ -195,18 +201,22 @@
           ];
         }
         {
+          name = "cardano-node";
           src = inputs.cardano-node;
           subdirs = [ "cardano-api" "cardano-node" "cardano-cli" ];
         }
         {
+          name = "cardano-config";
           src = inputs.cardano-config;
           subdirs = [ "." ];
         }
         {
+          name = "cardano-prelude";
           src = inputs.cardano-prelude;
           subdirs = [ "cardano-prelude" "cardano-prelude-test" ];
         }
         {
+          name = "cardano-wallet";
           src = inputs.cardano-wallet;
           subdirs = [
             "lib/cli"
@@ -222,14 +232,17 @@
           ];
         }
         {
+          name = "flat";
           src = inputs.flat;
           subdirs = [ "." ];
         }
         {
+          name = "goblins";
           src = inputs.goblins;
           subdirs = [ "." ];
         }
         {
+          name = "iohk-monitoring-framework";
           src = inputs.iohk-monitoring-framework;
           subdirs = [
             "iohk-monitoring"
@@ -243,10 +256,12 @@
           ];
         }
         {
+          name = "optparse-applicative";
           src = inputs.optparse-applicative;
           subdirs = [ "." ];
         }
         {
+          name = "ouroboros-network";
           src = inputs.ouroboros-network;
           subdirs = [
             "io-classes"
@@ -269,6 +284,7 @@
           ];
         }
         {
+          name = "plutus";
           src = inputs.plutus;
           subdirs = [
             "plutus-core"
@@ -281,6 +297,7 @@
           ];
         }
         {
+          name = "plutus-apps";
           src = inputs.plutus-apps;
           subdirs = [
             "doc"
@@ -299,41 +316,82 @@
           ];
         }
         {
+          name = "purescript-bridge";
           src = inputs.purescript-bridge;
           subdirs = [ "." ];
         }
         {
+          name = "servant-purescript";
           src = inputs.servant-purescript;
           subdirs = [ "." ];
         }
         {
+          name = "Win32-network";
           src = inputs.Win32-network;
           subdirs = [ "." ];
         }
       ];
 
+      compiler-nix-name = "ghc8107";
+
+      index-state = "2022-01-22T00:00:00Z";
+
+      extraPackageDirs = builtins.concatLists (
+        builtins.map
+          (dep: builtins.map
+            (d: "${dep.src}/${if d == "." then "" else d}")
+            dep.subdirs)
+          extraSources);
+
+      extraSourceNixFor = system:
+        ((nixpkgsFor system).haskell-nix.callCabalProjectToNix {
+          inherit compiler-nix-name index-state cabalProjectLocal;
+          src = (nixpkgsFor' system).runCommand "empty" { } "mkdir $out; touch $out/empty.cabal";
+          name = "extra-source-nix";
+          configureArgs = "--disable-tests";
+          cabalProject = ''
+            packages: ${builtins.concatStringsSep " " extraPackageDirs}
+          '';
+        }).projectNix;
+
       projectFor = system:
         let
           pkgs = nixpkgsFor system;
           pkgs' = nixpkgsFor' system;
-        in pkgs.haskell-nix.cabalProject' {
+          extraSourceNix = import (extraSourceNixFor system);
+          pkgDefExtras = hackage: (extraSourceNix.extras hackage).packages;
+          pkgNames = builtins.attrNames (pkgDefExtras null);
+        in
+        pkgs.haskell-nix.cabalProject' {
           src = ./.;
-          inherit cabalProjectLocal extraSources;
+          inherit compiler-nix-name index-state;
           name = "bot-plutus-interface";
-          compiler-nix-name = "ghc8107";
+
+          pkg-def-extras = [ pkgDefExtras ];
+          modules = haskellModules ++ extraSourceNix.modules;
+
+          cabalProjectLocal = ''
+            ${cabalProjectLocal}
+            packages: ${builtins.concatStringsSep " " extraPackageDirs}
+            ${builtins.concatStringsSep "\n" (builtins.map (x: ''
+            package ${x}
+              tests: false
+            '') pkgNames)}
+          '';
+
           shell = {
             additional = ps: [
               ps.plutus-pab
             ];
             withHoogle = true;
-            tools.haskell-language-server = {};
+            tools.haskell-language-server = { };
             exactDeps = true;
             nativeBuildInputs = [ pkgs'.cabal-install pkgs'.hlint pkgs'.haskellPackages.fourmolu pkgs'.jq pkgs'.websocat ];
           };
-          modules = haskellModules;
         };
 
-    in {
+    in
+    {
       inherit cabalProjectLocal extraSources haskellModules;
 
       project = perSystem projectFor;
@@ -343,7 +401,9 @@
         let lib = "bot-plutus-interface:lib:bot-plutus-interface";
         in self.flake.${system}.packages.${lib});
 
-      packages = perSystem (system: self.flake.${system}.packages);
+      packages = perSystem (system: self.flake.${system}.packages // {
+        extraSourceNix = extraSourceNixFor system;
+      });
 
       apps = perSystem (system: self.flake.${system}.apps);
 
@@ -351,11 +411,12 @@
 
       # This will build all of the project's executables and the tests
       check = perSystem (system:
-        (nixpkgsFor system).runCommand "combined-check" {
-          nativeBuildInputs = builtins.attrValues self.checks.${system}
-            ++ builtins.attrValues self.flake.${system}.packages
-            ++ [ self.devShell.${system}.inputDerivation ];
-        } "touch $out");
+        (nixpkgsFor system).runCommand "combined-check"
+          {
+            nativeBuildInputs = builtins.attrValues self.checks.${system}
+              ++ builtins.attrValues self.flake.${system}.packages
+              ++ [ self.devShell.${system}.inputDerivation ];
+          } "touch $out");
 
       # NOTE `nix flake check` will not work at the moment due to use of
       # IFD in haskell.nix
