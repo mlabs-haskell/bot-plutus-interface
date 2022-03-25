@@ -110,10 +110,20 @@ Top-level configuration file fields:
          (default: "")
     tipPollingInterval: non-negative integral number
          (default: 10000000)
+    forceBudget: `nothing` or ExecutionUnits configuration
+        Forced budget for scripts, as optional (CPU Steps, Memory Units)
+        (default: nothing)
     port: port non-negative integral number
          (default: 9080)
     enableTxEndpoint: `true` or `false`
          (default: false)
+
+ExecutionUnits configuration
+    steps: REQUIRED non-negative integral number
+        This corresponds roughly to the time to execute a script.
+    memory: REQUIRED non-negative integral number
+        This corresponds roughly to the peak memory used during script
+        execution.
 
 SlotConfig configuration
     length: REQUIRED integral number
