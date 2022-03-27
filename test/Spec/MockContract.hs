@@ -89,7 +89,7 @@ import Data.Default (Default (def))
 import Data.Either.Combinators (mapLeft)
 import Data.Hex (hex)
 import Data.Kind (Type)
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
@@ -112,10 +112,12 @@ import Ledger.TxId (TxId (TxId))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
 import Plutus.ChainIndex.Api (UtxosResponse (..))
+import Plutus.ChainIndex.Tx (ChainIndexTx (..), ChainIndexTxOutputs (ValidTx))
 import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
+import Plutus.V1.Ledger.Credential (Credential (PubKeyCredential))
 import PlutusTx.Builtins (fromBuiltin)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import System.IO.Unsafe (unsafePerformIO)
@@ -229,7 +231,7 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
+      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1, pcForceBudget = Just (500000, 2000)}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       }
@@ -540,9 +542,35 @@ mockQueryChainIndex = \case
         UtxosResponse
           (state ^. tip)
           (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
-  TxsFromTxIds _ ->
-    throwError @Text "TxsFromIxIds is unimplemented"
+  TxsFromTxIds ids -> do
+    -- TODO: Track some kind of state here, add tests to ensure this works correctly
+    -- For now, empty txs
+    state <- get @(MockContractState w)
+    let knownUtxos = state ^. utxos
+    pure . TxIdsResponse . (<$> ids) $ \txId ->
+      ChainIndexTx
+        { _citxTxId = txId
+        , _citxInputs = mempty
+        , _citxOutputs = buildOutputsFromKnownUTxOs knownUtxos txId
+        , _citxValidRange = Ledger.always
+        , _citxData = mempty
+        , _citxRedeemers = mempty
+        , _citxScripts = mempty
+        , _citxCardanoTx = Nothing
+        }
   TxoSetAtAddress _ _ ->
     throwError @Text "TxoSetAtAddress is unimplemented"
   GetTip ->
     throwError @Text "GetTip is unimplemented"
+
+-- | Fills in gaps of inputs with garbage TxOuts, so that the indexes we know about are in the correct positions
+buildOutputsFromKnownUTxOs :: [(TxOutRef, TxOut)] -> TxId -> ChainIndexTxOutputs
+buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ fillGaps sortedRelatedRefs 0
+  where
+    sortedRelatedRefs = sortOn (Tx.txOutRefIdx . fst) $ filter ((== txId) . Tx.txOutRefId . fst) knownUtxos
+    fillGaps :: [(TxOutRef, TxOut)] -> Integer -> [TxOut]
+    fillGaps [] _ = []
+    fillGaps (out@(TxOutRef _ n', txOut) : outs) n
+      | n' == n = txOut : fillGaps outs (n + 1)
+      | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
+    defTxOut = TxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty Nothing

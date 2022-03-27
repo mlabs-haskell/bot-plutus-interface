@@ -476,7 +476,7 @@ sendTokensWithoutName = do
 mintTokens :: Assertion
 mintTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
 
@@ -518,7 +518,7 @@ mintTokens = do
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --mint-execution-units (297830,1100)
+          --mint-execution-units (500000,2000)
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
@@ -526,18 +526,19 @@ mintTokens = do
           |]
         )
       ,
-        ( 6
+        ( 12
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
+          --tx-out ${addr1}+496700
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --mint-execution-units (297830,1100)
+          --mint-execution-units (500000,2000)
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 200
+          --fee 502300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )
@@ -642,7 +643,7 @@ spendToValidator = do
 redeemFromValidator :: Assertion
 redeemFromValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 100) Nothing
+      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000) Nothing
       txOutRef' = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut' = TxOut valAddr (Ada.lovelaceValueOf 1250) (Just datumHash)
       initState = def & utxos .~ [(txOutRef, txOut), (txOutRef', txOut')]
@@ -701,7 +702,7 @@ redeemFromValidator = do
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --tx-in-execution-units (387149,1400)
+          --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -709,19 +710,20 @@ redeemFromValidator = do
           |]
         )
       ,
-        ( 12
+        ( 14
         , [text|
           cardano-cli transaction build-raw --alonzo-era
+          --tx-in ${inTxId}#0
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --tx-in-execution-units (387149,1400)
+          --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${inTxId}#0
-          --tx-out ${addr1}+450
+          --tx-out ${addr1}+498350
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 300
+          --fee 502400
           --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
           |]
         )

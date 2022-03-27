@@ -67,6 +67,7 @@ main = do
           , pcDryRun = True
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
+          , pcForceBudget = Just (1000, 1000)
           , pcEnableTxEndpoint = True
           , pcMetadataDir = "./metadata"
           }
