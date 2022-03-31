@@ -24,6 +24,7 @@ import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Default (def)
 import Data.Maybe (fromMaybe)
+import Ledger.Address (StakePubKeyHash (..))
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
@@ -60,11 +61,12 @@ main = do
           , pcProtocolParams = protocolParams
           , pcTipPollingInterval = 10_000_000
           , pcSlotConfig = def
-          , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+          , pcOwnPubKeyHash = "54667d9a5b790a8640fe4662812060a782aa5a3a266cf75ff3869be3"
+          , pcOwnStakePubKeyHash = Just $ StakePubKeyHash "7f8286c1eae3afc4241480cc534ab89f28383f4673bc5aa27e0582b0"
           , pcScriptFileDir = "./scripts"
           , pcSigningKeyFileDir = "./signing-keys"
           , pcTxFileDir = "./txs"
-          , pcDryRun = True
+          , pcDryRun = False
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
           , pcForceBudget = Just (1000, 1000)

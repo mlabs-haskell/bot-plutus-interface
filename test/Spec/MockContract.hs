@@ -326,21 +326,21 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
     ("cardano-cli", "transaction" : "build-raw" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ _)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "build" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ _)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "sign" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "Tx")
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ _)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""
@@ -514,9 +514,24 @@ mockQueryChainIndex = \case
   TxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
     pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
-  TxFromTxId _ ->
-    -- pure $ TxIdResponse Nothing
-    throwError @Text "TxFromTxId is unimplemented"
+  TxFromTxId txId -> do
+    -- TODO: Track some kind of state here, add tests to ensure this works correctly
+    -- For now, empty txs
+    state <- get @(MockContractState w)
+    let knownUtxos = state ^. utxos
+    pure $
+      TxIdResponse $
+        Just $
+          ChainIndexTx
+            { _citxTxId = txId
+            , _citxInputs = mempty
+            , _citxOutputs = buildOutputsFromKnownUTxOs knownUtxos txId
+            , _citxValidRange = Ledger.always
+            , _citxData = mempty
+            , _citxRedeemers = mempty
+            , _citxScripts = mempty
+            , _citxCardanoTx = Nothing
+            }
   UtxoSetMembership _ ->
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress pageQuery _ -> do
