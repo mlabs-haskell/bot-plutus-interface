@@ -63,7 +63,7 @@ import Cardano.Api (
   NetworkId (Mainnet),
   PaymentKey,
   SigningKey (PaymentSigningKey),
-  TextEnvelope,
+  TextEnvelope (TextEnvelope, teDescription, teRawCBOR, teType),
   TextEnvelopeDescr,
   TextEnvelopeError (TextEnvelopeAesonDecodeError),
   deserialiseFromTextEnvelope,
@@ -86,8 +86,8 @@ import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
 import Data.Default (Default (def))
-import Data.Either.Combinators (mapLeft)
-import Data.Hex (hex)
+import Data.Either.Combinators (fromRight, mapLeft)
+import Data.Hex (hex, unhex)
 import Data.Kind (Type)
 import Data.List (isPrefixOf, sortOn)
 import Data.Map (Map)
@@ -326,21 +326,21 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
     ("cardano-cli", "transaction" : "build-raw" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ _)
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ TextEnvelopeFile dummyTxRawFile)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "build" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ _)
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ TextEnvelopeFile dummyTxRawFile)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "sign" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ _)
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ TextEnvelopeFile dummyTxSignedFile)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""
@@ -580,3 +580,19 @@ buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ fillGaps sortedRelatedRef
       | n' == n = txOut : fillGaps outs (n + 1)
       | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
     defTxOut = TxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty Nothing
+
+dummyTxRawFile :: TextEnvelope
+dummyTxRawFile =
+  TextEnvelope
+    { teType = "TxBodyAlonzo"
+    , teDescription = ""
+    , teRawCBOR = fromRight (error "failed to unpack CBOR hex") $ unhex "86a500848258205d677265fa5bb21ce6d8c7502aca70b9316d10e958611f3c6b758f65ad9599960182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc9300008258209405c89393ba84b14bf8d3e7ed4788cc6e2257831943b58338bee8d37a3668fc00825820a1be9565ccac4a04d2b5bf0d0167196ae467da0d88161c9c827fbe76452b24ef000d8182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc930000018482581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975461a3b8cc4a582581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1a000d062782581d606696936bb8ae24859d0c2e4d05584106601f58a5e9466282c8561b88821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1282581d60981fc565bcf0c95c0cfa6ee6693875b60d529d87ed7082e9bf03c6a4821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e0f021a000320250e81581c0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975469fff8080f5f6"
+    }
+
+dummyTxSignedFile :: TextEnvelope
+dummyTxSignedFile =
+  TextEnvelope
+    { teType = "Tx AlonzoEra"
+    , teDescription = ""
+    , teRawCBOR = fromRight (error "failed to unpack CBOR hex") $ unhex "84a500848258205d677265fa5bb21ce6d8c7502aca70b9316d10e958611f3c6b758f65ad9599960182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc9300008258209405c89393ba84b14bf8d3e7ed4788cc6e2257831943b58338bee8d37a3668fc00825820a1be9565ccac4a04d2b5bf0d0167196ae467da0d88161c9c827fbe76452b24ef000d8182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc930000018482581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975461a3b8cc4a582581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1a000d062782581d606696936bb8ae24859d0c2e4d05584106601f58a5e9466282c8561b88821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1282581d60981fc565bcf0c95c0cfa6ee6693875b60d529d87ed7082e9bf03c6a4821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e0f021a000320250e81581c0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546a10081825820096092b8515d75c2a2f75d6aa7c5191996755840e81deaa403dba5b690f091b65840295a93849a67cecabb8286e561c407b6bd49abf8d2da8bfb821105eae4d28ef0ef1b9ee5e8abb8fd334059f3dfc78c0a65e74057a2dc8d1d12e46842abea600ff5f6"
+    }
