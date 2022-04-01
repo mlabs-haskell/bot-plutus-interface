@@ -326,7 +326,7 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
     ("cardano-cli", "transaction" : "build-raw" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ TextEnvelopeFile dummyTxRawFile)
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ TextEnvelopeFile dummyTxSignedFile)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""

@@ -31,6 +31,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (eitherT, firstEitherT, newEitherT)
 import Data.Aeson (ToJSON, Value)
 import Data.Aeson.Extras (encodeByteString)
+import Data.Either (fromRight)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
@@ -44,7 +45,8 @@ import Ledger.Slot (Slot (Slot))
 import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
-import Plutus.ChainIndex.Types (RollbackState (Committed), TxStatus, TxValidity (..))
+import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
+import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (
   BalanceTxResponse (..),
@@ -152,7 +154,7 @@ handlePABReq contractEnv req = do
         PosixTimeRangeToContainedSlotRangeResp $
           Right $
             posixTimeRangeToContainedSlotRange contractEnv.cePABConfig.pcSlotConfig posixTimeRange
-    AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> getTxUpdate @w contractEnv txId
+    AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -167,32 +169,51 @@ handlePABReq contractEnv req = do
   printLog @w Debug $ show resp
   pure resp
 
-getTxUpdate ::
+awaitTxStatusChange ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
   Ledger.TxId ->
   Eff effs TxStatus
-getTxUpdate contractEnv txId = do
-  let minBlockHeight = 3
-  _ <- findTxByIdOrLoop
-  printLog @w Debug $ "Found tx in chain index. Waiting for " ++ show minBlockHeight ++ " blocks"
-  _ <- awaitNBlocks @w contractEnv minBlockHeight
-  printLog @w Debug "Waited, checking once more for tx rollback"
-  _ <- findTxByIdOrLoop
-  printLog @w Debug "Tx is confirmed"
-  pure $ Committed TxValid ()
+awaitTxStatusChange contractEnv txId = do
+  -- The depth (in blocks) after which a transaction cannot be rolled back anymore (from Plutus.ChainIndex.TxIdState)
+  let chainConstant = 8
+
+  ciTxState <- findChainIndexTxLoop
+  case ciTxState of
+    Nothing -> pure Unknown
+    Just txState -> do
+      awaitNBlocks @w contractEnv chainConstant
+      -- Check if the tx is still present in chain-index, in case of a rollback
+      -- we might not find it anymore.
+      ciTxState' <- findChainIndexTxLoop
+      case ciTxState' of
+        Nothing -> pure Unknown
+        Just _ -> do
+          blk <- fromInteger <$> currentBlock contractEnv
+          -- This will set the validity correctly based on the txState.
+          -- The tx will always be committed, as we wait for chainConstant blocks
+          let status = transactionStatus blk txState txId
+          pure $ fromRight Unknown status
   where
-    findTxByIdOrLoop :: Eff effs ()
-    findTxByIdOrLoop = do
-      mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
-      case mTx of
-        Just _ -> pure ()
-        Nothing -> do
-          printLog @w Debug "Tx not found... looping"
-          -- Wait for 1 block and try again
-          _ <- awaitNBlocks @w contractEnv 1
-          void $ getTxUpdate @w contractEnv txId
+    -- Attempts to find the tx in chain index. If the tx does not appear after
+    -- 5 blocks we give up
+    findChainIndexTxLoop :: Eff effs (Maybe TxIdState)
+    findChainIndexTxLoop = go 0
+      where
+        go :: Int -> Eff effs (Maybe TxIdState)
+        go n = do
+          mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
+          case mTx of
+            Just tx -> do
+              blk <- fromInteger <$> currentBlock contractEnv
+              pure . Just $ fromTx blk tx
+            Nothing -> do
+              if n >= 5
+                then pure Nothing
+                else do
+                  _ <- awaitNBlocks @w contractEnv 1
+                  go (n + 1)
 
 -- | This will FULLY balance a transaction
 balanceTx ::
@@ -294,7 +315,7 @@ awaitNBlocks contractEnv n = do
       tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
       case tip of
         Right tip'
-          | start + n >= tip'.block -> pure ()
+          | start + n <= tip'.block -> pure ()
         _ -> go start
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
