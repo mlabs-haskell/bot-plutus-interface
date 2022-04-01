@@ -1,6 +1,6 @@
 index-state: 2022-03-10T00:00:00Z
 
-packages: ./.
+packages: ./bot-plutus-interface.cabal
           ./examples/plutus-game/plutus-game.cabal
           ./examples/plutus-transfer/plutus-transfer.cabal
           ./examples/plutus-nft/plutus-nft.cabal
