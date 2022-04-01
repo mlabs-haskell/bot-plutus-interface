@@ -328,7 +328,15 @@
             withHoogle = true;
             tools.haskell-language-server = {};
             exactDeps = true;
-            nativeBuildInputs = [ pkgs'.cabal-install pkgs'.hlint pkgs'.haskellPackages.fourmolu pkgs'.jq pkgs'.websocat ];
+            nativeBuildInputs = [
+              pkgs'.cabal-install
+              pkgs'.haskellPackages.cabal-fmt
+              pkgs'.haskellPackages.implicit-hie
+              pkgs'.hlint
+              pkgs'.haskellPackages.fourmolu
+              pkgs'.jq
+              pkgs'.websocat
+            ];
           };
           modules = haskellModules;
         };
