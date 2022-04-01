@@ -230,7 +230,7 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1, pcForceBudget = Just (500000, 2000)}
+      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       }
@@ -294,7 +294,7 @@ runPABEffectPure initState req =
     go (ListDirectory dir) = mockListDirectory dir
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
-
+    go (EstimateBudget _) = error "TODO" -- TODO: mock implementation
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)

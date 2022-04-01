@@ -19,9 +19,12 @@ module BotPlutusInterface.Effects (
   writeFileJSON,
   writeFileTextEnvelope,
   callCommand,
+  estimateBudget,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
+import BotPlutusInterface.Estimate (TxFile)
+import BotPlutusInterface.Estimate qualified as Estimate
 import BotPlutusInterface.Types (
   CLILocation (..),
   ContractEnvironment,
@@ -82,6 +85,7 @@ data PABEffect (w :: Type) (r :: Type) where
   ListDirectory :: FilePath -> PABEffect w [FilePath]
   UploadDir :: Text -> PABEffect w ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
+  EstimateBudget :: TxFile -> PABEffect w (Either Estimate.BudgetEstimationError Estimate.TxBudgets)
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -124,6 +128,8 @@ handlePABEffect contractEnv =
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
           handleChainIndexReq contractEnv.cePABConfig query
+        EstimateBudget txPath ->
+          Estimate.budgetByFile txPath
     )
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
@@ -169,6 +175,13 @@ callCommand ::
   ShellArgs a ->
   Eff effs (Either Text a)
 callCommand = send @(PABEffect w) . CallCommand
+
+estimateBudget ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  TxFile ->
+  Eff effs (Either Estimate.BudgetEstimationError Estimate.TxBudgets)
+estimateBudget = send @(PABEffect w) . EstimateBudget
 
 createDirectoryIfMissing ::
   forall (w :: Type) (effs :: [Type -> Type]).

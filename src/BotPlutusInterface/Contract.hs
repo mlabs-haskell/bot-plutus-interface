@@ -4,6 +4,7 @@
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
 import BotPlutusInterface.Balance qualified as PreBalance
+import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (
   PABEffect,
@@ -204,7 +205,7 @@ writeBalancedTx contractEnv (Right tx) = do
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
         signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-    void $ newEitherT $ CardanoCLI.buildTx @w pabConf privKeys tx
+    void $ newEitherT $ BodyBuilder.buildRaw @w pabConf privKeys tx
 
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners

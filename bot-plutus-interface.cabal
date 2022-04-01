@@ -76,22 +76,28 @@ library
   import:          common-lang
   exposed-modules:
     BotPlutusInterface
+    BotPlutusInterface.Balance
+    BotPlutusInterface.BodyBuilder
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
+    BotPlutusInterface.Estimate
     BotPlutusInterface.Files
-    BotPlutusInterface.Balance
+    BotPlutusInterface.QueryNode
+    BotPlutusInterface.Server
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
-    BotPlutusInterface.Server
+
   build-depends:
     , aeson                      ^>=1.5.0.0
+    , QuickCheck
     , attoparsec                 >=0.13.2.2
     , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-slotting
     , containers
     , data-default
     , data-default-class
@@ -118,7 +124,6 @@ library
     , plutus-tx
     , plutus-tx-plugin
     , process
-    , QuickCheck
     , row-types
     , serialise
     , servant

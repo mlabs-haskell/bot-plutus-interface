@@ -58,6 +58,8 @@ import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   TokenName (..),
  )
+
+import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import Prelude
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
@@ -132,7 +134,8 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       txWithoutFees <-
         hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` 0
 
-      exBudget <- newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
+      exBudget <- newEitherT $ BodyBuilder.buildRaw @w pabConf privKeys txWithoutFees
+
       nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget

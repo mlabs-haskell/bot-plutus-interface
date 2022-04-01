@@ -11,3 +11,6 @@ cradle:
 
     - path: "./examples/plutus-nft/app"
       component: "exe:plutus-nft"
+
+    - path: "./examples/ex-units/app"
+      component: "exe:ex-units"
