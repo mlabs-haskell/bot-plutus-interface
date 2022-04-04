@@ -179,41 +179,33 @@ awaitTxStatusChange contractEnv txId = do
   -- The depth (in blocks) after which a transaction cannot be rolled back anymore (from Plutus.ChainIndex.TxIdState)
   let chainConstant = 8
 
-  ciTxState <- findChainIndexTxLoop
-  case ciTxState of
+  mTx <- queryChainIndexForTxState
+  case mTx of
     Nothing -> pure Unknown
     Just txState -> do
-      awaitNBlocks @w contractEnv chainConstant
+      awaitNBlocks @w contractEnv (chainConstant + 1)
       -- Check if the tx is still present in chain-index, in case of a rollback
       -- we might not find it anymore.
-      ciTxState' <- findChainIndexTxLoop
+      ciTxState' <- queryChainIndexForTxState
       case ciTxState' of
         Nothing -> pure Unknown
         Just _ -> do
           blk <- fromInteger <$> currentBlock contractEnv
           -- This will set the validity correctly based on the txState.
-          -- The tx will always be committed, as we wait for chainConstant blocks
+          -- The tx will always be committed, as we wait for chainConstant + 1 blocks
           let status = transactionStatus blk txState txId
           pure $ fromRight Unknown status
   where
     -- Attempts to find the tx in chain index. If the tx does not appear after
     -- 5 blocks we give up
-    findChainIndexTxLoop :: Eff effs (Maybe TxIdState)
-    findChainIndexTxLoop = go 0
-      where
-        go :: Int -> Eff effs (Maybe TxIdState)
-        go n = do
-          mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
-          case mTx of
-            Just tx -> do
-              blk <- fromInteger <$> currentBlock contractEnv
-              pure . Just $ fromTx blk tx
-            Nothing -> do
-              if n >= 5
-                then pure Nothing
-                else do
-                  _ <- awaitNBlocks @w contractEnv 1
-                  go (n + 1)
+    queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
+    queryChainIndexForTxState = do
+      mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
+      case mTx of
+        Just tx -> do
+          blk <- fromInteger <$> currentBlock contractEnv
+          pure . Just $ fromTx blk tx
+        Nothing -> pure Nothing
 
 -- | This will FULLY balance a transaction
 balanceTx ::
