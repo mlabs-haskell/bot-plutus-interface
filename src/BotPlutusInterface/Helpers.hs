@@ -9,16 +9,20 @@ import Plutus.Contract.Types (Contract, throwError)
 import Prelude
 
 awaitTxConfirmedUntilSlot :: forall w s e. (AsContractError e) => TxId -> Slot -> Contract w s e ()
-awaitTxConfirmedUntilSlot i maxSlot = go 0
+awaitTxConfirmedUntilSlot txId maxSlot = go 0
   where
     go :: Integer -> Contract w s e ()
     go n = do
-      mTx <- awaitTxStatusChange i
+      mTx <- awaitTxStatusChange txId
       case mTx of
         Unknown -> do
           curSlot <- currentSlot
-          if curSlot >= maxSlot
-            then throwError @e $ review _OtherContractError $ pack $ "Could not find tx after maxAttempts. ID: " ++ show i
+          if curSlot > maxSlot
+            then
+              throwError @e $
+                review _OtherContractError $
+                  pack $
+                    "Could not find transaction - " ++ show txId ++ " - before slot " ++ show maxSlot
             else do
               _ <- waitNSlots 20
               go (n + 1)

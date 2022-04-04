@@ -196,8 +196,6 @@ awaitTxStatusChange contractEnv txId = do
           let status = transactionStatus blk txState txId
           pure $ fromRight Unknown status
   where
-    -- Attempts to find the tx in chain index. If the tx does not appear after
-    -- 5 blocks we give up
     queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
     queryChainIndexForTxState = do
       mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
