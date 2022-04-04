@@ -4,30 +4,34 @@ import Prelude
 
 import Data.Map qualified as Map
 import Data.Text (Text)
-import Ledger
-    ( CardanoTx,
-      Address,
-      ScriptContext,
-      TxId,
-      Validator,
-      getCardanoTxId,
-      scriptAddress,
-      unitDatum,
-      unitRedeemer,
-      validatorHash )
+import Ledger (
+  Address,
+  CardanoTx,
+  ScriptContext,
+  TxId,
+  Validator,
+  getCardanoTxId,
+  scriptAddress,
+  unitDatum,
+  unitRedeemer,
+  validatorHash,
+ )
 import Ledger.Constraints qualified as Constraints
-import Plutus.Contract
-    ( Contract, submitTx, awaitTxConfirmed, submitTxConstraintsWith )
+import Ledger.Typed.Scripts.Validators qualified as Validators
+import Plutus.Contract (
+  Contract,
+  awaitTxConfirmed,
+  submitTx,
+  submitTxConstraintsWith,
+ )
 import Plutus.Contract qualified as Contract
 import Plutus.PAB.Effects.Contract.Builtin (EmptySchema)
-import Ledger.Typed.Scripts.Validators qualified as Validators
 import Plutus.V1.Ledger.Ada qualified as Value
 import PlutusTx qualified
 
 lockThenSpendSingle :: Contract () EmptySchema Text (TxId, CardanoTx)
 lockThenSpendSingle =
   lockAtScript >> Contract.waitNSlots 1 >> spendFromScript
-
 
 lockAtScript :: Contract () EmptySchema Text (TxId, CardanoTx)
 lockAtScript = do
@@ -55,7 +59,6 @@ spendFromScript = do
       tx <- submitTxConstraintsWith @TestLockSpend lookups txc
       awaitTxConfirmed $ getCardanoTxId tx
       pure (getCardanoTxId tx, tx)
-
 
 -- Always true Script and spending contract
 

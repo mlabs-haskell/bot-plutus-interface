@@ -23,13 +23,15 @@ module BotPlutusInterface.Effects (
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
-import BotPlutusInterface.Estimate (TxFile)
 import BotPlutusInterface.Estimate qualified as Estimate
 import BotPlutusInterface.Types (
+  BudgetEstimationError,
   CLILocation (..),
   ContractEnvironment,
   ContractState (ContractState),
   LogLevel (..),
+  TxBudget,
+  TxFile,
  )
 import Cardano.Api (AsType, FileError, HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
@@ -85,7 +87,7 @@ data PABEffect (w :: Type) (r :: Type) where
   ListDirectory :: FilePath -> PABEffect w [FilePath]
   UploadDir :: Text -> PABEffect w ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
-  EstimateBudget :: TxFile -> PABEffect w (Either Estimate.BudgetEstimationError Estimate.TxBudgets)
+  EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -129,7 +131,7 @@ handlePABEffect contractEnv =
         QueryChainIndex query ->
           handleChainIndexReq contractEnv.cePABConfig query
         EstimateBudget txPath ->
-          Estimate.budgetByFile txPath
+          Estimate.estimateBudget contractEnv.cePABConfig txPath
     )
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
@@ -180,7 +182,7 @@ estimateBudget ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   TxFile ->
-  Eff effs (Either Estimate.BudgetEstimationError Estimate.TxBudgets)
+  Eff effs (Either BudgetEstimationError TxBudget)
 estimateBudget = send @(PABEffect w) . EstimateBudget
 
 createDirectoryIfMissing ::

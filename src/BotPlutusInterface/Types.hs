@@ -15,9 +15,16 @@ module BotPlutusInterface.Types (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
   RawTx (..),
+  TxFile (..),
+  TxBudget (..),
+  BudgetEstimationError (..),
+  ApiUnitsMap,
+  ExBudgetsMap,
+  SpendingBudget,
+  MintingBudget,
 ) where
 
-import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
+import Cardano.Api (ExecutionUnits, NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
@@ -28,7 +35,7 @@ import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Ledger (PubKeyHash)
+import Ledger (ExBudget, PubKeyHash)
 import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
@@ -139,3 +146,42 @@ data RawTx = RawTx
 -- type is a reserved keyword in haskell and can not be used as a field name
 -- when converting this to JSON we drop the _ prefix from each field
 deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx
+
+-- Budget estimation types
+
+{- | Error returned in case any error happened during budget estimation
+ (wraps whatever received in `Text`)
+-}
+data BudgetEstimationError
+  = BudgetEstimationError Text
+  deriving stock (Show)
+
+-- | Type of transaction file used for budget estimation
+data TxFile -- TODO: check file extension correctness
+  = -- | for using with ".raw" files
+    Raw FilePath
+  | -- | for using with ".signed" files
+    Signed FilePath
+
+{- | Result of budget estimation
+ (still under development)
+-}
+data TxBudget = TxBudget
+  { -- | debug information
+    exUnitsMap :: ApiUnitsMap
+  , -- | debug information
+    exBudgetsMap :: ExBudgetsMap
+  , -- | max calculated budget that will fit any spending input
+    overallSpendMax :: SpendingBudget
+  , -- | max calculated budget that will fit any minting policy
+    overallMintMax :: MintingBudget
+  }
+  deriving stock (Show)
+
+-- | WIP: Helper types, most likely they will become obsolete
+type ApiUnitsMap = Map ScriptWitnessIndex (Either ScriptExecutionError ExecutionUnits)
+
+type ExBudgetsMap = Map ScriptWitnessIndex (Either ScriptExecutionError ExBudget)
+
+type SpendingBudget = ExBudget
+type MintingBudget = ExBudget

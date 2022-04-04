@@ -140,7 +140,7 @@ sendAda = do
           |]
         )
       ,
-        ( 3
+        ( 4
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -153,7 +153,7 @@ sendAda = do
         )
       , -- Steps 4 to 11 are near repeats of 1, 2 and 3, to ensure min utxo values are met, and change is dispursed
 
-        ( 12
+        ( 17
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -166,7 +166,7 @@ sendAda = do
         |]
         )
       ,
-        ( 13
+        ( 18
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-${outTxId}.raw
@@ -193,7 +193,7 @@ sendAdaNoChange = do
     assertCommandHistory
       state
       [
-        ( 6
+        ( 8
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -254,7 +254,7 @@ sendAdaStaking = do
           |]
         )
       ,
-        ( 3
+        ( 4
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -266,7 +266,7 @@ sendAdaStaking = do
           |]
         )
       ,
-        ( 6
+        ( 9
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -278,7 +278,7 @@ sendAdaStaking = do
         |]
         )
       ,
-        ( 7
+        ( 10
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-${outTxId}.raw
@@ -307,7 +307,7 @@ multisigSupport = do
     assertCommandHistory
       state
       [
-        ( 3
+        ( 4
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -319,7 +319,7 @@ multisigSupport = do
           |]
         )
       ,
-        ( 6
+        ( 9
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -332,7 +332,7 @@ multisigSupport = do
           |]
         )
       ,
-        ( 7
+        ( 10
         , [text| 
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-${outTxId}.raw
@@ -370,7 +370,7 @@ withoutSigning = do
     assertCommandHistory
       state
       [
-        ( 6
+        ( 9
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -415,7 +415,7 @@ sendTokens = do
     assertCommandHistory
       state
       [
-        ( 10
+        ( 13
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId1}#0
@@ -459,7 +459,7 @@ sendTokensWithoutName = do
     assertCommandHistory
       state
       [
-        ( 10
+        ( 13
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId1}#0
@@ -510,7 +510,7 @@ mintTokens = do
     assertCommandHistory
       state
       [
-        ( 2
+        ( 3
         , [text| 
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -526,7 +526,7 @@ mintTokens = do
           |]
         )
       ,
-        ( 12
+        ( 17
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -617,7 +617,7 @@ spendToValidator = do
           |]
         )
       ,
-        ( 12
+        ( 17
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -695,7 +695,7 @@ redeemFromValidator = do
     assertCommandHistory
       state
       [
-        ( 2
+        ( 3
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#1
@@ -710,7 +710,7 @@ redeemFromValidator = do
           |]
         )
       ,
-        ( 14
+        ( 20
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -803,7 +803,7 @@ withValidRange = do
           |]
         )
       ,
-        ( 6
+        ( 9
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0

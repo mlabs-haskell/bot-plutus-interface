@@ -48,12 +48,13 @@ module Spec.MockContract (
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
+import BotPlutusInterface.Estimate qualified as Estimate
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   LogLevel (..),
-  PABConfig (..),
+  PABConfig (..), TxFile, BudgetEstimationError, TxBudget
  )
 import Cardano.Api (
   AsType,
@@ -294,7 +295,7 @@ runPABEffectPure initState req =
     go (ListDirectory dir) = mockListDirectory dir
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
-    go (EstimateBudget _) = error "TODO" -- TODO: mock implementation
+    go (EstimateBudget file) = mockExBudget file
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -565,3 +566,9 @@ buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ fillGaps sortedRelatedRef
       | n' == n = txOut : fillGaps outs (n + 1)
       | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
     defTxOut = TxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty Nothing
+
+mockExBudget ::
+  forall (w :: Type).
+  TxFile ->
+  MockContract w (Either BudgetEstimationError TxBudget)
+mockExBudget _ = pure $ Right Estimate.testBudget

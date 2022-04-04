@@ -14,30 +14,31 @@ import Data.Text qualified as Text
 import Data.UUID.V4 qualified as UUID
 import Ledger (PubKeyHash)
 import LockSpend (lockThenSpend)
+
 -- import LockSpendSingle (lockThenSpendSingle)
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import System.Directory (listDirectory)
-import System.Environment (getArgs, setEnv, getEnv)
+import System.Environment (getArgs, getEnv, setEnv)
 import System.FilePath ((</>))
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 
+{- | For running fast live tests using Plutip's local cluster,
+ needed only for debugging period
+-}
 main :: IO ()
 main = do
-  -- TODO: export PATH=$PATH:/home/mike/dev/mlabs/local-cluster/node-bins
-  let clusterDir = "/home/mike/dev/mlabs/local-cluster/data"
-  [sockPath] <- getArgs
+  [sockPath, clusterDir, cliDir] <- getArgs
   setEnv "CARDANO_NODE_SOCKET_PATH" sockPath
-  getEnv "PATH" >>= \p -> setEnv "PATH" (p ++ ":/home/mike/dev/mlabs/local-cluster/node-bins")
+  getEnv "PATH" >>= \p -> setEnv "PATH" (p ++ ":" ++ cliDir)
   let nodeInfo = BPI.NodeInfo Mainnet sockPath
 
   cEnv <- mkContractEnv nodeInfo clusterDir
-  res <- BPI.runContract cEnv lockThenSpend 
-  -- res <- BPI.runContract cEnv lockThenSpendSingle
+  res <- BPI.runContract cEnv lockThenSpend
   putStrLn $ case res of
-      Right _ -> "=== OK ==="
-      Left e -> "=== FAILED ===\n" ++ show e 
+    Right _ -> "=== OK ==="
+    Left e -> "=== FAILED ===\n" ++ show e
 
 mkContractEnv :: Monoid w => BPI.NodeInfo -> FilePath -> IO (ContractEnvironment w)
 mkContractEnv nodeInfo clusterDir = do
@@ -47,14 +48,14 @@ mkContractEnv nodeInfo clusterDir = do
   pkhs <- getPkhs clusterDir
   return $
     ContractEnvironment
-      { cePABConfig = mkPabConf pparams (Text.pack paramsFile) clusterDir (head pkhs),
-        ceContractState = contractState,
-        ceContractInstanceId = contractInstanceID
+      { cePABConfig = mkPabConf pparams (Text.pack paramsFile) clusterDir (head pkhs)
+      , ceContractState = contractState
+      , ceContractInstanceId = contractInstanceID
       }
 
 getPparams :: BPI.NodeInfo -> FilePath -> IO (ProtocolParameters, FilePath)
 getPparams nodeInfo clusterDir = do
-  pparams :: ProtocolParameters <- getOrFailM $ BPI.protocolParams nodeInfo
+  pparams :: ProtocolParameters <- getOrFailM $ BPI.queryProtocolParams nodeInfo
   let ppath = clusterDir </> "pparams.json"
   JSON.encodeFile ppath pparams
   return (pparams, ppath)
@@ -62,21 +63,21 @@ getPparams nodeInfo clusterDir = do
 mkPabConf :: ProtocolParameters -> Text -> FilePath -> PubKeyHash -> PABConfig
 mkPabConf pparams pparamsFile clusterDir ownPkh =
   PABConfig
-    { pcCliLocation = Local,
-      pcNetwork = Mainnet,
-      pcChainIndexUrl = BaseUrl Http "localhost" 9083 "",
-      pcPort = 9080,
-      pcProtocolParams = pparams,
-      pcTipPollingInterval = 1_000_000,
-      pcSlotConfig = def,
-      pcOwnPubKeyHash = ownPkh,
-      pcScriptFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/scripts",
-      pcSigningKeyFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/signing-keys",
-      pcTxFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/txs",
-      pcDryRun = False,
-      pcLogLevel = Error,
-      pcProtocolParamsFile = pparamsFile,
-      pcEnableTxEndpoint = True
+    { pcCliLocation = Local
+    , pcNetwork = Mainnet
+    , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
+    , pcPort = 9080
+    , pcProtocolParams = pparams
+    , pcTipPollingInterval = 1_000_000
+    , pcSlotConfig = def
+    , pcOwnPubKeyHash = ownPkh
+    , pcScriptFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/scripts"
+    , pcSigningKeyFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/signing-keys"
+    , pcTxFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/txs"
+    , pcDryRun = False
+    , pcLogLevel = Error
+    , pcProtocolParamsFile = pparamsFile
+    , pcEnableTxEndpoint = True
     }
 
 getPkhs :: FilePath -> IO [PubKeyHash]
