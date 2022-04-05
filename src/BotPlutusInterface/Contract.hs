@@ -7,6 +7,8 @@ import BotPlutusInterface.Balance qualified as PreBalance
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (
   PABEffect,
+  ShellArgs (..),
+  callCommand,
   createDirectoryIfMissing,
   handlePABEffect,
   logToContract,
@@ -28,7 +30,7 @@ import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (eitherT, firstEitherT, newEitherT)
+import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
 import Data.Aeson (ToJSON, Value)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Either (fromRight)
@@ -253,20 +255,34 @@ writeBalancedTx contractEnv (Right tx) = do
       else
         lift . printLog @w Warn . Text.unpack . Text.unlines $
           [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-          , "Tx file: " <> Files.txFilePath pabConf "raw" tx
+          , "Tx file: " <> Files.txFilePath pabConf "raw" (Tx.txId tx)
           , "Signatories (pkh): " <> Text.unwords (map pkhToText requiredSigners)
           ]
 
+    -- TODO: This whole part is hacky and we should remove it.
     let ext = if signable then "signed" else "raw"
-        path = Text.unpack $ Files.txFilePath pabConf ext tx
+        path = Text.unpack $ Files.txFilePath pabConf ext (Tx.txId tx)
     -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
     alonxoTx <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTx AsAlonzoEra) path
     let cardanoTx = Tx.SomeTx alonxoTx AlonzoEraInCardanoMode
+    -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
+    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" (Ledger.getCardanoTxId $ Left cardanoTx))
+    when signable $ mvFiles (Files.txFilePath pabConf "signed" (Tx.txId tx)) (Files.txFilePath pabConf "signed" (Ledger.getCardanoTxId $ Left cardanoTx))
 
     when (not pabConf.pcDryRun && signable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx
 
     pure cardanoTx
+  where
+    mvFiles :: Text -> Text -> EitherT Text (Eff effs) ()
+    mvFiles src dst =
+      newEitherT $
+        callCommand @w
+          ShellArgs
+            { cmdName = "mv"
+            , cmdArgs = [src, dst]
+            , cmdOutParser = const ()
+            }
 
 pkhToText :: Ledger.PubKey -> Text
 pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
