@@ -68,7 +68,7 @@ main = do
           , pcDryRun = True
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
-          , pcForceBudget = Just (1000, 1000)
+          , pcForceBudget = Just (9_000_000_000, 15_000_000)
           , pcEnableTxEndpoint = True
           }
   BotPlutusInterface.runPAB @GameContracts pabConf
