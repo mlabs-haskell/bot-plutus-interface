@@ -3,19 +3,13 @@
 
 {-# OPTIONS -fno-warn-orphans  #-}
 
-module BotPlutusInterface.Config.Cardano.Api.Shelley (
+module PlutusConfig.Cardano.Api.Shelley (
   -- *Utils
   readProtocolParametersJSON,
   writeProtocolParametersJSON,
 ) where
 
-import BotPlutusInterface.Config.Base (customRationalSpec, maybeSpec)
-import BotPlutusInterface.Config.Cardano.Api ()
-import BotPlutusInterface.Config.Types (
-  ToValue (toValue),
-  sectionWithDefault,
-  sectionWithDefault',
- )
+import Cardano.Api.ProtocolParameters ()
 import Cardano.Api.Shelley (ProtocolParameters (..))
 import Config (Section (Section), Value (List, Sections))
 import Config.Schema (
@@ -31,6 +25,13 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Default (def)
 import Data.Text qualified as Text
 import Numeric.Natural (Natural)
+import PlutusConfig.Base (customRationalSpec, maybeSpec)
+import PlutusConfig.Cardano.Api ()
+import PlutusConfig.Types (
+  ToValue (toValue),
+  sectionWithDefault,
+  sectionWithDefault',
+ )
 import Prelude
 
 instance ToValue (Natural, Natural) where

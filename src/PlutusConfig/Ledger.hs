@@ -3,11 +3,8 @@
 
 {-# OPTIONS -fno-warn-orphans  #-}
 
-module BotPlutusInterface.Config.Ledger () where
+module PlutusConfig.Ledger () where
 
-import BotPlutusInterface.Config.Base ()
-import BotPlutusInterface.Config.Types (ToValue (toValue), withNamePrefixSpec)
-import BotPlutusInterface.Types ()
 import Config (Section (Section), Value (Sections, Text))
 import Config.Schema (
   HasSpec (anySpec),
@@ -20,6 +17,8 @@ import Config.Schema (
 import Data.String (fromString)
 import Ledger.TimeSlot (SlotConfig (SlotConfig), scSlotLength, scSlotZeroTime)
 import Plutus.V1.Ledger.Api (POSIXTime (POSIXTime), getPOSIXTime)
+import PlutusConfig.Base ()
+import PlutusConfig.Types (ToValue (toValue), withNamePrefixSpec)
 import Wallet.API (PubKeyHash)
 import Prelude
 

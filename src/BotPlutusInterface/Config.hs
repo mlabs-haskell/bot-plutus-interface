@@ -10,27 +10,6 @@ module BotPlutusInterface.Config (
   savePABConfig,
 ) where
 
-import BotPlutusInterface.Config.Base (
-  enumToAtom,
-  filepathSpec,
-  maybeSpec,
-  pathSpec,
-  portSpec,
- )
-import BotPlutusInterface.Config.Cardano.Api ()
-import BotPlutusInterface.Config.Cardano.Api.Shelley (
-  readProtocolParametersJSON,
-  writeProtocolParametersJSON,
- )
-import BotPlutusInterface.Config.Ledger ()
-import BotPlutusInterface.Config.Types (
-  ToValue (toValue),
-  deserialize,
-  sectionWithDefault,
-  sectionWithDefault',
-  serialize,
-  withNamePrefixSpec,
- )
 import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
 import Cardano.Api (ExecutionUnits (..))
 import Config (Section (Section), Value (Atom, Sections, Text))
@@ -47,6 +26,27 @@ import Config.Schema (
 import Data.Default (def)
 import Data.Functor ((<&>))
 import Data.String.ToString (toString)
+import PlutusConfig.Base (
+  enumToAtom,
+  filepathSpec,
+  maybeSpec,
+  pathSpec,
+  portSpec,
+ )
+import PlutusConfig.Cardano.Api ()
+import PlutusConfig.Cardano.Api.Shelley (
+  readProtocolParametersJSON,
+  writeProtocolParametersJSON,
+ )
+import PlutusConfig.Ledger ()
+import PlutusConfig.Types (
+  ToValue (toValue),
+  deserialize,
+  sectionWithDefault,
+  sectionWithDefault',
+  serialize,
+  withNamePrefixSpec,
+ )
 import Prelude
 
 instance ToValue CLILocation where

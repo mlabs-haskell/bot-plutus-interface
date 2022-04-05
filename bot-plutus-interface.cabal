@@ -25,9 +25,9 @@ source-repository head
 common common-lang
   ghc-options:
     -Wall -Wcompat -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wredundant-constraints -Werror
-    -fobject-code -fno-ignore-interface-pragmas
-    -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
+    -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
+    -Werror -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+    -fplugin=RecordDotPreprocessor
 
   build-depends:
     , base                     ^>=4.14
@@ -76,21 +76,22 @@ library
   import:          common-lang
   exposed-modules:
     BotPlutusInterface
+    BotPlutusInterface.Balance
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.Config
-    BotPlutusInterface.Config.Base
-    BotPlutusInterface.Config.Cardano.Api
-    BotPlutusInterface.Config.Cardano.Api.Shelley
-    BotPlutusInterface.Config.Ledger
-    BotPlutusInterface.Config.Types
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
     BotPlutusInterface.Files
-    BotPlutusInterface.Balance
+    BotPlutusInterface.Server
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
-    BotPlutusInterface.Server
+    PlutusConfig.Base
+    PlutusConfig.Cardano.Api
+    PlutusConfig.Cardano.Api.Shelley
+    PlutusConfig.Ledger
+    PlutusConfig.Types
+
   build-depends:
     , aeson                      ^>=1.5.0.0
     , attoparsec                 >=0.13.2.2
@@ -156,12 +157,17 @@ test-suite bot-plutus-interface-test
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
-    Spec.BotPlutusInterface.Contract
-    Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Balance
-    Spec.BotPlutusInterface.UtxoParser
+    Spec.BotPlutusInterface.Config
+    Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.Server
+    Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
+    Spec.PlutusConfig.Base
+    Spec.PlutusConfig.Cardano.Api
+    Spec.PlutusConfig.Cardano.Api.Shelley
+    Spec.PlutusConfig.Ledger
+    Spec.PlutusConfig.Misc
 
   build-depends:
     , aeson                      ^>=1.5.0.0
@@ -212,8 +218,8 @@ test-suite bot-plutus-interface-test
     , tasty-quickcheck
     , temporary
     , text                       ^>=1.2.4.0
-    , uuid
     , utf8-string
+    , uuid
     , warp
 
   hs-source-dirs: test

@@ -3,8 +3,6 @@
 module Spec.BotPlutusInterface.Config (tests) where
 
 import BotPlutusInterface.Config (loadPABConfig, savePABConfig)
-import BotPlutusInterface.Config.Base (customRationalSpec)
-import BotPlutusInterface.Config.Types
 import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
 import Cardano.Api (
   AnyPlutusScriptVersion (..),
@@ -18,20 +16,18 @@ import Cardano.Api (
   makePraosNonce,
  )
 import Cardano.Api.Shelley (ProtocolParameters (..))
-import Config.Schema (HasSpec (anySpec), ValueSpec)
 import Data.Default (def)
-import Data.Either (isLeft)
 import Data.Map qualified as Map
 import Data.Ratio ((%))
 import Data.Text qualified as Text
 import Ledger.TimeSlot (SlotConfig (..))
 import Plutus.V1.Ledger.Api (POSIXTime (..))
 import Servant.Client.Core (BaseUrl (..), Scheme (Https))
+import Spec.PlutusConfig.Misc (serializeDeserialize)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (testCase, (@?), (@?=))
-import Wallet.API (PubKeyHash (..))
+import Test.Tasty.HUnit (testCase, (@?=))
 import Prelude
 
 {- | Tests for PABConfig serialize/deserialize
@@ -59,71 +55,7 @@ tests =
           savePABConfig confFile conf
           Right conf' <- loadPABConfig confFile
           conf' @?= conf
-    , testPubKeyHash
-    , testPraosNonce
-    , testRationalSerializeDeserialize
     ]
-
-testRationalSerializeDeserialize :: TestTree
-testRationalSerializeDeserialize =
-  testGroup
-    "Rational"
-    [ testCase
-        "Rational serialize"
-        (serialize (1 % 2 :: Rational) @?= "\"1 % 2\"")
-    , testCase
-        "Rational deserialize with value error"
-        ( isLeft (deserialize' customRationalSpec "\"1 % 0\"")
-            @? "should be Left"
-        )
-    , testCase
-        "Rational deserialize with value error"
-        ( isLeft (deserialize' customRationalSpec "\"1\"")
-            @? "should be Left"
-        )
-    , testCase
-        "Rational serialize/deserialize"
-        ( serializeDeserialize' customRationalSpec (1 % 2)
-            @?= Right (1 % 2 :: Rational)
-        )
-    ]
-
-testPubKeyHash :: TestTree
-testPubKeyHash =
-  testGroup
-    "PubKeyHash serialize/deserialize"
-    [ testCase
-        "PubKeyHash serialize"
-        (serialize hash @?= shash)
-    , testCase
-        "PubKeyHash deserialize"
-        (deserialize shash @?= Right hash)
-    ]
-  where
-    hash :: PubKeyHash
-    hash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
-    shash = "\"0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546\""
-
-testPraosNonce :: TestTree
-testPraosNonce =
-  testGroup
-    "PraosNonce serialize/deserialize"
-    [ testCase
-        "PraosNonce serialize"
-        (serialize praosNonce @?= sPraosNonce)
-    , testCase
-        "PraosNonce deserialize"
-        (deserialize sPraosNonce @?= Right praosNonce)
-    ]
-  where
-    praosNonce = makePraosNonce "Some string"
-    sPraosNonce = "\"33b058e9898a60f0fe95d41b92bcbff152a008785ff1b390fd594ff4fe282770\""
-
-serializeDeserialize :: (ToValue a, HasSpec a) => a -> Either String a
-serializeDeserialize = serializeDeserialize' anySpec
-
-serializeDeserialize' :: (ToValue a) => ValueSpec a -> a -> Either String a
-serializeDeserialize' spec = deserialize' spec . serialize
 
 pabConfigExample :: PABConfig
 pabConfigExample =

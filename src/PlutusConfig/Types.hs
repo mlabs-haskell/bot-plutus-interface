@@ -9,7 +9,7 @@
        Text.PrettyPrint.pretty                ToValue a
  @
 -}
-module BotPlutusInterface.Config.Types (
+module PlutusConfig.Types (
   -- *Serialization
   ToValue (toValue),
 

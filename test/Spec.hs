@@ -5,6 +5,10 @@ import Spec.BotPlutusInterface.Config qualified
 import Spec.BotPlutusInterface.Contract qualified
 import Spec.BotPlutusInterface.Server qualified
 import Spec.BotPlutusInterface.UtxoParser qualified
+import Spec.PlutusConfig.Base qualified
+import Spec.PlutusConfig.Cardano.Api qualified
+import Spec.PlutusConfig.Cardano.Api.Shelley qualified
+import Spec.PlutusConfig.Ledger qualified
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Prelude
 
@@ -20,9 +24,13 @@ tests :: TestTree
 tests =
   testGroup
     "BotPlutusInterface"
-    [ Spec.BotPlutusInterface.Config.tests
+    [ Spec.BotPlutusInterface.Balance.tests
+    , Spec.BotPlutusInterface.Config.tests
     , Spec.BotPlutusInterface.Contract.tests
-    , Spec.BotPlutusInterface.UtxoParser.tests
-    , Spec.BotPlutusInterface.Balance.tests
     , Spec.BotPlutusInterface.Server.tests
+    , Spec.BotPlutusInterface.UtxoParser.tests
+    , Spec.PlutusConfig.Base.tests
+    , Spec.PlutusConfig.Cardano.Api.Shelley.tests
+    , Spec.PlutusConfig.Cardano.Api.tests
+    , Spec.PlutusConfig.Ledger.tests
     ]

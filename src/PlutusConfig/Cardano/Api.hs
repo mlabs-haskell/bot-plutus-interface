@@ -4,15 +4,8 @@
 
 {-# OPTIONS -fno-warn-orphans  #-}
 
-module BotPlutusInterface.Config.Cardano.Api () where
+module PlutusConfig.Cardano.Api () where
 
-import BotPlutusInterface.Config.Base (
-  customRationalSpec,
-  textSpecViaJSON,
-  toValueTextViaJSON,
- )
-import BotPlutusInterface.Config.Types (ToValue (toValue))
-import BotPlutusInterface.Types ()
 import Cardano.Api (
   AnyPlutusScriptVersion,
   CostModel (CostModel),
@@ -51,6 +44,12 @@ import Data.Map qualified as Map
 import Data.String (fromString)
 import Data.String.ToString (toString)
 import Data.Text qualified as Text
+import PlutusConfig.Base (
+  customRationalSpec,
+  textSpecViaJSON,
+  toValueTextViaJSON,
+ )
+import PlutusConfig.Types (ToValue (toValue))
 import Prelude
 
 instance HasSpec PraosNonce where
