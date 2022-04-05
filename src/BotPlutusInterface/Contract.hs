@@ -21,7 +21,7 @@ import BotPlutusInterface.Effects (
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug, Warn), Tip (block, slot))
-import Cardano.Api (AsType (..), EraInMode (..))
+import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
 import Control.Lens (preview, (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
@@ -250,6 +250,12 @@ writeBalancedTx contractEnv (Right tx) = do
 
     void $ newEitherT $ CardanoCLI.buildTx @w pabConf privKeys tx
 
+    -- TODO: This whole part is hacky and we should remove it.
+    let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx)
+    -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
+    alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsAlonzoEra) path
+    let cardanoTx = Tx.SomeTx (Tx alonzoBody []) AlonzoEraInCardanoMode
+
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
       else
@@ -258,13 +264,6 @@ writeBalancedTx contractEnv (Right tx) = do
           , "Tx file: " <> Files.txFilePath pabConf "raw" (Tx.txId tx)
           , "Signatories (pkh): " <> Text.unwords (map pkhToText requiredSigners)
           ]
-
-    -- TODO: This whole part is hacky and we should remove it.
-    let ext = if signable then "signed" else "raw"
-        path = Text.unpack $ Files.txFilePath pabConf ext (Tx.txId tx)
-    -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
-    alonxoTx <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTx AsAlonzoEra) path
-    let cardanoTx = Tx.SomeTx alonxoTx AlonzoEraInCardanoMode
 
     when (not pabConf.pcDryRun && signable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx
