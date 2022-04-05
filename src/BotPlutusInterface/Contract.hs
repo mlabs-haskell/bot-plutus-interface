@@ -265,12 +265,13 @@ writeBalancedTx contractEnv (Right tx) = do
     -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
     alonxoTx <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTx AsAlonzoEra) path
     let cardanoTx = Tx.SomeTx alonxoTx AlonzoEraInCardanoMode
-    -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
-    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" (Ledger.getCardanoTxId $ Left cardanoTx))
-    when signable $ mvFiles (Files.txFilePath pabConf "signed" (Tx.txId tx)) (Files.txFilePath pabConf "signed" (Ledger.getCardanoTxId $ Left cardanoTx))
 
     when (not pabConf.pcDryRun && signable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx
+
+    -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
+    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" (Ledger.getCardanoTxId $ Left cardanoTx))
+    when signable $ mvFiles (Files.txFilePath pabConf "signed" (Tx.txId tx)) (Files.txFilePath pabConf "signed" (Ledger.getCardanoTxId $ Left cardanoTx))
 
     pure cardanoTx
   where

@@ -108,7 +108,7 @@ sendAda = do
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state _ ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -189,7 +189,7 @@ sendAdaNoChange = do
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state _ ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -222,7 +222,7 @@ sendAdaStaking = do
               Constraints.mustPayToPubKeyAddress paymentPkh2 stakePkh3 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state _ ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -303,7 +303,7 @@ multisigSupport = do
         submitTx constraints
 
   -- Building and siging the tx should include both signing keys
-  assertContractWithTxId contract initState $ \state _ ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -366,7 +366,7 @@ withoutSigning = do
         submitTx constraints
 
   -- Building and siging the tx should include both signing keys
-  assertContractWithTxId contract initState $ \state _ -> do
+  assertContract contract initState $ \state -> do
     assertCommandHistory
       state
       [
@@ -411,7 +411,7 @@ sendTokens = do
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state _ ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -455,7 +455,7 @@ sendTokensWithoutName = do
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "" 5)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state _ ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -506,7 +506,7 @@ mintTokens = do
                   (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
         submitTxConstraintsWith @Void lookups constraints
 
-  assertContractWithTxId contract initState $ \state _ -> do
+  assertContract contract initState $ \state -> do
     assertCommandHistory
       state
       [
@@ -600,7 +600,7 @@ spendToValidator = do
               Constraints.mustPayToOtherScript valHash datum (Ada.lovelaceValueOf 500)
         submitTxConstraintsWith @Void lookups constraints
 
-  assertContractWithTxId contract initState $ \state _ -> do
+  assertContract contract initState $ \state -> do
     assertCommandHistory
       state
       [
@@ -691,7 +691,7 @@ redeemFromValidator = do
                 <> Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 500)
         submitTxConstraintsWith @Void lookups constraints
 
-  assertContractWithTxId contract initState $ \state _ -> do
+  assertContract contract initState $ \state -> do
     assertCommandHistory
       state
       [
@@ -782,7 +782,7 @@ withValidRange = do
                 <> Constraints.mustValidateIn (interval (POSIXTime 1643636293000) (POSIXTime 1646314693000))
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state _ ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -820,20 +820,17 @@ useWriter = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
-      test = "test"
 
       contract :: Contract (Last Text) (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         tell $ Last $ Just "Init contract"
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
-        txId <- submitTx constraints
-        tell $ Last $ Just test
-        pure txId
+        submitTx constraints
 
-  assertContractWithTxId contract initState $ \state _ -> do
+  assertContract contract initState $ \state -> do
     (state ^. observableState)
-      @?= Last (Just test)
+      @?= Last (Just "Init contract")
 
 waitNextBlock :: Assertion
 waitNextBlock = do
@@ -887,6 +884,20 @@ assertContractWithTxId contract initState assertion = do
     Right tx ->
       let outTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx
        in assertion state outTxId
+
+assertContract ::
+  forall (w :: Type) (s :: Row Type).
+  (ToJSON w, Monoid w) =>
+  Contract w s Text CardanoTx ->
+  MockContractState w ->
+  (MockContractState w -> Assertion) ->
+  Assertion
+assertContract contract initState assertion = do
+  let (result, state) = runContractPure contract initState
+
+  case result of
+    Left errMsg -> assertFailure (show errMsg)
+    Right _ -> assertion state
 
 assertCommandHistory :: forall (w :: Type). MockContractState w -> [(Int, Text)] -> Assertion
 assertCommandHistory state =
