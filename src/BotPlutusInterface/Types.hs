@@ -28,7 +28,7 @@ import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Ledger (PubKeyHash)
+import Ledger (PubKeyHash, StakePubKeyHash)
 import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
@@ -62,6 +62,7 @@ data PABConfig = PABConfig
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
   , pcOwnPubKeyHash :: !PubKeyHash
+  , pcOwnStakePubKeyHash :: !(Maybe StakePubKeyHash)
   , pcTipPollingInterval :: !Natural
   , -- | Forced budget for scripts, as optional (CPU Steps, Memory Units)
     pcForceBudget :: !(Maybe (Integer, Integer))
@@ -127,6 +128,7 @@ instance Default PABConfig where
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
       , pcOwnPubKeyHash = ""
+      , pcOwnStakePubKeyHash = Nothing
       , pcForceBudget = Nothing
       , pcPort = 9080
       , pcEnableTxEndpoint = False

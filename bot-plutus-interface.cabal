@@ -85,6 +85,7 @@ library
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
     BotPlutusInterface.Server
+    BotPlutusInterface.Helpers
   build-depends:
     , aeson                      ^>=1.5.0.0
     , attoparsec                 >=0.13.2.2

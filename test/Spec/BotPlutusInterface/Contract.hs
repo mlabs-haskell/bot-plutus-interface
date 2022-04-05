@@ -12,11 +12,11 @@ import Data.Char (isSpace)
 import Data.Default (def)
 import Data.Function (on)
 import Data.Kind (Type)
+import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Last (Last))
 import Data.Row (Row)
-import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
@@ -108,7 +108,7 @@ sendAda = do
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -162,16 +162,16 @@ sendAda = do
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
         )
       ,
         ( 13
         , [text|
           cardano-cli transaction sign
-          --tx-body-file ./txs/tx-${outTxId}.raw
+          --tx-body-file ./txs/tx-?.raw
           --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
-          --out-file ./txs/tx-${outTxId}.signed
+          --out-file ./txs/tx-?.signed
         |]
         )
       ]
@@ -189,7 +189,7 @@ sendAdaNoChange = do
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -201,7 +201,7 @@ sendAdaNoChange = do
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 200
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
         )
       ]
@@ -222,7 +222,7 @@ sendAdaStaking = do
               Constraints.mustPayToPubKeyAddress paymentPkh2 stakePkh3 (Ada.lovelaceValueOf 1000)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -274,16 +274,16 @@ sendAdaStaking = do
           --tx-out ${addr2Staking}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 200
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
         )
       ,
         ( 7
         , [text|
           cardano-cli transaction sign
-          --tx-body-file ./txs/tx-${outTxId}.raw
+          --tx-body-file ./txs/tx-?.raw
           --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
-          --out-file ./txs/tx-${outTxId}.signed
+          --out-file ./txs/tx-?.signed
         |]
         )
       ]
@@ -303,7 +303,7 @@ multisigSupport = do
         submitTx constraints
 
   -- Building and siging the tx should include both signing keys
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -328,17 +328,17 @@ multisigSupport = do
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --required-signer ./signing-keys/signing-key-${pkh3'}.skey
           --fee 200
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
       ,
         ( 7
         , [text| 
           cardano-cli transaction sign
-          --tx-body-file ./txs/tx-${outTxId}.raw
+          --tx-body-file ./txs/tx-?.raw
           --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
           --signing-key-file ./signing-keys/signing-key-${pkh3'}.skey
-          --out-file ./txs/tx-${outTxId}.signed
+          --out-file ./txs/tx-?.signed
           |]
         )
       ]
@@ -366,7 +366,7 @@ withoutSigning = do
         submitTx constraints
 
   -- Building and siging the tx should include both signing keys
-  assertContractWithTxId contract initState $ \state outTxId -> do
+  assertContract contract initState $ \state -> do
     assertCommandHistory
       state
       [
@@ -379,7 +379,7 @@ withoutSigning = do
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --required-signer-hash ${pkh3'}
           --fee 200
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
       ]
@@ -411,7 +411,7 @@ sendTokens = do
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -424,7 +424,7 @@ sendTokens = do
           --tx-out ${addr2}+1000 + 5 abcd1234.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
         )
       ]
@@ -455,7 +455,7 @@ sendTokensWithoutName = do
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "" 5)
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -468,7 +468,7 @@ sendTokensWithoutName = do
           --tx-out ${addr2}+1000 + 5 abcd1234
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
       ]
@@ -506,7 +506,7 @@ mintTokens = do
                   (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
         submitTxConstraintsWith @Void lookups constraints
 
-  assertContractWithTxId contract initState $ \state outTxId -> do
+  assertContract contract initState $ \state -> do
     assertCommandHistory
       state
       [
@@ -539,7 +539,7 @@ mintTokens = do
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 502300
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
       ]
@@ -549,8 +549,8 @@ mintTokens = do
       [ [text|./result-scripts/policy-${curSymbol'}.plutus|]
       , [text|./result-scripts/redeemer-${redeemerHash}.json|]
       , [text|./signing-keys/signing-key-${pkh1'}.skey|]
-      , [text|./txs/tx-${outTxId}.raw|]
-      , [text|./txs/tx-${outTxId}.signed|]
+      , [text|./txs/tx-?.raw|]
+      , [text|./txs/tx-?.signed|]
       ]
 
 spendToValidator :: Assertion
@@ -600,7 +600,7 @@ spendToValidator = do
               Constraints.mustPayToOtherScript valHash datum (Ada.lovelaceValueOf 500)
         submitTxConstraintsWith @Void lookups constraints
 
-  assertContractWithTxId contract initState $ \state outTxId -> do
+  assertContract contract initState $ \state -> do
     assertCommandHistory
       state
       [
@@ -627,7 +627,7 @@ spendToValidator = do
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
       ]
@@ -636,8 +636,8 @@ spendToValidator = do
       state
       [ [text|./result-scripts/datum-${datumHash'}.json|]
       , [text|./signing-keys/signing-key-${pkh1'}.skey|]
-      , [text|./txs/tx-${outTxId}.raw|]
-      , [text|./txs/tx-${outTxId}.signed|]
+      , [text|./txs/tx-?.raw|]
+      , [text|./txs/tx-?.signed|]
       ]
 
 redeemFromValidator :: Assertion
@@ -691,7 +691,7 @@ redeemFromValidator = do
                 <> Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 500)
         submitTxConstraintsWith @Void lookups constraints
 
-  assertContractWithTxId contract initState $ \state outTxId -> do
+  assertContract contract initState $ \state -> do
     assertCommandHistory
       state
       [
@@ -724,7 +724,7 @@ redeemFromValidator = do
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 502400
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
       ]
@@ -735,8 +735,8 @@ redeemFromValidator = do
       , [text|./result-scripts/redeemer-${redeemerHash}.json|]
       , [text|./result-scripts/validator-${valHash'}.plutus|]
       , [text|./signing-keys/signing-key-${pkh1'}.skey|]
-      , [text|./txs/tx-${outTxId}.raw|]
-      , [text|./txs/tx-${outTxId}.signed|]
+      , [text|./txs/tx-?.raw|]
+      , [text|./txs/tx-?.signed|]
       ]
 
 multiTx :: Assertion
@@ -758,18 +758,15 @@ multiTx = do
 
   case result of
     Left errMsg -> assertFailure (show errMsg)
-    Right [tx1, tx2] ->
-      let outTxId1 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx1
-          outTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx2
-       in assertFiles
-            state
-            [ [text|./signing-keys/signing-key-${pkh1'}.skey|]
-            , [text|./txs/tx-${outTxId1}.raw|]
-            , [text|./txs/tx-${outTxId2}.raw|]
-            , [text|./txs/tx-${outTxId1}.signed|]
-            , [text|./txs/tx-${outTxId2}.signed|]
-            ]
-    Right _ -> assertFailure "Wrong number of txs"
+    Right _ ->
+      assertFiles
+        state
+        [ [text|./signing-keys/signing-key-${pkh1'}.skey|]
+        , [text|./txs/tx-?.raw|]
+        , [text|./txs/tx-?.raw|]
+        , [text|./txs/tx-?.signed|]
+        , [text|./txs/tx-?.signed|]
+        ]
 
 withValidRange :: Assertion
 withValidRange = do
@@ -785,7 +782,7 @@ withValidRange = do
                 <> Constraints.mustValidateIn (interval (POSIXTime 1643636293000) (POSIXTime 1646314693000))
         submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId ->
+  assertContract contract initState $ \state ->
     assertCommandHistory
       state
       [
@@ -813,7 +810,7 @@ withValidRange = do
           --invalid-hereafter 50255602
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 200
-          --protocol-params-file ./protocol.json --out-file ./txs/tx-${outTxId}.raw
+          --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
       ]
@@ -829,13 +826,11 @@ useWriter = do
         tell $ Last $ Just "Init contract"
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
-        txId <- submitTx constraints
-        tell $ Last $ Just $ Text.pack $ show $ Tx.txId <$> txId
-        pure txId
+        submitTx constraints
 
-  assertContractWithTxId contract initState $ \state outTxId -> do
+  assertContract contract initState $ \state -> do
     (state ^. observableState)
-      @?= Last (Just ("Right " <> outTxId))
+      @?= Last (Just "Init contract")
 
 waitNextBlock :: Assertion
 waitNextBlock = do
@@ -863,8 +858,9 @@ waitNextBlock = do
 assertFiles :: forall (w :: Type). MockContractState w -> [Text] -> Assertion
 assertFiles state expectedFiles =
   assertBool errorMsg $
-    Set.fromList (map Text.unpack expectedFiles) `Set.isSubsetOf` Map.keysSet (state ^. files)
+    List.null $ List.deleteFirstsBy (flip commandEqual) expectedFiles fileNames
   where
+    fileNames = Text.pack <$> Map.keys (state ^. files)
     errorMsg =
       unlines
         [ "expected (at least):"
@@ -888,6 +884,20 @@ assertContractWithTxId contract initState assertion = do
     Right tx ->
       let outTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.getCardanoTxId tx
        in assertion state outTxId
+
+assertContract ::
+  forall (w :: Type) (s :: Row Type).
+  (ToJSON w, Monoid w) =>
+  Contract w s Text CardanoTx ->
+  MockContractState w ->
+  (MockContractState w -> Assertion) ->
+  Assertion
+assertContract contract initState assertion = do
+  let (result, state) = runContractPure contract initState
+
+  case result of
+    Left errMsg -> assertFailure (show errMsg)
+    Right _ -> assertion state
 
 assertCommandHistory :: forall (w :: Type). MockContractState w -> [(Int, Text)] -> Assertion
 assertCommandHistory state =

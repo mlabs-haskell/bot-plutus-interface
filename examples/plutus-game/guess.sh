@@ -6,7 +6,7 @@ CONTRACT_INST_ID=$(curl --location --request POST 'localhost:9080/api/contract/a
     "caID": {
         "tag": "Guess",
         "contents": {
-            "guessGameId": 2,
+            "guessGameId": 3,
             "guessSecret": "secret"
         }
     }
