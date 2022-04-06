@@ -3,8 +3,8 @@ on:
     paths:
       - '**.hs'
       - '**.nix'
-      - 'nix/sources.json'
-      - 'mlabs-pab.cabal'
+      - '*.cabal'
+      - '.gitmodules'
     branches:
       - master
       - staging
@@ -12,8 +12,8 @@ on:
     paths:
       - '**.hs'
       - '**.nix'
-      - 'nix/sources.json'
-      - 'mlabs-pab.cabal'
+      - '*.cabal'
+      - '.gitmodules'
 jobs:
   check-formatting:
     runs-on: ubuntu-latest
@@ -50,10 +50,12 @@ jobs:
 
       - run: ~/.local/bin/hlint $(git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.hs')
         name: Lint
+
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        submodules: true
       - uses: cachix/install-nix-action@v13
         name: Set up nix and IOHK cache
         with:
