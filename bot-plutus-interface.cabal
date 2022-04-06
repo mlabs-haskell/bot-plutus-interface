@@ -86,11 +86,6 @@ library
     BotPlutusInterface.Server
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
-    PlutusConfig.Base
-    PlutusConfig.Cardano.Api
-    PlutusConfig.Cardano.Api.Shelley
-    PlutusConfig.Ledger
-    PlutusConfig.Types
 
   build-depends:
     , aeson                      ^>=1.5.0.0
@@ -118,6 +113,7 @@ library
     , playground-common
     , plutus-chain-index
     , plutus-chain-index-core
+    , plutus-config
     , plutus-contract
     , plutus-core
     , plutus-ledger
@@ -163,11 +159,6 @@ test-suite bot-plutus-interface-test
     Spec.BotPlutusInterface.Server
     Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
-    Spec.PlutusConfig.Base
-    Spec.PlutusConfig.Cardano.Api
-    Spec.PlutusConfig.Cardano.Api.Shelley
-    Spec.PlutusConfig.Ledger
-    Spec.PlutusConfig.Misc
 
   build-depends:
     , aeson                      ^>=1.5.0.0
@@ -197,6 +188,7 @@ test-suite bot-plutus-interface-test
     , playground-common
     , plutus-chain-index
     , plutus-chain-index-core
+    , plutus-config
     , plutus-contract
     , plutus-core
     , plutus-ledger

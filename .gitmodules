@@ -1,0 +1,3 @@
+[submodule "plutus-config"]
+	path = plutus-config
+	url = git@github.com:mlabs-haskell/plutus-config.git
