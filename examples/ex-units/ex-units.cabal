@@ -24,7 +24,7 @@ common common-lang
   ghc-options:
     -Wall -Wcompat -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wredundant-constraints 
-    -- -Werror
+    -Werror
     -fobject-code -fno-ignore-interface-pragmas
     -fno-omit-interface-pragmas -Wunused-packages
     -fplugin-opt PlutusTx.Plugin:defer-errors
@@ -76,7 +76,6 @@ library
   import:          common-lang
   exposed-modules: 
     LockSpend
-    LockSpendSingle
 
   build-depends:
       plutus-ledger
@@ -86,10 +85,7 @@ library
     , plutus-ledger-constraints
     , plutus-pab
     , plutus-tx
-    , plutus-tx-plugin
     , text
-    , aeson
-    , lens
 
     
 
@@ -98,7 +94,7 @@ library
 executable ex-units-run
   import:         common-lang
   build-depends:
-      aeson                 ^>=1.5.0.0
+    , aeson
     , bot-plutus-interface
     , cardano-api
     , data-default
@@ -108,7 +104,6 @@ executable ex-units-run
     , text
     , directory
     , plutus-ledger
-    , plutus-tx
     , uuid
     , stm
     , plutus-pab

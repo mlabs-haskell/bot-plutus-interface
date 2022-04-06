@@ -25,7 +25,7 @@ import BotPlutusInterface.Files (
   txFilePath,
   validatorScriptFilePath,
  )
-import BotPlutusInterface.Types (PABConfig, Tip)
+import BotPlutusInterface.Types (MintBudgets, PABConfig, SpendBudgets, Tip, TxBudget, emptyBudget, mintBudgets, spendBudgets)
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
 import Control.Monad (join)
@@ -183,7 +183,7 @@ buildDraftTx ::
   Tx ->
   Eff effs (Either Text FilePath)
 buildDraftTx pabConf privKeys tx = do
-  _ <- buildTx @w pabConf privKeys (mempty, mempty) tx
+  _ <- buildTx @w pabConf privKeys emptyBudget tx
   return $ Right (Text.unpack $ txFilePath pabConf "raw" tx)
 
 -- | Build a tx body and write it to disk
@@ -192,12 +192,12 @@ buildTx ::
   Member (PABEffect w) effs =>
   PABConfig ->
   Map PubKeyHash DummyPrivKey ->
-  (ExBudget, ExBudget) ->
+  TxBudget ->
   Tx ->
   Eff effs (Either Text ExBudget)
-buildTx pabConf privKeys (maxSpendBudget, maxMintBudget) tx = do
-  let (ins, valBudget) = txInOpts maxSpendBudget pabConf (txInputs tx)
-      (mints, mintBudget) = mintOpts maxMintBudget pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
+buildTx pabConf privKeys txBudget tx = do
+  let (ins, valBudget) = txInOpts (spendBudgets txBudget) pabConf (txInputs tx)
+      (mints, mintBudget) = mintOpts (mintBudgets txBudget) pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
   callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const $ valBudget <> mintBudget)
   where
     requiredSigners =
@@ -272,11 +272,14 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInOpts :: ExBudget -> PABConfig -> Set TxIn -> ([Text], ExBudget)
-txInOpts maxBudget pabConf =
+txInOpts :: SpendBudgets -> PABConfig -> Set TxIn -> ([Text], ExBudget)
+txInOpts spendIndex pabConf =
   foldMap
     ( \(TxIn txOutRef txInType) ->
-        let (opts, exBudget) = scriptInputs txInType
+        let (opts, exBudget) =
+              scriptInputs
+                txInType
+                (Map.findWithDefault mempty txOutRef spendIndex)
          in (,exBudget) $
               mconcat
                 [ ["--tx-in", txOutRefToCliArg txOutRef]
@@ -285,30 +288,29 @@ txInOpts maxBudget pabConf =
     )
     . Set.toList
   where
-    scriptInputs :: Maybe TxInType -> ([Text], ExBudget)
-    scriptInputs txInType =
+    scriptInputs :: Maybe TxInType -> ExBudget -> ([Text], ExBudget)
+    scriptInputs txInType exBudget =
       case txInType of
         Just (ConsumeScriptAddress validator redeemer datum) ->
-          let exBudget = maxBudget
-           in (,exBudget) $
-                mconcat
-                  [
-                    [ "--tx-in-script-file"
-                    , validatorScriptFilePath pabConf (Ledger.validatorHash validator)
-                    ]
-                  ,
-                    [ "--tx-in-datum-file"
-                    , datumJsonFilePath pabConf (Ledger.datumHash datum)
-                    ]
-                  ,
-                    [ "--tx-in-redeemer-file"
-                    , redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
-                    ]
-                  ,
-                    [ "--tx-in-execution-units"
-                    , exBudgetToCliArg exBudget
-                    ]
-                  ]
+          (,exBudget) $
+            mconcat
+              [
+                [ "--tx-in-script-file"
+                , validatorScriptFilePath pabConf (Ledger.validatorHash validator)
+                ]
+              ,
+                [ "--tx-in-datum-file"
+                , datumJsonFilePath pabConf (Ledger.datumHash datum)
+                ]
+              ,
+                [ "--tx-in-redeemer-file"
+                , redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
+                ]
+              ,
+                [ "--tx-in-execution-units"
+                , exBudgetToCliArg exBudget
+                ]
+              ]
         Just ConsumePublicKeyAddress -> mempty
         Just ConsumeSimpleScriptAddress -> mempty
         Nothing -> mempty
@@ -318,20 +320,25 @@ txInCollateralOpts =
   concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef]) . Set.toList
 
 -- Minting options
-mintOpts :: ExBudget -> PABConfig -> Set Scripts.MintingPolicy -> Redeemers -> Value -> ([Text], ExBudget)
-mintOpts maxBudget pabConf mintingPolicies redeemers mintValue =
+mintOpts :: MintBudgets -> PABConfig -> Set Scripts.MintingPolicy -> Redeemers -> Value -> ([Text], ExBudget)
+mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
   let scriptOpts =
         foldMap
           ( \(idx, policy) ->
               let redeemerPtr = RedeemerPtr Mint idx
                   redeemer = Map.lookup redeemerPtr redeemers
                   curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
+                  exBudget =
+                    Map.findWithDefault
+                      mempty
+                      (Scripts.mintingPolicyHash policy)
+                      mintIndex
                   toOpts r =
-                    (,maxBudget) $
+                    (,exBudget) $
                       mconcat
                         [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
                         , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Ledger.redeemerHash r)]
-                        , ["--mint-execution-units", exBudgetToCliArg maxBudget]
+                        , ["--mint-execution-units", exBudgetToCliArg exBudget]
                         ]
                in orMempty $ fmap toOpts redeemer
           )

@@ -37,7 +37,7 @@ main = do
   cEnv <- mkContractEnv nodeInfo clusterDir
   res <- BPI.runContract cEnv lockThenSpend
   putStrLn $ case res of
-    Right _ -> "=== OK ==="
+    Right r -> "=== OK ===\n" ++ show r
     Left e -> "=== FAILED ===\n" ++ show e
 
 mkContractEnv :: Monoid w => BPI.NodeInfo -> FilePath -> IO (ContractEnvironment w)

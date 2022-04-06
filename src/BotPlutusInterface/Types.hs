@@ -18,13 +18,12 @@ module BotPlutusInterface.Types (
   TxFile (..),
   TxBudget (..),
   BudgetEstimationError (..),
-  ApiUnitsMap,
-  ExBudgetsMap,
-  SpendingBudget,
-  MintingBudget,
+  SpendBudgets,
+  MintBudgets,
+  emptyBudget,
 ) where
 
-import Cardano.Api (ExecutionUnits, NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
+import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
@@ -35,7 +34,7 @@ import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Ledger (ExBudget, PubKeyHash)
+import Ledger (ExBudget, MintingPolicyHash, PubKeyHash, TxOutRef)
 import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
@@ -153,35 +152,35 @@ deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx
  (wraps whatever received in `Text`)
 -}
 data BudgetEstimationError
-  = BudgetEstimationError Text
+  = -- | general error for `Cardano.Api` errors
+    BudgetEstimationError !Text
+  | -- | script evaluation failed during budget estimation
+    ScriptFailure ScriptExecutionError
+  | {- budget for input or policy was not found after estimation
+       (arguably should not happen at all) -}
+    BudgetNotFound ScriptWitnessIndex
   deriving stock (Show)
 
 -- | Type of transaction file used for budget estimation
-data TxFile -- TODO: check file extension correctness
+data TxFile
   = -- | for using with ".raw" files
-    Raw FilePath
+    Raw !FilePath
   | -- | for using with ".signed" files
-    Signed FilePath
+    Signed !FilePath
 
-{- | Result of budget estimation
- (still under development)
--}
+-- | Result of budget estimation
 data TxBudget = TxBudget
-  { -- | debug information
-    exUnitsMap :: ApiUnitsMap
-  , -- | debug information
-    exBudgetsMap :: ExBudgetsMap
-  , -- | max calculated budget that will fit any spending input
-    overallSpendMax :: SpendingBudget
-  , -- | max calculated budget that will fit any minting policy
-    overallMintMax :: MintingBudget
+  { -- | budgets for spending inputs
+    spendBudgets :: !SpendBudgets
+  , -- | budgets for minting policies
+    mintBudgets :: !MintBudgets
   }
   deriving stock (Show)
 
--- | WIP: Helper types, most likely they will become obsolete
-type ApiUnitsMap = Map ScriptWitnessIndex (Either ScriptExecutionError ExecutionUnits)
+-- | Budget with no estimations for `CardanoCLI.buildDraftTx`
+emptyBudget :: TxBudget
+emptyBudget = TxBudget mempty mempty
 
-type ExBudgetsMap = Map ScriptWitnessIndex (Either ScriptExecutionError ExBudget)
+type SpendBudgets = Map TxOutRef ExBudget
 
-type SpendingBudget = ExBudget
-type MintingBudget = ExBudget
+type MintBudgets = Map MintingPolicyHash ExBudget

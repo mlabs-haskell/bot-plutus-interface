@@ -7,6 +7,7 @@ module BotPlutusInterface.BodyBuilder (buildRaw) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (PABEffect, estimateBudget)
+
 import BotPlutusInterface.Files (
   DummyPrivKey,
  )
@@ -20,7 +21,6 @@ import Data.Text qualified as Text
 import Ledger (ExBudget, Tx)
 import Ledger.Crypto (PubKeyHash)
 import Prelude
-import BotPlutusInterface.Estimate (getMaxBudgets)
 
 {- | Build and save raw transaction (transaction body) with estimated execution budgets using `CardanoCLI`.
  It builds first transaction body with 0 budget for all spending inputs and minting policies,
@@ -49,7 +49,7 @@ buildRaw pabConf privKeys tx = runEitherT $ do
         CardanoCLI.buildTx @w
           pabConf
           privKeys
-          (getMaxBudgets exBudget)
+          exBudget
           tx
 
     toText = Text.pack . show

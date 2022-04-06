@@ -48,13 +48,15 @@ module Spec.MockContract (
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
-import BotPlutusInterface.Estimate qualified as Estimate
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (
+  BudgetEstimationError,
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   LogLevel (..),
-  PABConfig (..), TxFile, BudgetEstimationError, TxBudget
+  PABConfig (..),
+  TxBudget (TxBudget),
+  TxFile,
  )
 import Cardano.Api (
   AsType,
@@ -82,7 +84,7 @@ import Control.Monad.Freer (Eff, reinterpret2, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
-import Data.Aeson (ToJSON)
+import Data.Aeson (Result (Success), ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
@@ -571,4 +573,26 @@ mockExBudget ::
   forall (w :: Type).
   TxFile ->
   MockContract w (Either BudgetEstimationError TxBudget)
-mockExBudget _ = pure $ Right Estimate.testBudget
+mockExBudget _ = pure . Right $ TxBudget inBudgets policyBudgets
+  where
+    inBudgets = Map.singleton (TxOutRef txId 1) someBudget
+    policyBudgets = Map.singleton policy someBudget
+
+    someBudget = Ledger.ExBudget (Ledger.ExCPU 500000) (Ledger.ExMemory 2000)
+
+    txId =
+      let txId' =
+            JSON.fromJSON $
+              JSON.object
+                ["getTxId" JSON..= ("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" :: Text)]
+       in case txId' of
+            Success tid -> tid
+            _ -> error "Could not parse TxId"
+
+    policy =
+      let policy' =
+            JSON.fromJSON . JSON.String $
+              "648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198"
+       in case policy' of
+            Success p -> p
+            _ -> error "Could not parse MintingPolicyHash"

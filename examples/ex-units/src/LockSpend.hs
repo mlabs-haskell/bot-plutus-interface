@@ -16,7 +16,7 @@ import Ledger
     scriptCurrencySymbol,
     unitDatum,
     unitRedeemer,
-    validatorHash, TxInfo (txInfoMint)
+    validatorHash, TxInfo (txInfoMint), TxOutRef, ChainIndexTxOut, PaymentPubKeyHash (PaymentPubKeyHash), pubKeyHashAddress
   )
 import Ledger.Constraints qualified as Constraints
 import Ledger.Typed.Scripts (wrapMintingPolicy)
@@ -30,12 +30,19 @@ import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx qualified
 import PlutusTx.Prelude qualified as PP
 import Prelude
+import Control.Monad (void)
+import Plutus.V1.Ledger.Ada (adaValueOf)
 
-lockThenSpend :: Contract () EmptySchema Text (TxId, CardanoTx)
+lockThenSpend :: Contract () EmptySchema Text [(TxOutRef, ChainIndexTxOut)]
 lockThenSpend = do
-  _ <-lockAtScript
-  _ <- Contract.waitNSlots 1
-  spendFromScript
+  _ <- lockAtScript
+  wait 1
+  _ <- spendFromScript
+  wait 1
+  pkh <- Contract.ownPaymentPubKeyHash 
+  Map.toList <$> Contract.utxosAt (pubKeyHashAddress pkh Nothing)
+  where
+    wait = void . Contract.waitNSlots
 
 lockAtScript :: Contract () EmptySchema Text (TxId, CardanoTx)
 lockAtScript = do
@@ -63,8 +70,7 @@ spendFromScript = do
     ((oref1, _) : _, (oref2, _) : _) -> spendUtxo oref1 utxos1 oref2 utxos2
   where
     spendUtxo oref1 utxos1 oref2 utxos2 = do
-      let -- (JSON.Success tokenName) = JSON.fromJSON $ JSON.object ["unTokenName" .= ("ff" :: Text)]
-          token = Value.singleton currencySymbol (tokenName "ff") 1
+      let token = Value.singleton currencySymbol (tokenName "ff") 1
           txc1 =
             Constraints.mustSpendScriptOutput oref1 unitRedeemer
               <> Constraints.mustMintValueWithRedeemer unitRedeemer token
@@ -74,6 +80,9 @@ spendFromScript = do
               <> Constraints.mintingPolicy mintingPolicy
 
       let txc2 = Constraints.mustSpendScriptOutput oref2 unitRedeemer
+                 <> Constraints.mustPayToPubKey 
+                      (PaymentPubKeyHash "72cae61f85ed97fb0e7703d9fec382e4973bf47ea2ac9335cab1e3fe") 
+                      (adaValueOf 200)  
           lookups2 =
             Constraints.unspentOutputs (Map.fromList utxos2)
               <> Constraints.otherScript (validator2 2)
@@ -118,11 +127,9 @@ mkValidator2 i _ _ _ =
     then PP.traceIfFalse "looooooooooooong" check
     else PP.traceIfFalse "short" check
   where
-    !someWork = PP.sort $ PP.reverse [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] :: [Integer]
+    someWork = PP.sort $ PP.reverse [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] :: [Integer]
     check = PP.length someWork PP.== 10
 
---   info = scriptContextTxInfo ctx
---   check = PP.length (txInfoOutputs info) PP.== 1
 
 data TestLockSpend2
 
@@ -150,12 +157,12 @@ mkPolicy :: () -> ScriptContext -> Bool
 mkPolicy _ !ctx =
   PP.traceIfFalse "Let me mint" check
   where
-    !info = scriptContextTxInfo ctx
-    !check =
+    info = scriptContextTxInfo ctx
+    check =
       PP.length (flattenValue PP.$ txInfoMint info) PP.== 1
         PP.&& PP.length someWork PP.== 10
 
-    !someWork = PP.sort [9, 8, 7, 6, 5, 4, 3, 2, 1, 0] :: [Integer]
+    someWork = PP.sort [9, 8, 7, 6, 5, 4, 3, 2, 1, 0] :: [Integer]
 
 mintingPolicy :: MintingPolicy
 mintingPolicy =
