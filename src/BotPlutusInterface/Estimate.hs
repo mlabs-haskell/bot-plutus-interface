@@ -136,17 +136,23 @@ mkBudgetMaps exUnitsMap txBody = do
     mkInputsIndex =
       Map.fromList
         . zip [0 ..]
-        -- This relies on the TxId Ord instance being consistent with the
-        -- Ledger.TxId Ord instance via the toShelleyTxId conversion
-        -- This is checked by prop_ord_distributive_TxId
+        {- This relies on the TxId Ord instance being consistent with the
+           Ledger.TxId Ord instance via the toShelleyTxId conversion
+           This is checked by prop_ord_distributive_TxId
+           reference:
+           https://github.com/input-output-hk/cardano-node/blob/e31455eaeca98530ce561b79687a8e465ebb3fdd/cardano-api/src/Cardano/Api/TxBody.hs#L2887
+        -}
         . sort
-        . map fst
+        . map fst -- get only `TxIn`'s from `TxIns` (which is list of tuples)
         . CAPI.txIns
 
     mkPoliciesIndex txbc =
       case CAPI.txMintValue txbc of
         CAPI.TxMintValue _ value _ ->
-          -- The minting policies are indexed in policy id order in the value -- TODO: link to source
+          {- The minting policies are indexed in policy id order in the value
+             reference:
+             https://github.com/input-output-hk/cardano-node/blob/e31455eaeca98530ce561b79687a8e465ebb3fdd/cardano-api/src/Cardano/Api/TxBody.hs#L2851
+          -}
           let CAPI.ValueNestedRep bundle = CAPI.valueToNestedRep value
            in Map.fromList
                 [ (ix, policyId)
