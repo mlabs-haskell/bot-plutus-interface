@@ -81,6 +81,7 @@ library
     , cardano-crypto
     , cardano-ledger-alonzo
     , containers
+    , bot-plutus-interface
     , data-default
     , data-default-class
     , directory

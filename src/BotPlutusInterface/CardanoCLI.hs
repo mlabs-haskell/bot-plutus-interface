@@ -72,6 +72,7 @@ import Ledger.Tx (
   TxInType (..),
   TxOut (..),
   TxOutRef (..),
+  txId,
  )
 import Ledger.TxId (TxId (..))
 import Ledger.Value (Value)
@@ -162,7 +163,7 @@ calculateMinFee pabConf tx =
         , cmdArgs =
             mconcat
               [ ["transaction", "calculate-min-fee"]
-              , ["--tx-body-file", txFilePath pabConf "raw" tx]
+              , ["--tx-body-file", txFilePath pabConf "raw" (txId tx)]
               , ["--tx-in-count", showText $ length $ txInputs tx]
               , ["--tx-out-count", showText $ length $ txOutputs tx]
               , ["--witness-count", showText $ length $ txSignatures tx]
@@ -225,7 +226,7 @@ buildTx pabConf privKeys txBudget tx = do
         , ["--fee", showText . getLovelace . fromValue $ txFee tx]
         , mconcat
             [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            , ["--out-file", txFilePath pabConf "raw" tx]
+            , ["--out-file", txFilePath pabConf "raw" (txId tx)]
             ]
         ]
 
@@ -248,9 +249,9 @@ signTx pabConf tx pubKeys =
     opts =
       mconcat
         [ ["transaction", "sign"]
-        , ["--tx-body-file", txFilePath pabConf "raw" tx]
+        , ["--tx-body-file", txFilePath pabConf "raw" (txId tx)]
         , signingKeyFiles
-        , ["--out-file", txFilePath pabConf "signed" tx]
+        , ["--out-file", txFilePath pabConf "signed" (txId tx)]
         ]
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
@@ -266,7 +267,7 @@ submitTx pabConf tx =
       "cardano-cli"
       ( mconcat
           [ ["transaction", "submit"]
-          , ["--tx-file", txFilePath pabConf "signed" tx]
+          , ["--tx-file", txFilePath pabConf "signed" (txId tx)]
           , networkOpt pabConf
           ]
       )
@@ -394,8 +395,8 @@ networkOpt pabConf = case pabConf.pcNetwork of
   Mainnet -> ["--mainnet"]
 
 txOutRefToCliArg :: TxOutRef -> Text
-txOutRefToCliArg (TxOutRef (TxId txId) txIx) =
-  encodeByteString (fromBuiltin txId) <> "#" <> showText txIx
+txOutRefToCliArg (TxOutRef (TxId tId) txIx) =
+  encodeByteString (fromBuiltin tId) <> "#" <> showText txIx
 
 flatValueToCliArg :: (CurrencySymbol, TokenName, Integer) -> Text
 flatValueToCliArg (curSymbol, name, amount)

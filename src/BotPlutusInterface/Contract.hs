@@ -8,28 +8,33 @@ import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (
   PABEffect,
+  ShellArgs (..),
+  callCommand,
   createDirectoryIfMissing,
   handlePABEffect,
   logToContract,
   printLog,
   queryChainIndex,
+  readFileTextEnvelope,
   threadDelay,
   uploadDir,
  )
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug, Warn), Tip (slot))
-import Control.Lens ((^.))
-import Control.Monad (void)
+import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug, Warn), Tip (block, slot))
+import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
+import Control.Lens (preview, (^.))
+import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (eitherT, firstEitherT, newEitherT, secondEitherT)
+import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
 import Data.Aeson (ToJSON, Value)
 import Data.Aeson.Extras (encodeByteString)
+import Data.Either (fromRight)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
@@ -43,13 +48,16 @@ import Ledger.Slot (Slot (Slot))
 import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
-import Plutus.ChainIndex.Types (RollbackState (Committed), TxValidity (..))
+import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
+import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (
   BalanceTxResponse (..),
+  ChainIndexQuery (..),
   PABReq (..),
   PABResp (..),
   WriteBalancedTxResponse (..),
+  _TxIdResponse,
  )
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
@@ -149,13 +157,13 @@ handlePABReq contractEnv req = do
         PosixTimeRangeToContainedSlotRangeResp $
           Right $
             posixTimeRangeToContainedSlotRange contractEnv.cePABConfig.pcSlotConfig posixTimeRange
+    AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     ------------------------
     -- Unhandled requests --
     ------------------------
     -- AwaitTimeReq t -> pure $ AwaitTimeResp t
     -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
     -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
-    AwaitTxStatusChangeReq txId -> pure $ AwaitTxStatusChangeResp txId (Committed TxValid ())
     -- AwaitTxOutStatusChangeReq TxOutRef
     -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
     -- YieldUnbalancedTxReq UnbalancedTx
@@ -163,6 +171,42 @@ handlePABReq contractEnv req = do
 
   printLog @w Debug $ show resp
   pure resp
+
+awaitTxStatusChange ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Ledger.TxId ->
+  Eff effs TxStatus
+awaitTxStatusChange contractEnv txId = do
+  -- The depth (in blocks) after which a transaction cannot be rolled back anymore (from Plutus.ChainIndex.TxIdState)
+  let chainConstant = 8
+
+  mTx <- queryChainIndexForTxState
+  case mTx of
+    Nothing -> pure Unknown
+    Just txState -> do
+      awaitNBlocks @w contractEnv (chainConstant + 1)
+      -- Check if the tx is still present in chain-index, in case of a rollback
+      -- we might not find it anymore.
+      ciTxState' <- queryChainIndexForTxState
+      case ciTxState' of
+        Nothing -> pure Unknown
+        Just _ -> do
+          blk <- fromInteger <$> currentBlock contractEnv
+          -- This will set the validity correctly based on the txState.
+          -- The tx will always be committed, as we wait for chainConstant + 1 blocks
+          let status = transactionStatus blk txState txId
+          pure $ fromRight Unknown status
+  where
+    queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
+    queryChainIndexForTxState = do
+      mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
+      case mTx of
+        Just tx -> do
+          blk <- fromInteger <$> currentBlock contractEnv
+          pure . Just $ fromTx blk tx
+        Nothing -> pure Nothing
 
 -- | This will FULLY balance a transaction
 balanceTx ::
@@ -195,7 +239,7 @@ writeBalancedTx contractEnv (Right tx) = do
   uploadDir @w pabConf.pcSigningKeyFileDir
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
 
-  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Right) $ do
+  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Left) $ do
     void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
     lift $ uploadDir @w pabConf.pcScriptFileDir
 
@@ -207,18 +251,39 @@ writeBalancedTx contractEnv (Right tx) = do
 
     void $ newEitherT $ BodyBuilder.buildRaw @w pabConf privKeys tx
 
+    -- TODO: This whole part is hacky and we should remove it.
+    let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx)
+    -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
+    alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsAlonzoEra) path
+    let cardanoTx = Tx.SomeTx (Tx alonzoBody []) AlonzoEraInCardanoMode
+
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
       else
         lift . printLog @w Warn . Text.unpack . Text.unlines $
           [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-          , "Tx file: " <> Files.txFilePath pabConf "raw" tx
+          , "Tx file: " <> Files.txFilePath pabConf "raw" (Tx.txId tx)
           , "Signatories (pkh): " <> Text.unwords (map pkhToText requiredSigners)
           ]
 
-    if not pabConf.pcDryRun && signable
-      then secondEitherT (const tx) $ newEitherT $ CardanoCLI.submitTx @w pabConf tx
-      else pure tx
+    when (not pabConf.pcDryRun && signable) $ do
+      newEitherT $ CardanoCLI.submitTx @w pabConf tx
+
+    -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
+    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" (Ledger.getCardanoTxId $ Left cardanoTx))
+    when signable $ mvFiles (Files.txFilePath pabConf "signed" (Tx.txId tx)) (Files.txFilePath pabConf "signed" (Ledger.getCardanoTxId $ Left cardanoTx))
+
+    pure cardanoTx
+  where
+    mvFiles :: Text -> Text -> EitherT Text (Eff effs) ()
+    mvFiles src dst =
+      newEitherT $
+        callCommand @w
+          ShellArgs
+            { cmdName = "mv"
+            , cmdArgs = [src, dst]
+            , cmdOutParser = const ()
+            }
 
 pkhToText :: Ledger.PubKey -> Text
 pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
@@ -239,6 +304,26 @@ awaitSlot contractEnv s@(Slot n) = do
     Right tip'
       | n < tip'.slot -> pure $ Slot tip'.slot
     _ -> awaitSlot contractEnv s
+
+-- | Wait for n Blocks.
+awaitNBlocks ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Integer ->
+  Eff effs ()
+awaitNBlocks contractEnv n = do
+  current <- currentBlock contractEnv
+  go current
+  where
+    go :: Integer -> Eff effs ()
+    go start = do
+      threadDelay @w (fromIntegral contractEnv.cePABConfig.pcTipPollingInterval)
+      tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
+      case tip of
+        Right tip'
+          | start + n <= tip'.block -> pure ()
+        _ -> go start
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
  are applying here as well.
@@ -261,6 +346,14 @@ currentSlot ::
   Eff effs Slot
 currentSlot contractEnv =
   Slot . slot . either (error . Text.unpack) id <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+
+currentBlock ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Eff effs Integer
+currentBlock contractEnv =
+  block . either (error . Text.unpack) id <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
 
 currentTime ::
   forall (w :: Type) (effs :: [Type -> Type]).

@@ -34,7 +34,13 @@ import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Ledger (ExBudget, MintingPolicyHash, PubKeyHash, TxOutRef)
+import Ledger (
+  ExBudget,
+  MintingPolicyHash,
+  PubKeyHash,
+  StakePubKeyHash,
+  TxOutRef,
+ )
 import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
@@ -68,6 +74,7 @@ data PABConfig = PABConfig
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
   , pcOwnPubKeyHash :: !PubKeyHash
+  , pcOwnStakePubKeyHash :: !(Maybe StakePubKeyHash)
   , pcTipPollingInterval :: !Natural
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
@@ -131,6 +138,7 @@ instance Default PABConfig where
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
       , pcOwnPubKeyHash = ""
+      , pcOwnStakePubKeyHash = Nothing
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       }

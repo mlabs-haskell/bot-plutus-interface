@@ -4,13 +4,25 @@ cradle:
       component: "lib:bot-plutus-interface"
 
     - path: "./test"
-      component: "test:bot-plutus-interface-test"
+      component: "bot-plutus-interface:test:bot-plutus-interface-test"
+
+    - path: "./examples/plutus-game/src"
+      component: "lib:plutus-game"
+
+    - path: "./examples/plutus-game/app/Main.hs"
+      component: "plutus-game:exe:plutus-game-pab"
 
     - path: "./examples/plutus-nft/src"
       component: "lib:plutus-nft"
 
-    - path: "./examples/plutus-nft/app"
-      component: "exe:plutus-nft"
+    - path: "./examples/plutus-nft/app/Main.hs"
+      component: "plutus-nft:exe:plutus-nft-pab"
+
+    - path: "./examples/plutus-transfer/src"
+      component: "lib:plutus-transfer"
+
+    - path: "./examples/plutus-transfer/app/Main.hs"
+      component: "plutus-transfer:exe:plutus-transfer-pab"
 
     - path: "./examples/ex-units/app"
       component: "exe:ex-units"
