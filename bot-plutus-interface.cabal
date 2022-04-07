@@ -84,12 +84,11 @@ library
     BotPlutusInterface.Effects
     BotPlutusInterface.Estimate
     BotPlutusInterface.Files
+    BotPlutusInterface.Helpers
     BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
-    BotPlutusInterface.Server
-    BotPlutusInterface.Helpers
   build-depends:
     , aeson                      ^>=1.5.0.0
     , QuickCheck

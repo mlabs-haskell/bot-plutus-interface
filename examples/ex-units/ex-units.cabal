@@ -86,6 +86,7 @@ library
     , plutus-pab
     , plutus-tx
     , text
+    , plutus-tx-plugin
 
     
 

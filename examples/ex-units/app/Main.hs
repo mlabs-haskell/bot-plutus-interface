@@ -71,6 +71,7 @@ mkPabConf pparams pparamsFile clusterDir ownPkh =
     , pcTipPollingInterval = 1_000_000
     , pcSlotConfig = def
     , pcOwnPubKeyHash = ownPkh
+    , pcOwnStakePubKeyHash = Nothing
     , pcScriptFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/scripts"
     , pcSigningKeyFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/signing-keys"
     , pcTxFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/txs"

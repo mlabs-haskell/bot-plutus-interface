@@ -185,7 +185,7 @@ buildDraftTx ::
   Eff effs (Either Text FilePath)
 buildDraftTx pabConf privKeys tx = do
   _ <- buildTx @w pabConf privKeys emptyBudget tx
-  return $ Right (Text.unpack $ txFilePath pabConf "raw" tx)
+  return $ Right (Text.unpack $ txFilePath pabConf "raw" (txId tx))
 
 -- | Build a tx body and write it to disk
 buildTx ::
