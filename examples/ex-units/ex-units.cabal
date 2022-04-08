@@ -24,7 +24,7 @@ common common-lang
   ghc-options:
     -Wall -Wcompat -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wredundant-constraints 
-    -Werror
+    -- -Werror
     -fobject-code -fno-ignore-interface-pragmas
     -fno-omit-interface-pragmas -Wunused-packages
     -fplugin-opt PlutusTx.Plugin:defer-errors

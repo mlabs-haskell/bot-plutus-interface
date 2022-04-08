@@ -21,7 +21,7 @@ module BotPlutusInterface.Types (
   SpendBudgets,
   MintBudgets,
   emptyBudget,
-) where
+Budgets) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
@@ -192,3 +192,6 @@ emptyBudget = TxBudget mempty mempty
 type SpendBudgets = Map TxOutRef ExBudget
 
 type MintBudgets = Map MintingPolicyHash ExBudget
+
+
+type Budgets = TVar (Map Text TxBudget)

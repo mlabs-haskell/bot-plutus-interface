@@ -1,23 +1,29 @@
 module LockSpend (lockThenSpend) where
 
+import Control.Monad (void)
 import Data.Map qualified as Map
 import Data.Text (Text)
-import Ledger
-  ( Address,
-    CardanoTx,
-    CurrencySymbol,
-    MintingPolicy,
-    ScriptContext (scriptContextTxInfo),
-    TxId,
-    Validator,
-    getCardanoTxId,
-    mkMintingPolicyScript,
-    scriptAddress,
-    scriptCurrencySymbol,
-    unitDatum,
-    unitRedeemer,
-    validatorHash, TxInfo (txInfoMint), TxOutRef, ChainIndexTxOut, PaymentPubKeyHash (PaymentPubKeyHash), pubKeyHashAddress
-  )
+import Ledger (
+  Address,
+  CardanoTx,
+  ChainIndexTxOut,
+  CurrencySymbol,
+  MintingPolicy,
+  PaymentPubKeyHash (PaymentPubKeyHash),
+  ScriptContext (scriptContextTxInfo),
+  TxId,
+  TxInfo (txInfoMint),
+  TxOutRef,
+  Validator,
+  getCardanoTxId,
+  mkMintingPolicyScript,
+  pubKeyHashAddress,
+  scriptAddress,
+  scriptCurrencySymbol,
+  unitDatum,
+  unitRedeemer,
+  validatorHash,
+ )
 import Ledger.Constraints qualified as Constraints
 import Ledger.Typed.Scripts (wrapMintingPolicy)
 import Ledger.Typed.Scripts.Validators qualified as Validators
@@ -25,13 +31,12 @@ import Ledger.Value (flattenValue, tokenName)
 import Plutus.Contract (Contract, awaitTxConfirmed, submitTx, submitTxConstraintsWith)
 import Plutus.Contract qualified as Contract
 import Plutus.PAB.Effects.Contract.Builtin (EmptySchema)
+import Plutus.V1.Ledger.Ada (adaValueOf)
 import Plutus.V1.Ledger.Ada qualified as Value
 import Plutus.V1.Ledger.Value qualified as Value
 import PlutusTx qualified
 import PlutusTx.Prelude qualified as PP
 import Prelude
-import Control.Monad (void)
-import Plutus.V1.Ledger.Ada (adaValueOf)
 
 lockThenSpend :: Contract () EmptySchema Text [(TxOutRef, ChainIndexTxOut)]
 lockThenSpend = do
@@ -39,7 +44,7 @@ lockThenSpend = do
   wait 1
   _ <- spendFromScript
   wait 1
-  pkh <- Contract.ownPaymentPubKeyHash 
+  pkh <- Contract.ownPaymentPubKeyHash
   Map.toList <$> Contract.utxosAt (pubKeyHashAddress pkh Nothing)
   where
     wait = void . Contract.waitNSlots
@@ -79,10 +84,11 @@ spendFromScript = do
               <> Constraints.otherScript validator
               <> Constraints.mintingPolicy mintingPolicy
 
-      let txc2 = Constraints.mustSpendScriptOutput oref2 unitRedeemer
-                 <> Constraints.mustPayToPubKey 
-                      (PaymentPubKeyHash "72cae61f85ed97fb0e7703d9fec382e4973bf47ea2ac9335cab1e3fe") 
-                      (adaValueOf 200)  
+      let txc2 =
+            Constraints.mustSpendScriptOutput oref2 unitRedeemer
+              <> Constraints.mustPayToPubKey
+                (PaymentPubKeyHash "72cae61f85ed97fb0e7703d9fec382e4973bf47ea2ac9335cab1e3fe")
+                (adaValueOf 200)
           lookups2 =
             Constraints.unspentOutputs (Map.fromList utxos2)
               <> Constraints.otherScript (validator2 2)
@@ -130,7 +136,6 @@ mkValidator2 i _ _ _ =
     someWork = PP.sort $ PP.reverse [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] :: [Integer]
     check = PP.length someWork PP.== 10
 
-
 data TestLockSpend2
 
 instance Validators.ValidatorTypes TestLockSpend2 where
@@ -154,7 +159,7 @@ validatorAddr2 = scriptAddress . validator2
 -- minting policy
 {-# INLINEABLE mkPolicy #-}
 mkPolicy :: () -> ScriptContext -> Bool
-mkPolicy _ !ctx =
+mkPolicy _ ctx =
   PP.traceIfFalse "Let me mint" check
   where
     info = scriptContextTxInfo ctx

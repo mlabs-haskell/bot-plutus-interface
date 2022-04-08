@@ -20,7 +20,7 @@ module BotPlutusInterface.Effects (
   writeFileTextEnvelope,
   callCommand,
   estimateBudget,
-) where
+saveBudget) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.Estimate qualified as Estimate
@@ -31,7 +31,7 @@ import BotPlutusInterface.Types (
   ContractState (ContractState),
   LogLevel (..),
   TxBudget,
-  TxFile,
+  TxFile, Budgets
  )
 import Cardano.Api (AsType, FileError, HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
@@ -53,6 +53,7 @@ import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.Process (readProcess, readProcessWithExitCode)
 import Prelude hiding (readFile)
+import Data.Map qualified as Map
 
 data ShellArgs a = ShellArgs
   { cmdName :: Text
@@ -88,14 +89,16 @@ data PABEffect (w :: Type) (r :: Type) where
   UploadDir :: Text -> PABEffect w ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
   EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
+  SaveBudget :: Text -> TxBudget -> PABEffect w ()
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
   LastMember IO effs =>
   (Monoid w) =>
   ContractEnvironment w ->
+  Budgets ->
   Eff (PABEffect w ': effs) ~> Eff effs
-handlePABEffect contractEnv =
+handlePABEffect contractEnv budgets =
   interpretM
     ( \case
         CallCommand shellArgs ->
@@ -132,7 +135,11 @@ handlePABEffect contractEnv =
           handleChainIndexReq contractEnv.cePABConfig query
         EstimateBudget txPath ->
           Estimate.estimateBudget contractEnv.cePABConfig txPath
+        SaveBudget txId exBudget -> saveBudgetImpl budgets txId exBudget
     )
+
+saveBudgetImpl budgets txId budget = 
+  atomically $ modifyTVar budgets (Map.insert txId budget)
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
 printLog' logLevelSetting msgLogLvl msg =
@@ -267,3 +274,13 @@ queryChainIndex ::
   ChainIndexQuery ->
   Eff effs ChainIndexResponse
 queryChainIndex = send @(PABEffect w) . QueryChainIndex
+
+
+
+saveBudget ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Text -> 
+  TxBudget  ->
+  Eff effs ()
+saveBudget txId budget = send @(PABEffect w) $ SaveBudget txId budget

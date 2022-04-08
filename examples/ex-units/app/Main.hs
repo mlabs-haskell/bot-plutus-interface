@@ -29,13 +29,14 @@ import Prelude
 -}
 main :: IO ()
 main = do
-  [sockPath, clusterDir, cliDir] <- getArgs
-  setEnv "CARDANO_NODE_SOCKET_PATH" sockPath
+  [clusterDir, cliDir] <- getArgs
+  let socketPath = clusterDir ++ "/node/node.socket"
+  setEnv "CARDANO_NODE_SOCKET_PATH" socketPath
   getEnv "PATH" >>= \p -> setEnv "PATH" (p ++ ":" ++ cliDir)
-  let nodeInfo = BPI.NodeInfo Mainnet sockPath
+  let nodeInfo = BPI.NodeInfo Mainnet socketPath
 
   cEnv <- mkContractEnv nodeInfo clusterDir
-  res <- BPI.runContract cEnv lockThenSpend
+  res <- BPI.runContract' cEnv lockThenSpend
   putStrLn $ case res of
     Right r -> "=== OK ===\n" ++ show r
     Left e -> "=== FAILED ===\n" ++ show e
