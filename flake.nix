@@ -106,6 +106,11 @@
         "github:input-output-hk/Win32-network/3825d3abf75f83f406c1f7161883c438dac7277d";
       flake = false;
     };
+    plutus-config = {
+      url =
+        "github:mlabs-haskell/plutus-config/240c281a8cdaeee17128ab4102443395ad3613f9";
+      flake = false;
+    };
   };
 
   outputs = { self, nixpkgs, haskell-nix, iohk-nix, ... }@inputs:
@@ -310,6 +315,10 @@
           src = inputs.Win32-network;
           subdirs = [ "." ];
         }
+        {
+          src = inputs.plutus-config;
+          subdirs = [ "." ];
+        }
       ];
 
       projectFor = system:
@@ -324,6 +333,7 @@
           shell = {
             additional = ps: [
               ps.plutus-pab
+              ps.plutus-config
             ];
             withHoogle = true;
             tools.haskell-language-server = {};
