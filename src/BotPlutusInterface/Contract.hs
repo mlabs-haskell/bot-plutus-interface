@@ -64,7 +64,7 @@ import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
-import Control.Concurrent.STM (newTVarIO, TVar, readTVarIO)
+import Control.Concurrent.STM (newTVarIO, readTVarIO)
 import Data.Map (Map)
 
 runContract ::
@@ -74,19 +74,19 @@ runContract ::
   Contract w s e a ->
   IO (Either e a)
 runContract contractEnv contract = 
-  fmap fst <$> runContract' contractEnv contract
+  fst <$> runContract' contractEnv contract
 
 runContract' ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
   (ToJSON w, Monoid w) =>
   ContractEnvironment w ->
   Contract w s e a ->
-  IO (Either e (a, Map Text TxBudget))
+  IO (Either e a, Map Text TxBudget)
 runContract' contractEnv (Contract effs) = do
   emptyBudgets :: Budgets <- newTVarIO mempty
   res <- runM $ handlePABEffect @w contractEnv emptyBudgets $ raiseEnd $ handleContract contractEnv effs
   budgets <- readTVarIO emptyBudgets
-  return $ (,budgets) <$> res
+  return (res,budgets)
 
 handleContract ::
   forall (w :: Type) (e :: Type) (a :: Type).
