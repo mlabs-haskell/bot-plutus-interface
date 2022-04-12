@@ -20,7 +20,7 @@ module BotPlutusInterface.Types (
   BudgetEstimationError (..),
   SpendBudgets,
   MintBudgets,
-  TxStats,
+  TxStats(..),
   emptyStats,
   addBudget,
   emptyBudget,
@@ -187,6 +187,7 @@ data TxFile
 data TxStats = TxStats
   { estimatedBudgets :: !(Map TxId TxBudget)
   }
+  deriving stock Show
 
 -- TODO; maybe, Monoid instance could be handy later
 emptyStats :: TxStats
