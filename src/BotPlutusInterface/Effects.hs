@@ -20,7 +20,8 @@ module BotPlutusInterface.Effects (
   writeFileTextEnvelope,
   callCommand,
   estimateBudget,
-saveBudget) where
+  saveBudget,
+) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.Estimate qualified as Estimate
@@ -31,12 +32,14 @@ import BotPlutusInterface.Types (
   ContractState (ContractState),
   LogLevel (..),
   TxBudget,
-  TxFile, Budgets
+  TxFile,
+  TxStats,
+  addBudget,
  )
 import Cardano.Api (AsType, FileError, HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
-import Control.Concurrent.STM (atomically, modifyTVar)
+import Control.Concurrent.STM (TVar, atomically, modifyTVar, modifyTVar')
 import Control.Monad (void, when)
 import Control.Monad.Freer (Eff, LastMember, Member, interpretM, send, type (~>))
 import Data.Aeson (ToJSON)
@@ -47,13 +50,13 @@ import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.Process (readProcess, readProcessWithExitCode)
 import Prelude hiding (readFile)
-import Data.Map qualified as Map
 
 data ShellArgs a = ShellArgs
   { cmdName :: Text
@@ -89,16 +92,16 @@ data PABEffect (w :: Type) (r :: Type) where
   UploadDir :: Text -> PABEffect w ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
   EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
-  SaveBudget :: Text -> TxBudget -> PABEffect w ()
+  SaveBudget :: Ledger.TxId -> TxBudget -> PABEffect w ()
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
   LastMember IO effs =>
   (Monoid w) =>
   ContractEnvironment w ->
-  Budgets ->
+  TVar TxStats ->
   Eff (PABEffect w ': effs) ~> Eff effs
-handlePABEffect contractEnv budgets =
+handlePABEffect contractEnv txStatsVar =
   interpretM
     ( \case
         CallCommand shellArgs ->
@@ -135,11 +138,12 @@ handlePABEffect contractEnv budgets =
           handleChainIndexReq contractEnv.cePABConfig query
         EstimateBudget txPath ->
           Estimate.estimateBudget contractEnv.cePABConfig txPath
-        SaveBudget txId exBudget -> saveBudgetImpl budgets txId exBudget
+        SaveBudget txId exBudget -> saveBudgetImpl txStatsVar txId exBudget
     )
 
-saveBudgetImpl budgets txId budget = 
-  atomically $ modifyTVar budgets (Map.insert txId budget)
+saveBudgetImpl :: TVar TxStats -> Ledger.TxId -> TxBudget -> IO ()
+saveBudgetImpl txStatsVar txId budget =
+  atomically $ modifyTVar' txStatsVar (addBudget txId budget)
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
 printLog' logLevelSetting msgLogLvl msg =
@@ -275,12 +279,10 @@ queryChainIndex ::
   Eff effs ChainIndexResponse
 queryChainIndex = send @(PABEffect w) . QueryChainIndex
 
-
-
 saveBudget ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  Text -> 
-  TxBudget  ->
+  Ledger.TxId ->
+  TxBudget ->
   Eff effs ()
 saveBudget txId budget = send @(PABEffect w) $ SaveBudget txId budget

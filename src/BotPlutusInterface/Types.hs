@@ -20,8 +20,11 @@ module BotPlutusInterface.Types (
   BudgetEstimationError (..),
   SpendBudgets,
   MintBudgets,
+  TxStats,
+  emptyStats,
+  addBudget,
   emptyBudget,
-Budgets) where
+) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
@@ -32,6 +35,7 @@ import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
 import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Ledger (
@@ -39,6 +43,7 @@ import Ledger (
   MintingPolicyHash,
   PubKeyHash,
   StakePubKeyHash,
+  TxId,
   TxOutRef,
  )
 import Ledger.TimeSlot (SlotConfig)
@@ -176,6 +181,21 @@ data TxFile
   | -- | for using with ".signed" files
     Signed !FilePath
 
+{- | WIP: Collection of various stats that could be collected py `bpi`
+   about transactions it performs
+-}
+data TxStats = TxStats
+  { estimatedBudgets :: !(Map TxId TxBudget)
+  }
+
+-- TODO; maybe, Monoid instance could be handy later
+emptyStats :: TxStats
+emptyStats = TxStats mempty
+
+addBudget :: TxId -> TxBudget -> TxStats -> TxStats
+addBudget txId budget stats =
+  stats {estimatedBudgets = Map.insert txId budget (estimatedBudgets stats)}
+
 -- | Result of budget estimation
 data TxBudget = TxBudget
   { -- | budgets for spending inputs
@@ -192,6 +212,3 @@ emptyBudget = TxBudget mempty mempty
 type SpendBudgets = Map TxOutRef ExBudget
 
 type MintBudgets = Map MintingPolicyHash ExBudget
-
-
-type Budgets = TVar (Map Text TxBudget)

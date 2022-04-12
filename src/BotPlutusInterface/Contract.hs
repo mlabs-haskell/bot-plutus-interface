@@ -11,18 +11,28 @@ import BotPlutusInterface.Effects (
   ShellArgs (..),
   callCommand,
   createDirectoryIfMissing,
+  estimateBudget,
   handlePABEffect,
   logToContract,
   printLog,
   queryChainIndex,
   readFileTextEnvelope,
+  saveBudget,
   threadDelay,
-  uploadDir, estimateBudget, saveBudget
+  uploadDir,
  )
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug, Warn), Tip (block, slot), Budgets, TxFile (Signed), TxBudget)
+import BotPlutusInterface.Types (
+  ContractEnvironment (..),
+  LogLevel (Debug, Warn),
+  Tip (block, slot),
+  TxFile (Signed),
+  TxStats,
+  emptyStats,
+ )
 import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
+import Control.Concurrent.STM (newTVarIO, readTVarIO)
 import Control.Lens (preview, (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
@@ -64,8 +74,6 @@ import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
-import Control.Concurrent.STM (newTVarIO, readTVarIO)
-import Data.Map (Map)
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
@@ -73,7 +81,7 @@ runContract ::
   ContractEnvironment w ->
   Contract w s e a ->
   IO (Either e a)
-runContract contractEnv contract = 
+runContract contractEnv contract =
   fst <$> runContract' contractEnv contract
 
 runContract' ::
@@ -81,12 +89,12 @@ runContract' ::
   (ToJSON w, Monoid w) =>
   ContractEnvironment w ->
   Contract w s e a ->
-  IO (Either e a, Map Text TxBudget)
+  IO (Either e a, TxStats)
 runContract' contractEnv (Contract effs) = do
-  emptyBudgets :: Budgets <- newTVarIO mempty
+  emptyBudgets <- newTVarIO emptyStats
   res <- runM $ handlePABEffect @w contractEnv emptyBudgets $ raiseEnd $ handleContract contractEnv effs
   budgets <- readTVarIO emptyBudgets
-  return (res,budgets)
+  return (res, budgets)
 
 handleContract ::
   forall (w :: Type) (e :: Type) (a :: Type).
@@ -286,12 +294,12 @@ writeBalancedTx contractEnv (Right tx) = do
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
     mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" (Ledger.getCardanoTxId $ Left cardanoTx))
     when signable $ mvFiles (Files.txFilePath pabConf "signed" (Tx.txId tx)) (Files.txFilePath pabConf "signed" (Ledger.getCardanoTxId $ Left cardanoTx))
-    
+
     let txId = Ledger.getCardanoTxId $ Left cardanoTx
         path = Text.unpack $ Files.txFilePath pabConf "signed" txId
     b <- firstEitherT (Text.pack . show) $ newEitherT $ estimateBudget @w (Signed path)
 
-    _ <- newEitherT (Right <$> saveBudget @w (Text.pack $ show txId) b)
+    _ <- newEitherT (Right <$> saveBudget @w txId b)
 
     pure cardanoTx
   where

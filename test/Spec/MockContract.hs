@@ -298,6 +298,7 @@ runPABEffectPure initState req =
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
     go (EstimateBudget file) = mockExBudget file
+    go (SaveBudget _ _) = pure () -- TODO
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
