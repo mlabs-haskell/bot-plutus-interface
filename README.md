@@ -96,8 +96,6 @@ main = do
           , -- Dry run mode will build the tx, but skip the submit step
             pcDryRun = False
           , pcLogLevel = Debug
-          , -- | Forced budget for scripts, as optional (CPU Steps, Memory Units)
-            pcForceBudget = Nothing
           , -- Protocol params file location relative to the cardano-cli working directory (needed for the cli)
           , pcProtocolParamsFile = "./protocol.json"
           , pcEnableTxEndpoint = True
