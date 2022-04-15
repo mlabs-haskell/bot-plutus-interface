@@ -136,7 +136,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       txWithoutFees <-
         hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` 0
 
-      exBudget <- newEitherT $ BodyBuilder.buildRaw @w pabConf privKeys txWithoutFees
+      exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
 
       nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 

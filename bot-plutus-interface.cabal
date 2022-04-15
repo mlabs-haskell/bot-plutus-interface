@@ -82,7 +82,7 @@ library
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
-    BotPlutusInterface.Estimate
+    BotPlutusInterface.ExBudget
     BotPlutusInterface.Files
     BotPlutusInterface.Helpers
     BotPlutusInterface.QueryNode
