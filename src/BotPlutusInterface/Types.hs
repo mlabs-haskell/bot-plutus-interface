@@ -20,7 +20,6 @@ module BotPlutusInterface.Types (
   BudgetEstimationError (..),
   SpendBudgets,
   MintBudgets,
-  emptyBudget,
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
@@ -185,9 +184,11 @@ data TxBudget = TxBudget
   }
   deriving stock (Show)
 
--- | Budget with no estimations for `CardanoCLI.buildDraftTx`
-emptyBudget :: TxBudget
-emptyBudget = TxBudget mempty mempty
+instance Semigroup TxBudget where
+  TxBudget s m <> TxBudget s' m' = TxBudget (s <> s') (m <> m')
+
+instance Monoid TxBudget where
+  mempty = TxBudget mempty mempty
 
 type SpendBudgets = Map TxOutRef ExBudget
 

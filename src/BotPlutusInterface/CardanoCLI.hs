@@ -12,7 +12,6 @@ module BotPlutusInterface.CardanoCLI (
   policyScriptFilePath,
   utxosAt,
   queryTip,
-  buildDraftTx,
 ) where
 
 import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand)
@@ -25,7 +24,7 @@ import BotPlutusInterface.Files (
   txFilePath,
   validatorScriptFilePath,
  )
-import BotPlutusInterface.Types (MintBudgets, PABConfig, SpendBudgets, Tip, TxBudget, emptyBudget, mintBudgets, spendBudgets)
+import BotPlutusInterface.Types (MintBudgets, PABConfig, SpendBudgets, Tip, TxBudget, mintBudgets, spendBudgets)
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
 import Control.Monad (join)
@@ -172,20 +171,6 @@ calculateMinFee pabConf tx =
               ]
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
         }
-
-{- | Build draft tx body w/o setting ExBudget for inputs.
- This body will be used to estimate `ExBudget` with `Cardano.Api` by `BodyBuilder`
--}
-buildDraftTx ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  PABConfig ->
-  Map PubKeyHash DummyPrivKey ->
-  Tx ->
-  Eff effs (Either Text FilePath)
-buildDraftTx pabConf privKeys tx = do
-  _ <- buildTx @w pabConf privKeys emptyBudget tx
-  return $ Right (Text.unpack $ txFilePath pabConf "raw" (txId tx))
 
 -- | Build a tx body and write it to disk
 buildTx ::
