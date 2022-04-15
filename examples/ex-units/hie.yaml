@@ -1,7 +1,0 @@
-cradle:
-  cabal:
-    - path: "./src"
-      component: "lib:ex-units"
-
-    - path: "./app"
-      component: "exe:ex-units-run"

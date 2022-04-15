@@ -10,6 +10,7 @@ import BotPlutusInterface.Effects (PABEffect, estimateBudget)
 
 import BotPlutusInterface.Files (
   DummyPrivKey,
+  txFilePath,
  )
 import BotPlutusInterface.Types (PABConfig, TxFile (Raw))
 import Control.Monad.Freer (Eff, Member)
@@ -18,7 +19,7 @@ import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger (ExBudget, Tx)
+import Ledger (ExBudget, Tx, txId)
 import Ledger.Crypto (PubKeyHash)
 import Prelude
 
@@ -36,10 +37,10 @@ buildRaw ::
   Eff effs (Either Text ExBudget)
 buildRaw pabConf privKeys tx = runEitherT $ do
   buildDraftTxBody
-    >>= estimateBudgetByDraftBody
+    >> estimateBudgetByDraftBody (Text.unpack $ txFilePath pabConf "raw" (txId tx))
     >>= buildBodyUsingEstimatedBudget
   where
-    buildDraftTxBody = newEitherT $ CardanoCLI.buildDraftTx @w pabConf privKeys tx
+    buildDraftTxBody = newEitherT $ CardanoCLI.buildTx @w pabConf privKeys mempty tx
 
     estimateBudgetByDraftBody path =
       firstEitherT toText . newEitherT $ estimateBudget @w (Raw path)

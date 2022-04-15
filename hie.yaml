@@ -23,6 +23,3 @@ cradle:
 
     - path: "./examples/plutus-transfer/app/Main.hs"
       component: "plutus-transfer:exe:plutus-transfer-pab"
-
-    - path: "./examples/ex-units/app"
-      component: "exe:ex-units"
