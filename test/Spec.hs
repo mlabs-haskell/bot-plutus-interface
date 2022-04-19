@@ -2,6 +2,7 @@ module Main (main) where
 
 import Spec.BotPlutusInterface.Balance qualified
 import Spec.BotPlutusInterface.Contract qualified
+import Spec.BotPlutusInterface.ContractStats qualified
 import Spec.BotPlutusInterface.Server qualified
 import Spec.BotPlutusInterface.UtxoParser qualified
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -23,4 +24,5 @@ tests =
     , Spec.BotPlutusInterface.UtxoParser.tests
     , Spec.BotPlutusInterface.Balance.tests
     , Spec.BotPlutusInterface.Server.tests
+    , Spec.BotPlutusInterface.ContractStats.tests
     ]

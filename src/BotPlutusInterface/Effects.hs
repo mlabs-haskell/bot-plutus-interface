@@ -33,13 +33,12 @@ import BotPlutusInterface.Types (
   LogLevel (..),
   TxBudget,
   TxFile,
-  TxStats,
   addBudget,
  )
 import Cardano.Api (AsType, FileError, HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
-import Control.Concurrent.STM (TVar, atomically, modifyTVar, modifyTVar')
+import Control.Concurrent.STM (atomically, modifyTVar, modifyTVar')
 import Control.Monad (void, when)
 import Control.Monad.Freer (Eff, LastMember, Member, interpretM, send, type (~>))
 import Data.Aeson (ToJSON)
@@ -99,9 +98,8 @@ handlePABEffect ::
   LastMember IO effs =>
   (Monoid w) =>
   ContractEnvironment w ->
-  TVar TxStats ->
   Eff (PABEffect w ': effs) ~> Eff effs
-handlePABEffect contractEnv txStatsVar =
+handlePABEffect contractEnv =
   interpretM
     ( \case
         CallCommand shellArgs ->
@@ -138,12 +136,8 @@ handlePABEffect contractEnv txStatsVar =
           handleChainIndexReq contractEnv.cePABConfig query
         EstimateBudget txPath ->
           Estimate.estimateBudget contractEnv.cePABConfig txPath
-        SaveBudget txId exBudget -> saveBudgetImpl txStatsVar txId exBudget
+        SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
     )
-
-saveBudgetImpl :: TVar TxStats -> Ledger.TxId -> TxBudget -> IO ()
-saveBudgetImpl txStatsVar txId budget =
-  atomically $ modifyTVar' txStatsVar (addBudget txId budget)
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
 printLog' logLevelSetting msgLogLvl msg =
@@ -178,6 +172,11 @@ readProcessEither path args =
     mapToEither (ExitSuccess, stdout, _) = Right stdout
     mapToEither (ExitFailure exitCode, _, stderr) =
       Left $ "ExitCode " <> Text.pack (show exitCode) <> ": " <> Text.pack stderr
+
+saveBudgetImpl :: ContractEnvironment w -> Ledger.TxId -> TxBudget -> IO ()
+saveBudgetImpl contractEnv txId budget =
+  atomically $
+    modifyTVar' contractEnv.ceContractStats (addBudget txId budget)
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@

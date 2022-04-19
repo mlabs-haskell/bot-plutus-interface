@@ -25,8 +25,7 @@ source-repository head
 common common-lang
   ghc-options:
     -Wall -Wcompat -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wredundant-constraints 
-    -- -Werror
+    -Wincomplete-uni-patterns -Wredundant-constraints -Werror
     -fobject-code -fno-ignore-interface-pragmas
     -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
 
@@ -150,10 +149,11 @@ test-suite bot-plutus-interface-test
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
-    Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.Balance
-    Spec.BotPlutusInterface.UtxoParser
+    Spec.BotPlutusInterface.Contract
+    Spec.BotPlutusInterface.ContractStats
     Spec.BotPlutusInterface.Server
+    Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
 
   build-depends:

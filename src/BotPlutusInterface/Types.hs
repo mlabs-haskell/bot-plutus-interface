@@ -20,7 +20,7 @@ module BotPlutusInterface.Types (
   BudgetEstimationError (..),
   SpendBudgets,
   MintBudgets,
-  TxStats(..),
+  ContractStats (..),
   emptyStats,
   addBudget,
 ) where
@@ -82,13 +82,76 @@ data PABConfig = PABConfig
   , pcTipPollingInterval :: !Natural
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
+  , pcCollectStats :: !Bool
   }
   deriving stock (Show, Eq)
+
+-- Budget estimation types
+
+{- | Error returned in case any error happened during budget estimation
+ (wraps whatever received in `Text`)
+-}
+data BudgetEstimationError
+  = -- | general error for `Cardano.Api` errors
+    BudgetEstimationError !Text
+  | -- | script evaluation failed during budget estimation
+    ScriptFailure ScriptExecutionError
+  | {- budget for input or policy was not found after estimation
+       (arguably should not happen at all) -}
+    BudgetNotFound ScriptWitnessIndex
+  deriving stock (Show)
+
+-- | Type of transaction file used for budget estimation
+data TxFile
+  = -- | for using with ".raw" files
+    Raw !FilePath
+  | -- | for using with ".signed" files
+    Signed !FilePath
+
+-- TODO; maybe, Monoid instance could be handy later
+emptyStats :: ContractStats
+emptyStats = ContractStats mempty
+
+addBudget :: TxId -> TxBudget -> ContractStats -> ContractStats
+addBudget txId budget stats =
+  stats {estimatedBudgets = Map.insert txId budget (estimatedBudgets stats)}
+
+-- | Result of budget estimation
+data TxBudget = TxBudget
+  { -- | budgets for spending inputs
+    spendBudgets :: !SpendBudgets
+  , -- | budgets for minting policies
+    mintBudgets :: !MintBudgets
+  }
+  deriving stock (Show)
+
+instance Semigroup TxBudget where
+  TxBudget s m <> TxBudget s' m' = TxBudget (s <> s') (m <> m')
+
+instance Monoid TxBudget where
+  mempty = TxBudget mempty mempty
+
+type SpendBudgets = Map TxOutRef ExBudget
+
+type MintBudgets = Map MintingPolicyHash ExBudget
+
+{- | Collection of stats that could be collected py `bpi`
+   about contract it runs
+-}
+newtype ContractStats = ContractStats
+  { estimatedBudgets :: Map TxId TxBudget
+  }
+  deriving stock (Show)
+  deriving newtype (Semigroup, Monoid)
+
+instance Show (TVar ContractStats) where
+  show _ = "<ContractStats>"
 
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
+  , ceContractStats :: TVar ContractStats
   }
   deriving stock (Show)
 
@@ -145,6 +208,7 @@ instance Default PABConfig where
       , pcOwnStakePubKeyHash = Nothing
       , pcPort = 9080
       , pcEnableTxEndpoint = False
+      , pcCollectStats = False
       }
 
 data RawTx = RawTx
@@ -157,60 +221,3 @@ data RawTx = RawTx
 -- type is a reserved keyword in haskell and can not be used as a field name
 -- when converting this to JSON we drop the _ prefix from each field
 deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx
-
--- Budget estimation types
-
-{- | Error returned in case any error happened during budget estimation
- (wraps whatever received in `Text`)
--}
-data BudgetEstimationError
-  = -- | general error for `Cardano.Api` errors
-    BudgetEstimationError !Text
-  | -- | script evaluation failed during budget estimation
-    ScriptFailure ScriptExecutionError
-  | {- budget for input or policy was not found after estimation
-       (arguably should not happen at all) -}
-    BudgetNotFound ScriptWitnessIndex
-  deriving stock (Show)
-
--- | Type of transaction file used for budget estimation
-data TxFile
-  = -- | for using with ".raw" files
-    Raw !FilePath
-  | -- | for using with ".signed" files
-    Signed !FilePath
-
-{- | WIP: Collection of various stats that could be collected py `bpi`
-   about transactions it performs
--}
-data TxStats = TxStats
-  { estimatedBudgets :: !(Map TxId TxBudget)
-  }
-  deriving stock Show
-
--- TODO; maybe, Monoid instance could be handy later
-emptyStats :: TxStats
-emptyStats = TxStats mempty
-
-addBudget :: TxId -> TxBudget -> TxStats -> TxStats
-addBudget txId budget stats =
-  stats {estimatedBudgets = Map.insert txId budget (estimatedBudgets stats)}
-
--- | Result of budget estimation
-data TxBudget = TxBudget
-  { -- | budgets for spending inputs
-    spendBudgets :: !SpendBudgets
-  , -- | budgets for minting policies
-    mintBudgets :: !MintBudgets
-  }
-  deriving stock (Show)
-
-instance Semigroup TxBudget where
-  TxBudget s m <> TxBudget s' m' = TxBudget (s <> s') (m <> m')
-
-instance Monoid TxBudget where
-  mempty = TxBudget mempty mempty
-
-type SpendBudgets = Map TxOutRef ExBudget
-
-type MintBudgets = Map MintingPolicyHash ExBudget
