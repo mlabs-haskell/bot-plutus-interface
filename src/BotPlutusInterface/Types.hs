@@ -21,7 +21,6 @@ module BotPlutusInterface.Types (
   SpendBudgets,
   MintBudgets,
   ContractStats (..),
-  emptyStats,
   addBudget,
 ) where
 
@@ -108,14 +107,6 @@ data TxFile
   | -- | for using with ".signed" files
     Signed !FilePath
 
--- TODO; maybe, Monoid instance could be handy later
-emptyStats :: ContractStats
-emptyStats = ContractStats mempty
-
-addBudget :: TxId -> TxBudget -> ContractStats -> ContractStats
-addBudget txId budget stats =
-  stats {estimatedBudgets = Map.insert txId budget (estimatedBudgets stats)}
-
 -- | Result of budget estimation
 data TxBudget = TxBudget
   { -- | budgets for spending inputs
@@ -124,6 +115,11 @@ data TxBudget = TxBudget
     mintBudgets :: !MintBudgets
   }
   deriving stock (Show)
+
+addBudget :: TxId -> TxBudget -> ContractStats -> ContractStats
+addBudget txId budget stats =
+  stats {estimatedBudgets = Map.insert txId budget (estimatedBudgets stats)}
+
 
 instance Semigroup TxBudget where
   TxBudget s m <> TxBudget s' m' = TxBudget (s <> s') (m <> m')
