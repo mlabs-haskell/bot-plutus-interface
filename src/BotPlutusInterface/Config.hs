@@ -8,6 +8,7 @@ module BotPlutusInterface.Config (
   docPABConfig,
   loadPABConfig,
   savePABConfig,
+  savePABConfigPartial,
 ) where
 
 import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
@@ -230,7 +231,16 @@ loadPABConfig fn = do
           Left err -> Left $ "protocolParamsFile: " <> toString pcProtocolParamsFile <> ": " <> err
           Right pcProtocolParams -> Right conf {pcProtocolParams}
 
+{- |Save 'PABConfig' into two files:
+
+ - Save 'PABConfig' into a file without `pcProtocolParams`, which specified as the argument
+ - Save 'pcProtocolParams' into file, which specified in `pcProtocolParamsFile` field of 'PABConfig'
+-}
 savePABConfig :: FilePath -> PABConfig -> IO ()
 savePABConfig fn conf@PABConfig {pcProtocolParams, pcProtocolParamsFile} = do
   writeProtocolParametersJSON (toString pcProtocolParamsFile) pcProtocolParams
-  writeFile fn $ serialize conf <> "\n"
+  savePABConfigPartial fn conf
+
+-- |Partly save 'PABConfig' to file, without `pcProtocolParams`
+savePABConfigPartial :: FilePath -> PABConfig -> IO ()
+savePABConfigPartial fn conf = writeFile fn $ serialize conf <> "\n"
