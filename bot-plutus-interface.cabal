@@ -76,16 +76,17 @@ library
   import:          common-lang
   exposed-modules:
     BotPlutusInterface
+    BotPlutusInterface.Balance
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
     BotPlutusInterface.Files
-    BotPlutusInterface.Balance
+    BotPlutusInterface.Helpers
+    BotPlutusInterface.Server
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
-    BotPlutusInterface.Server
-    BotPlutusInterface.Helpers
+
   build-depends:
     , aeson                      ^>=1.5.0.0
     , attoparsec                 >=0.13.2.2
@@ -145,10 +146,10 @@ test-suite bot-plutus-interface-test
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
-    Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.Balance
-    Spec.BotPlutusInterface.UtxoParser
+    Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.Server
+    Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
 
   build-depends:
@@ -198,8 +199,8 @@ test-suite bot-plutus-interface-test
     , tasty-quickcheck
     , temporary
     , text                       ^>=1.2.4.0
-    , uuid
     , utf8-string
+    , uuid
     , warp
 
   hs-source-dirs: test

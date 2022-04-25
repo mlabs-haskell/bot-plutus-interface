@@ -328,14 +328,15 @@
             withHoogle = true;
             tools.haskell-language-server = {};
             exactDeps = true;
-            nativeBuildInputs = [
-              pkgs'.cabal-install
-              pkgs'.haskellPackages.cabal-fmt
-              pkgs'.haskellPackages.implicit-hie
-              pkgs'.hlint
-              pkgs'.haskellPackages.fourmolu
-              pkgs'.jq
-              pkgs'.websocat
+            nativeBuildInputs = with pkgs'; [
+              cabal-install
+              haskellPackages.cabal-fmt
+              haskellPackages.implicit-hie
+              haskellPackages.fourmolu
+              hlint
+              jq
+              websocat
+              fd
             ];
           };
           modules = haskellModules;
@@ -362,11 +363,21 @@
         (nixpkgsFor system).runCommand "combined-check" {
           nativeBuildInputs = builtins.attrValues self.checks.${system}
             ++ builtins.attrValues self.flake.${system}.packages
-            ++ [ self.devShell.${system}.inputDerivation ];
-        } "touch $out");
+            ++ [ self.devShell.${system}.inputDerivation self.devShell.${system}.nativeBuildInputs ];
+        } ''
+          cd ${self}
+          export LC_CTYPE=C.UTF-8
+          export LC_ALL=C.UTF-8
+          export LANG=C.UTF-8
+          export IN_NIX_SHELL='pure'
+          make format_check cabalfmt_check nixpkgsfmt_check lint
+          mkdir $out
+        '');
 
       # NOTE `nix flake check` will not work at the moment due to use of
       # IFD in haskell.nix
       checks = perSystem (system: self.flake.${system}.checks);
+
+      herculesCI.ciSystems = [ "x86_64-linux" ];
     };
 }
