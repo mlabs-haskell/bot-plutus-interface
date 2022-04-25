@@ -126,25 +126,26 @@
         allow-newer: size-based:template-haskell
       '';
 
-      haskellModules = [(
-        { pkgs, ... }:
-        {
-          packages = {
-            marlowe.flags.defer-plugin-errors = true;
-            plutus-use-cases.flags.defer-plugin-errors = true;
-            plutus-ledger.flags.defer-plugin-errors = true;
-            plutus-contract.flags.defer-plugin-errors = true;
-            cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-            cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-            cardano-wallet-core.components.library.build-tools = [
-              pkgs.buildPackages.buildPackages.gitMinimal
-            ];
-            cardano-config.components.library.build-tools = [
-              pkgs.buildPackages.buildPackages.gitMinimal
-            ];
-          };
-        }
-      )];
+      haskellModules = [
+        ({ pkgs, ... }:
+          {
+            packages = {
+              marlowe.flags.defer-plugin-errors = true;
+              plutus-use-cases.flags.defer-plugin-errors = true;
+              plutus-ledger.flags.defer-plugin-errors = true;
+              plutus-contract.flags.defer-plugin-errors = true;
+              cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-wallet-core.components.library.build-tools = [
+                pkgs.buildPackages.buildPackages.gitMinimal
+              ];
+              cardano-config.components.library.build-tools = [
+                pkgs.buildPackages.buildPackages.gitMinimal
+              ];
+            };
+          }
+        )
+      ];
 
       extraSources = [
         {
@@ -316,7 +317,8 @@
         let
           pkgs = nixpkgsFor system;
           pkgs' = nixpkgsFor' system;
-        in pkgs.haskell-nix.cabalProject' {
+        in
+        pkgs.haskell-nix.cabalProject' {
           src = ./.;
           inherit cabalProjectLocal extraSources;
           name = "bot-plutus-interface";
@@ -326,7 +328,7 @@
               ps.plutus-pab
             ];
             withHoogle = true;
-            tools.haskell-language-server = {};
+            tools.haskell-language-server = { };
             exactDeps = true;
             nativeBuildInputs = with pkgs'; [
               cabal-install
