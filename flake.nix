@@ -339,6 +339,7 @@
               jq
               websocat
               fd
+              nixpkgs-fmt
             ];
           };
           modules = haskellModules;
