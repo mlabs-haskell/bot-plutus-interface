@@ -87,6 +87,7 @@ main = do
           , -- | Slot configuration of the network, the default value can be used for the mainnet
             pcSlotConfig = def
           , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+          , pcOwnStakePubKeyHash = Nothing
           , -- Directory name of the script and data files
             pcScriptFileDir = "./scripts"
           , -- Directory for the signing key file(s)

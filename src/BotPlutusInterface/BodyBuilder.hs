@@ -3,7 +3,7 @@
 {- | Module provides the way of building ".raw" transactions with execution budget
  estimated with `Cardano.Api` tools.
 -}
-module BotPlutusInterface.BodyBuilder (buildRaw) where
+module BotPlutusInterface.BodyBuilder (buildAndEstimateBudget) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (PABEffect, estimateBudget)
@@ -28,14 +28,14 @@ import Prelude
  then uses body of this transaction to estimate execution budget
  and build final body with budget set.
 -}
-buildRaw ::
+buildAndEstimateBudget ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
   Map PubKeyHash DummyPrivKey ->
   Tx ->
   Eff effs (Either Text ExBudget)
-buildRaw pabConf privKeys tx = runEitherT $ do
+buildAndEstimateBudget pabConf privKeys tx = runEitherT $ do
   buildDraftTxBody
     >> estimateBudgetByDraftBody (Text.unpack $ txFilePath pabConf "raw" (txId tx))
     >>= buildBodyUsingEstimatedBudget

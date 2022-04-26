@@ -24,7 +24,7 @@ module BotPlutusInterface.Effects (
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
-import BotPlutusInterface.Estimate qualified as Estimate
+import BotPlutusInterface.ExBudget qualified as ExBudget
 import BotPlutusInterface.Types (
   BudgetEstimationError,
   CLILocation (..),
@@ -135,7 +135,7 @@ handlePABEffect contractEnv =
         QueryChainIndex query ->
           handleChainIndexReq contractEnv.cePABConfig query
         EstimateBudget txPath ->
-          Estimate.estimateBudget contractEnv.cePABConfig txPath
+          ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
     )
 

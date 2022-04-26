@@ -1,5 +1,5 @@
 -- | Module contains implementation for `estimateBudget` effect
-module BotPlutusInterface.Estimate (
+module BotPlutusInterface.ExBudget (
   estimateBudget,
 ) where
 

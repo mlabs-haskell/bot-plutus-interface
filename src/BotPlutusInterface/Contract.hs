@@ -193,6 +193,7 @@ awaitTxStatusChange contractEnv txId = do
   case mTx of
     Nothing -> pure Unknown
     Just txState -> do
+      printLog @w Debug $ "Found transaction in node, waiting " ++ show chainConstant ++ " blocks for it to settle."
       awaitNBlocks @w contractEnv (chainConstant + 1)
       -- Check if the tx is still present in chain-index, in case of a rollback
       -- we might not find it anymore.
@@ -256,7 +257,7 @@ writeBalancedTx contractEnv (Right tx) = do
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
         signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-    void $ newEitherT $ BodyBuilder.buildRaw @w pabConf privKeys tx
+    void $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx
 
     -- TODO: This whole part is hacky and we should remove it.
     let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx)
