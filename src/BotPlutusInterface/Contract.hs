@@ -186,6 +186,7 @@ awaitTxStatusChange contractEnv txId = do
   case mTx of
     Nothing -> pure Unknown
     Just txState -> do
+      printLog @w Debug $ "Found transaction in node, waiting " ++ show chainConstant ++ " blocks for it to settle."
       awaitNBlocks @w contractEnv (chainConstant + 1)
       -- Check if the tx is still present in chain-index, in case of a rollback
       -- we might not find it anymore.

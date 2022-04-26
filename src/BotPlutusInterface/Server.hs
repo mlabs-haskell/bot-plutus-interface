@@ -86,7 +86,7 @@ initState :: IO AppState
 initState = AppState <$> newTVarIO Map.empty
 
 -- | Mock API Schema, stripped endpoints that we don't use in this project
-type API a = WebSocketEndpoint :<|> ActivateContractEndpoint a :<|> RawTxEndpoint
+type API a = WebSocketEndpoint :<|> ActivateContractEndpoint a :<|> ContractLookupEndpoint :<|> RawTxEndpoint
 
 -- Endpoints are split up so it is easier to test them. In particular servant-client
 -- can not generate a client for the WebSocketEndpoint; this allows us to still
@@ -100,6 +100,13 @@ type ActivateContractEndpoint a =
     :> "activate"
     :> ReqBody '[JSON] (ContractActivationArgs a)
     :> Post '[JSON] ContractInstanceId -- Start a new instance.
+
+type ContractLookupEndpoint =
+  "api"
+    :> "contract"
+    :> "exists"
+    :> ReqBody '[JSON] ContractInstanceId
+    :> Post '[JSON] Bool
 
 type RawTxEndpoint =
   "raw-tx"
@@ -131,6 +138,7 @@ server :: HasDefinitions t => PABConfig -> AppState -> Server (API t)
 server pabConfig state =
   websocketHandler state
     :<|> activateContractHandler pabConfig state
+    :<|> contractLookupHandler state
     :<|> rawTxHandler pabConfig
 
 apiProxy :: forall (t :: Type). Proxy (API t)
@@ -238,6 +246,14 @@ activateContractHandler ::
 activateContractHandler pabConf state (ContractActivationArgs cardMessage _) =
   case getContract cardMessage of
     SomeBuiltin contract -> handleContract pabConf state contract
+
+contractLookupHandler ::
+  AppState ->
+  ContractInstanceId ->
+  Handler Bool
+contractLookupHandler (AppState s) contractInstanceId = liftIO . atomically $ do
+  instances <- readTVar s
+  return $ Map.member contractInstanceId instances
 
 handleContract ::
   forall

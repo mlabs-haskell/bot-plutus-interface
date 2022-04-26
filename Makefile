@@ -25,8 +25,10 @@ usage:
 	@echo "  ghci                -- Run cabal v2-repl bot-plutus-interface"
 	@echo "  format              -- Apply source code formatting with fourmolu"
 	@echo "  format_check        -- Check source code formatting without making changes"
-	@echo "  nixfmt              -- Apply nix formatting with nixfmt"
-	@echo "  nixfmt_check        -- Check nix files for format errors"
+	@echo "  cabalfmt            -- Apply cabal formatting with cabal-fmt"
+	@echo "  cabalfmt_check      -- Check cabal files for formatting errors without making changes"
+	@echo "  nixpkgsfmt          -- Apply nix formatting with nixfmt"
+	@echo "  nixpkgsfmt_check    -- Check nix files for format errors"
 	@echo "  lint                -- Check the sources with hlint"
 	@echo "  readme_contents     -- Add table of contents to README"
 	@echo "  update_plutus       -- Update plutus version with niv"
@@ -68,7 +70,7 @@ ghci: requires_nix_shell
 	cabal v2-repl $(GHC_FLAGS) bot-plutus-interface
 
 # Source dirs to run fourmolu on
-FORMAT_SOURCES := $(shell git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.hs' )
+FORMAT_SOURCES := $(shell fd -e hs)
 
 # Extensions we need to tell fourmolu about
 FORMAT_EXTENSIONS := -o -XTemplateHaskell -o -XTypeApplications -o -XImportQualifiedPost -o -XPatternSynonyms -o -fplugin=RecordDotPreprocessor
@@ -81,14 +83,23 @@ format: requires_nix_shell
 format_check: requires_nix_shell
 	fourmolu --mode check --check-idempotence $(FORMAT_EXTENSIONS) $(FORMAT_SOURCES)
 
+# Cabal package definitions
+CABAL_SOURCES := $(shell fd -e cabal)
+
+cabalfmt: requires_nix_shell
+	cabal-fmt --inplace $(CABAL_SOURCES)
+
+cabalfmt_check: requires_nix_shell
+	cabal-fmt --check $(CABAL_SOURCES)
+
 # Nix files to format
-NIX_SOURCES := $(shell git ls-tree -r HEAD --full-tree --name-only | grep -E '.*\.nix' )
+NIX_SOURCES := $(shell fd -e nix)
 
-nixfmt: requires_nix_shell
-	nixfmt $(NIX_SOURCES)
+nixpkgsfmt: requires_nix_shell
+	nixpkgs-fmt $(NIX_SOURCES)
 
-nixfmt_check: requires_nix_shell
-	nixfmt --check $(NIX_SOURCES)
+nixpkgsfmt_check: requires_nix_shell
+	nixpkgsfmt --check $(NIX_SOURCES)
 
 # Check with hlint, currently I couldn't get --refactor to work
 lint: requires_nix_shell
@@ -124,4 +135,3 @@ update_plutus:
 build_path = dist-newstyle/build/x86_64-linux/ghc-8.10.4.20210212/bot-plutus-interface-0.1
 clear_build:
 	@[ ! -e $(build_path) ] || rm -rf $(build_path)
-

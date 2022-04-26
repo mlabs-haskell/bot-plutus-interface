@@ -89,9 +89,9 @@ library
     BotPlutusInterface.Server
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
+
   build-depends:
     , aeson                      ^>=1.5.0.0
-    , QuickCheck
     , attoparsec                 >=0.13.2.2
     , bytestring                 ^>=0.10.12.0
     , cardano-api
@@ -124,6 +124,7 @@ library
     , plutus-tx
     , plutus-tx-plugin
     , process
+    , QuickCheck
     , row-types
     , serialise
     , servant
@@ -149,10 +150,10 @@ test-suite bot-plutus-interface-test
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
-    Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.Balance
-    Spec.BotPlutusInterface.UtxoParser
+    Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.Server
+    Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
 
   build-depends:
@@ -202,8 +203,8 @@ test-suite bot-plutus-interface-test
     , tasty-quickcheck
     , temporary
     , text                       ^>=1.2.4.0
-    , uuid
     , utf8-string
+    , uuid
     , warp
 
   hs-source-dirs: test
