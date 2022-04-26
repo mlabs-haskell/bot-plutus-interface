@@ -344,7 +344,23 @@
           modules = haskellModules;
         };
 
-    in {
+      formatCheckFor = system:
+        let
+          pkgs = nixpkgsFor system;
+        in
+        pkgs.runCommand "format-check"
+          { nativeBuildInputs = [ self.devShell.${system}.nativeBuildInputs ]; } ''
+          cd ${self}
+          export LC_CTYPE=C.UTF-8
+          export LC_ALL=C.UTF-8
+          export LANG=C.UTF-8
+          export IN_NIX_SHELL='pure'
+          make format_check cabalfmt_check nixpkgsfmt_check lint
+          mkdir $out
+        '';
+
+    in
+    {
       inherit cabalProjectLocal extraSources haskellModules;
 
       project = perSystem projectFor;
@@ -362,23 +378,17 @@
 
       # This will build all of the project's executables and the tests
       check = perSystem (system:
-        (nixpkgsFor system).runCommand "combined-check" {
-          nativeBuildInputs = builtins.attrValues self.checks.${system}
-            ++ builtins.attrValues self.flake.${system}.packages
-            ++ [ self.devShell.${system}.inputDerivation self.devShell.${system}.nativeBuildInputs ];
-        } ''
-          cd ${self}
-          export LC_CTYPE=C.UTF-8
-          export LC_ALL=C.UTF-8
-          export LANG=C.UTF-8
-          export IN_NIX_SHELL='pure'
-          make format_check cabalfmt_check nixpkgsfmt_check lint
-          mkdir $out
-        '');
-
+        (nixpkgsFor system).runCommand "combined-check"
+          {
+            nativeBuildInputs = builtins.attrValues self.checks.${system}
+              ++ builtins.attrValues self.flake.${system}.packages
+              ++ [ self.devShell.${system}.inputDerivation ];
+          } "touch $out");
       # NOTE `nix flake check` will not work at the moment due to use of
       # IFD in haskell.nix
-      checks = perSystem (system: self.flake.${system}.checks);
+      checks = perSystem (system: self.flake.${system}.checks // {
+        formatCheck = formatCheckFor system;
+      });
 
       herculesCI.ciSystems = [ "x86_64-linux" ];
     };
