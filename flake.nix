@@ -126,25 +126,26 @@
         allow-newer: size-based:template-haskell
       '';
 
-      haskellModules = [(
-        { pkgs, ... }:
-        {
-          packages = {
-            marlowe.flags.defer-plugin-errors = true;
-            plutus-use-cases.flags.defer-plugin-errors = true;
-            plutus-ledger.flags.defer-plugin-errors = true;
-            plutus-contract.flags.defer-plugin-errors = true;
-            cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-            cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-            cardano-wallet-core.components.library.build-tools = [
-              pkgs.buildPackages.buildPackages.gitMinimal
-            ];
-            cardano-config.components.library.build-tools = [
-              pkgs.buildPackages.buildPackages.gitMinimal
-            ];
-          };
-        }
-      )];
+      haskellModules = [
+        ({ pkgs, ... }:
+          {
+            packages = {
+              marlowe.flags.defer-plugin-errors = true;
+              plutus-use-cases.flags.defer-plugin-errors = true;
+              plutus-ledger.flags.defer-plugin-errors = true;
+              plutus-contract.flags.defer-plugin-errors = true;
+              cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-wallet-core.components.library.build-tools = [
+                pkgs.buildPackages.buildPackages.gitMinimal
+              ];
+              cardano-config.components.library.build-tools = [
+                pkgs.buildPackages.buildPackages.gitMinimal
+              ];
+            };
+          }
+        )
+      ];
 
       extraSources = [
         {
@@ -316,7 +317,8 @@
         let
           pkgs = nixpkgsFor system;
           pkgs' = nixpkgsFor' system;
-        in pkgs.haskell-nix.cabalProject' {
+        in
+        pkgs.haskell-nix.cabalProject' {
           src = ./.;
           inherit cabalProjectLocal extraSources;
           name = "bot-plutus-interface";
@@ -326,7 +328,7 @@
               ps.plutus-pab
             ];
             withHoogle = true;
-            tools.haskell-language-server = {};
+            tools.haskell-language-server = { };
             exactDeps = true;
             nativeBuildInputs = with pkgs'; [
               cabal-install
@@ -337,12 +339,29 @@
               jq
               websocat
               fd
+              nixpkgs-fmt
             ];
           };
           modules = haskellModules;
         };
 
-    in {
+      formatCheckFor = system:
+        let
+          pkgs = nixpkgsFor system;
+        in
+        pkgs.runCommand "format-check"
+          { nativeBuildInputs = [ self.devShell.${system}.nativeBuildInputs ]; } ''
+          cd ${self}
+          export LC_CTYPE=C.UTF-8
+          export LC_ALL=C.UTF-8
+          export LANG=C.UTF-8
+          export IN_NIX_SHELL='pure'
+          make format_check cabalfmt_check nixpkgsfmt_check lint
+          mkdir $out
+        '';
+
+    in
+    {
       inherit cabalProjectLocal extraSources haskellModules;
 
       project = perSystem projectFor;
@@ -360,23 +379,17 @@
 
       # This will build all of the project's executables and the tests
       check = perSystem (system:
-        (nixpkgsFor system).runCommand "combined-check" {
-          nativeBuildInputs = builtins.attrValues self.checks.${system}
-            ++ builtins.attrValues self.flake.${system}.packages
-            ++ [ self.devShell.${system}.inputDerivation self.devShell.${system}.nativeBuildInputs ];
-        } ''
-          cd ${self}
-          export LC_CTYPE=C.UTF-8
-          export LC_ALL=C.UTF-8
-          export LANG=C.UTF-8
-          export IN_NIX_SHELL='pure'
-          make format_check cabalfmt_check nixpkgsfmt_check lint
-          mkdir $out
-        '');
-
+        (nixpkgsFor system).runCommand "combined-check"
+          {
+            nativeBuildInputs = builtins.attrValues self.checks.${system}
+              ++ builtins.attrValues self.flake.${system}.packages
+              ++ [ self.devShell.${system}.inputDerivation ];
+          } "touch $out");
       # NOTE `nix flake check` will not work at the moment due to use of
       # IFD in haskell.nix
-      checks = perSystem (system: self.flake.${system}.checks);
+      checks = perSystem (system: self.flake.${system}.checks // {
+        formatCheck = formatCheckFor system;
+      });
 
       herculesCI.ciSystems = [ "x86_64-linux" ];
     };
