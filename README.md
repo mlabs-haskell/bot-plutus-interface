@@ -73,11 +73,11 @@ main :: IO ()
 main = do
   pabConf <-
     either error id
-      <$> BotPlutusInterface.loadPABConfig "config/pabConfig.value"
+      <$> BotPlutusInterface.loadPABConfig "pabConfig.value"
   BotPlutusInterface.runPAB @MyContracts pabConf
 ```
 
-Configuration format (example: <examples/plutus-game/config/pabConfig.value>): 
+Configuration format (example: <examples/plutus-game/pabConfig.value>): 
 
 ``` console
 $ cabal repl --disable-optimisation --repl-options -Wwarn
