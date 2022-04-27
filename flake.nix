@@ -109,7 +109,6 @@
     plutus-config = {
       url =
         "github:mlabs-haskell/plutus-config/240c281a8cdaeee17128ab4102443395ad3613f9";
-      flake = false;
     };
   };
 
