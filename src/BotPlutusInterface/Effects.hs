@@ -19,14 +19,19 @@ module BotPlutusInterface.Effects (
   writeFileJSON,
   writeFileTextEnvelope,
   callCommand,
+  estimateBudget,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
+import BotPlutusInterface.ExBudget qualified as ExBudget
 import BotPlutusInterface.Types (
+  BudgetEstimationError,
   CLILocation (..),
   ContractEnvironment,
   ContractState (ContractState),
   LogLevel (..),
+  TxBudget,
+  TxFile,
  )
 import Cardano.Api (AsType, FileError, HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
@@ -82,6 +87,7 @@ data PABEffect (w :: Type) (r :: Type) where
   ListDirectory :: FilePath -> PABEffect w [FilePath]
   UploadDir :: Text -> PABEffect w ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
+  EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -124,6 +130,8 @@ handlePABEffect contractEnv =
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
           handleChainIndexReq contractEnv.cePABConfig query
+        EstimateBudget txPath ->
+          ExBudget.estimateBudget contractEnv.cePABConfig txPath
     )
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
@@ -169,6 +177,13 @@ callCommand ::
   ShellArgs a ->
   Eff effs (Either Text a)
 callCommand = send @(PABEffect w) . CallCommand
+
+estimateBudget ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  TxFile ->
+  Eff effs (Either BudgetEstimationError TxBudget)
+estimateBudget = send @(PABEffect w) . EstimateBudget
 
 createDirectoryIfMissing ::
   forall (w :: Type) (effs :: [Type -> Type]).

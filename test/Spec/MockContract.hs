@@ -50,10 +50,13 @@ import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (
+  BudgetEstimationError,
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   LogLevel (..),
   PABConfig (..),
+  TxBudget (TxBudget),
+  TxFile,
  )
 import Cardano.Api (
   AsType,
@@ -81,7 +84,7 @@ import Control.Monad.Freer (Eff, reinterpret2, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
-import Data.Aeson (ToJSON)
+import Data.Aeson (Result (Success), ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
@@ -230,7 +233,7 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1, pcForceBudget = Just (500000, 2000)}
+      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       }
@@ -294,7 +297,7 @@ runPABEffectPure initState req =
     go (ListDirectory dir) = mockListDirectory dir
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
-
+    go (EstimateBudget file) = mockExBudget file
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -582,6 +585,33 @@ buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ fillGaps sortedRelatedRef
       | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
     defTxOut = TxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty Nothing
 
+mockExBudget ::
+  forall (w :: Type).
+  TxFile ->
+  MockContract w (Either BudgetEstimationError TxBudget)
+mockExBudget _ = pure . Right $ TxBudget inBudgets policyBudgets
+  where
+    inBudgets = Map.singleton (TxOutRef txId 1) someBudget
+    policyBudgets = Map.singleton policy someBudget
+
+    someBudget = Ledger.ExBudget (Ledger.ExCPU 500000) (Ledger.ExMemory 2000)
+
+    txId =
+      let txId' =
+            JSON.fromJSON $
+              JSON.object
+                ["getTxId" JSON..= ("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" :: Text)]
+       in case txId' of
+            Success tid -> tid
+            _ -> error "Could not parse TxId"
+
+    policy =
+      let policy' =
+            JSON.fromJSON . JSON.String $
+              "648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198"
+       in case policy' of
+            Success p -> p
+            _ -> error "Could not parse MintingPolicyHash"
 dummyTxRawFile :: TextEnvelope
 dummyTxRawFile =
   TextEnvelope

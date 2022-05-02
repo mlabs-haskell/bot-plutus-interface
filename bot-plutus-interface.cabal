@@ -77,12 +77,15 @@ library
   exposed-modules:
     BotPlutusInterface
     BotPlutusInterface.Balance
+    BotPlutusInterface.BodyBuilder
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
+    BotPlutusInterface.ExBudget
     BotPlutusInterface.Files
     BotPlutusInterface.Helpers
+    BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
@@ -94,6 +97,7 @@ library
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-slotting
     , containers
     , data-default
     , data-default-class

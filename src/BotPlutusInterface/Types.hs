@@ -15,9 +15,14 @@ module BotPlutusInterface.Types (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
   RawTx (..),
+  TxFile (..),
+  TxBudget (..),
+  BudgetEstimationError (..),
+  SpendBudgets,
+  MintBudgets,
 ) where
 
-import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
+import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
@@ -28,7 +33,13 @@ import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Ledger (PubKeyHash, StakePubKeyHash)
+import Ledger (
+  ExBudget,
+  MintingPolicyHash,
+  PubKeyHash,
+  StakePubKeyHash,
+  TxOutRef,
+ )
 import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
@@ -64,8 +75,6 @@ data PABConfig = PABConfig
   , pcOwnPubKeyHash :: !PubKeyHash
   , pcOwnStakePubKeyHash :: !(Maybe StakePubKeyHash)
   , pcTipPollingInterval :: !Natural
-  , -- | Forced budget for scripts, as optional (CPU Steps, Memory Units)
-    pcForceBudget :: !(Maybe (Integer, Integer))
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
   }
@@ -129,7 +138,6 @@ instance Default PABConfig where
       , pcLogLevel = Info
       , pcOwnPubKeyHash = ""
       , pcOwnStakePubKeyHash = Nothing
-      , pcForceBudget = Nothing
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       }
@@ -144,3 +152,44 @@ data RawTx = RawTx
 -- type is a reserved keyword in haskell and can not be used as a field name
 -- when converting this to JSON we drop the _ prefix from each field
 deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx
+
+-- Budget estimation types
+
+{- | Error returned in case any error happened during budget estimation
+ (wraps whatever received in `Text`)
+-}
+data BudgetEstimationError
+  = -- | general error for `Cardano.Api` errors
+    BudgetEstimationError !Text
+  | -- | script evaluation failed during budget estimation
+    ScriptFailure ScriptExecutionError
+  | {- budget for input or policy was not found after estimation
+       (arguably should not happen at all) -}
+    BudgetNotFound ScriptWitnessIndex
+  deriving stock (Show)
+
+-- | Type of transaction file used for budget estimation
+data TxFile
+  = -- | for using with ".raw" files
+    Raw !FilePath
+  | -- | for using with ".signed" files
+    Signed !FilePath
+
+-- | Result of budget estimation
+data TxBudget = TxBudget
+  { -- | budgets for spending inputs
+    spendBudgets :: !SpendBudgets
+  , -- | budgets for minting policies
+    mintBudgets :: !MintBudgets
+  }
+  deriving stock (Show)
+
+instance Semigroup TxBudget where
+  TxBudget s m <> TxBudget s' m' = TxBudget (s <> s') (m <> m')
+
+instance Monoid TxBudget where
+  mempty = TxBudget mempty mempty
+
+type SpendBudgets = Map TxOutRef ExBudget
+
+type MintBudgets = Map MintingPolicyHash ExBudget
