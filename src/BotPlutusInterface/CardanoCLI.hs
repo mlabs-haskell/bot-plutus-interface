@@ -24,7 +24,15 @@ import BotPlutusInterface.Files (
   txFilePath,
   validatorScriptFilePath,
  )
-import BotPlutusInterface.Types (MintBudgets, PABConfig, SpendBudgets, Tip, TxBudget, mintBudgets, spendBudgets)
+import BotPlutusInterface.Types (
+  MintBudgets,
+  PABConfig,
+  SpendBudgets,
+  Tip,
+  TxBudget,
+  mintBudgets,
+  spendBudgets,
+ )
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
 import Control.Monad (join)

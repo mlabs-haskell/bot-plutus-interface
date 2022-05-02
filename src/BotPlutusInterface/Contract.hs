@@ -11,17 +11,24 @@ import BotPlutusInterface.Effects (
   ShellArgs (..),
   callCommand,
   createDirectoryIfMissing,
+  estimateBudget,
   handlePABEffect,
   logToContract,
   printLog,
   queryChainIndex,
   readFileTextEnvelope,
+  saveBudget,
   threadDelay,
   uploadDir,
  )
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug, Warn), Tip (block, slot))
+import BotPlutusInterface.Types (
+  ContractEnvironment (..),
+  LogLevel (Debug, Warn),
+  Tip (block, slot),
+  TxFile (Signed),
+ )
 import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
 import Control.Lens (preview, (^.))
 import Control.Monad (join, void, when)
@@ -271,8 +278,14 @@ writeBalancedTx contractEnv (Right tx) = do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
-    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" (Ledger.getCardanoTxId $ Left cardanoTx))
-    when signable $ mvFiles (Files.txFilePath pabConf "signed" (Tx.txId tx)) (Files.txFilePath pabConf "signed" (Ledger.getCardanoTxId $ Left cardanoTx))
+    let cardanoTxId = Ledger.getCardanoTxId $ Left cardanoTx
+        signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx)
+        signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
+    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" cardanoTxId)
+    when signable $ mvFiles signedSrcPath signedDstPath
+
+    when contractEnv.cePABConfig.pcCollectStats $
+      collectBudgetStats cardanoTxId signedDstPath
 
     pure cardanoTx
   where
@@ -285,6 +298,11 @@ writeBalancedTx contractEnv (Right tx) = do
             , cmdArgs = [src, dst]
             , cmdOutParser = const ()
             }
+
+    collectBudgetStats txId txPath = do
+      let path = Text.unpack txPath
+      b <- firstEitherT (Text.pack . show) $ newEitherT $ estimateBudget @w (Signed path)
+      void $ newEitherT (Right <$> saveBudget @w txId b)
 
 pkhToText :: Ledger.PubKey -> Text
 pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash

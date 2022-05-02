@@ -152,6 +152,7 @@ test-suite bot-plutus-interface-test
   other-modules:
     Spec.BotPlutusInterface.Balance
     Spec.BotPlutusInterface.Contract
+    Spec.BotPlutusInterface.ContractStats
     Spec.BotPlutusInterface.Server
     Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract

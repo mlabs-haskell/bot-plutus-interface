@@ -36,6 +36,7 @@ module Spec.MockContract (
   runContractPure',
   MockContractState (..),
   commandHistory,
+  statsUpdates,
   instanceUpdateHistory,
   logHistory,
   contractEnv,
@@ -43,6 +44,7 @@ module Spec.MockContract (
   files,
   tip,
   utxos,
+  mockBudget,
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
@@ -201,6 +203,7 @@ data MockFile
 
 data MockContractState w = MockContractState
   { _files :: Map FilePath MockFile
+  , _statsUpdates :: [String]
   , _commandHistory :: [Text]
   , _instanceUpdateHistory :: [Activity]
   , _observableState :: w
@@ -221,6 +224,7 @@ instance Monoid w => Default (MockContractState w) where
             map
               (toSigningKeyFile "./signing-keys")
               [signingKey1, signingKey2, signingKey3]
+      , _statsUpdates = mempty
       , _commandHistory = mempty
       , _instanceUpdateHistory = mempty
       , _observableState = mempty
@@ -236,6 +240,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
+      , ceContractStats = unsafePerformIO $ newTVarIO mempty
       }
 
 instance Monoid w => Default (ContractState w) where
@@ -298,6 +303,7 @@ runPABEffectPure initState req =
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
     go (EstimateBudget file) = mockExBudget file
+    go (SaveBudget txId budget) = mockSaveBudget txId budget
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -414,6 +420,13 @@ mockQueryUtxoOut utxos' =
             )
             utxos'
       ]
+
+mockBudget :: String
+mockBudget = "Some budget"
+
+mockSaveBudget :: forall (w :: Type). TxId -> TxBudget -> MockContract w ()
+mockSaveBudget _ _ =
+  modify @(MockContractState w) (statsUpdates %~ (mockBudget :))
 
 valueToUtxoOut :: Value.Value -> Text
 valueToUtxoOut =

@@ -69,5 +69,6 @@ main = do
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
           , pcEnableTxEndpoint = True
+          , pcCollectStats = False
           }
   BotPlutusInterface.runPAB @GameContracts pabConf

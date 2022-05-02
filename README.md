@@ -100,6 +100,8 @@ main = do
           , -- Protocol params file location relative to the cardano-cli working directory (needed for the cli)
           , pcProtocolParamsFile = "./protocol.json"
           , pcEnableTxEndpoint = True
+          -- Save some stats during contract run (only transactions execution budgets supported atm)
+          , pcCollectStats = False
           }
   BotPlutusInterface.runPAB @MyContracts pabConf
 ```

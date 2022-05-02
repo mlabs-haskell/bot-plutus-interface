@@ -20,6 +20,7 @@ module BotPlutusInterface.Effects (
   writeFileTextEnvelope,
   callCommand,
   estimateBudget,
+  saveBudget,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
@@ -32,11 +33,12 @@ import BotPlutusInterface.Types (
   LogLevel (..),
   TxBudget,
   TxFile,
+  addBudget,
  )
 import Cardano.Api (AsType, FileError, HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
-import Control.Concurrent.STM (atomically, modifyTVar)
+import Control.Concurrent.STM (atomically, modifyTVar, modifyTVar')
 import Control.Monad (void, when)
 import Control.Monad.Freer (Eff, LastMember, Member, interpretM, send, type (~>))
 import Data.Aeson (ToJSON)
@@ -47,6 +49,7 @@ import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import System.Directory qualified as Directory
@@ -88,6 +91,7 @@ data PABEffect (w :: Type) (r :: Type) where
   UploadDir :: Text -> PABEffect w ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
   EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
+  SaveBudget :: Ledger.TxId -> TxBudget -> PABEffect w ()
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -132,6 +136,7 @@ handlePABEffect contractEnv =
           handleChainIndexReq contractEnv.cePABConfig query
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
+        SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
     )
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
@@ -167,6 +172,11 @@ readProcessEither path args =
     mapToEither (ExitSuccess, stdout, _) = Right stdout
     mapToEither (ExitFailure exitCode, _, stderr) =
       Left $ "ExitCode " <> Text.pack (show exitCode) <> ": " <> Text.pack stderr
+
+saveBudgetImpl :: ContractEnvironment w -> Ledger.TxId -> TxBudget -> IO ()
+saveBudgetImpl contractEnv txId budget =
+  atomically $
+    modifyTVar' contractEnv.ceContractStats (addBudget txId budget)
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@
@@ -267,3 +277,11 @@ queryChainIndex ::
   ChainIndexQuery ->
   Eff effs ChainIndexResponse
 queryChainIndex = send @(PABEffect w) . QueryChainIndex
+
+saveBudget ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.TxId ->
+  TxBudget ->
+  Eff effs ()
+saveBudget txId budget = send @(PABEffect w) $ SaveBudget txId budget
