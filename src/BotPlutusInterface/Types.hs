@@ -120,7 +120,6 @@ addBudget :: TxId -> TxBudget -> ContractStats -> ContractStats
 addBudget txId budget stats =
   stats {estimatedBudgets = Map.insert txId budget (estimatedBudgets stats)}
 
-
 instance Semigroup TxBudget where
   TxBudget s m <> TxBudget s' m' = TxBudget (s <> s') (m <> m')
 

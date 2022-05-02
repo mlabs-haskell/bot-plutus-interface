@@ -1,9 +1,9 @@
 module Spec.BotPlutusInterface.ContractStats (tests) where
 
-import BotPlutusInterface.Types
-  ( ContractEnvironment (cePABConfig),
-    PABConfig (pcCollectStats, pcOwnPubKeyHash),
-  )
+import BotPlutusInterface.Types (
+  ContractEnvironment (cePABConfig),
+  PABConfig (pcCollectStats, pcOwnPubKeyHash),
+ )
 import Control.Lens ((&), (.~), (^.))
 import Data.Default (def)
 import Data.Text (Text)
@@ -12,21 +12,21 @@ import Ledger (PaymentPubKeyHash (unPaymentPubKeyHash))
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
-import Plutus.Contract
-  ( Contract (..),
-    Endpoint,
-    submitTx,
-  )
-import Spec.MockContract
-  ( contractEnv,
-    mockBudget,
-    paymentPkh1,
-    paymentPkh2,
-    pkhAddr1,
-    runContractPure,
-    statsUpdates,
-    utxos,
-  )
+import Plutus.Contract (
+  Contract (..),
+  Endpoint,
+  submitTx,
+ )
+import Spec.MockContract (
+  contractEnv,
+  mockBudget,
+  paymentPkh1,
+  paymentPkh2,
+  pkhAddr1,
+  runContractPure,
+  statsUpdates,
+  utxos,
+ )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
 import Prelude
@@ -35,8 +35,8 @@ tests :: TestTree
 tests =
   testGroup
     "Collecting contract stats"
-    [ testCase "Budget added when saving enabled" budgetSavingEnabled,
-      testCase "Budget NOT added with default (`False`) option" budgetSavingDisabled
+    [ testCase "Budget added when saving enabled" budgetSavingEnabled
+    , testCase "Budget NOT added with default (`False`) option" budgetSavingDisabled
     ]
 
 budgetSavingEnabled :: Assertion
@@ -46,14 +46,8 @@ budgetSavingEnabled = do
       initState =
         def & utxos .~ [(txOutRef, txOut)]
           & contractEnv .~ contractEnv'
-      contractEnv' =
-        def
-          { cePABConfig =
-              def
-                { pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1,
-                  pcCollectStats = True
-                }
-          }
+      pabConf = def {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1, pcCollectStats = True}
+      contractEnv' = def {cePABConfig = pabConf}
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
