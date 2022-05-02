@@ -199,7 +199,7 @@ handleContractActivityChange ::
   ContractState w ->
   [CombinedWSStreamToClient]
 handleContractActivityChange contractInstanceID prevState currentState =
-  catMaybes [activityChange, observableStateChange]
+  catMaybes [observableStateChange, activityChange]
   where
     activityChange =
       if (csActivity <$> prevState) /= Just currentState.csActivity

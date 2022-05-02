@@ -4,7 +4,7 @@
 
 .PHONY: hoogle pab_servers_all pab_servers_all pab_db clean_db \
 	nix_build_lib nix_build_examples build test accept_pirs watch ghci readme_contents \
-	format lint requires_nix_shell 
+	format lint requires_nix_shell
 
 usage:
 	@echo "usage: make <command> [OPTIONS]"
@@ -99,7 +99,7 @@ nixpkgsfmt: requires_nix_shell
 	nixpkgs-fmt $(NIX_SOURCES)
 
 nixpkgsfmt_check: requires_nix_shell
-	nixpkgsfmt --check $(NIX_SOURCES)
+	nixpkgs-fmt --check $(NIX_SOURCES)
 
 # Check with hlint, currently I couldn't get --refactor to work
 lint: requires_nix_shell
