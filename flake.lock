@@ -373,6 +373,21 @@
         "type": "github"
       }
     },
+    "flake-utils_3": {
+      "locked": {
+        "lastModified": 1649676176,
+        "narHash": "sha256-OWKJratjt2RW151VUlJPRALb7OU2S5s+f0vLj4o1bHM=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "a4b154ebbdc88c8498a5c7b01589addc9e9cb678",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
     "flat": {
       "flake": false,
       "locked": {
@@ -509,6 +524,27 @@
         "owner": "mlabs-haskell",
         "repo": "haskell.nix",
         "type": "github"
+      }
+    },
+    "haskell-nix-extra-hackage": {
+      "inputs": {
+        "flake-utils": "flake-utils_3",
+        "haskell-nix": [
+          "haskell-nix"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1652044116,
+        "narHash": "sha256-sXjZmfa8xErm+tbrXoko9sNC86h14H/gg/AFK+Ivp78=",
+        "type": "git",
+        "url": "file:///home/ssdd/mlabs/haskell-nix-extra-hackage"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:///home/ssdd/mlabs/haskell-nix-extra-hackage"
       }
     },
     "haskellNix": {
@@ -1017,6 +1053,7 @@
         "flat": "flat",
         "goblins": "goblins",
         "haskell-nix": "haskell-nix",
+        "haskell-nix-extra-hackage": "haskell-nix-extra-hackage",
         "iohk-monitoring-framework": "iohk-monitoring-framework",
         "iohk-nix": "iohk-nix",
         "nixpkgs": [

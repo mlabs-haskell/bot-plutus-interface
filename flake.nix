@@ -6,6 +6,12 @@
 
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
 
+    haskell-nix-extra-hackage = {
+      url = "github:mlabs-haskell/haskell-nix-extra-hackage/main";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.haskell-nix.follows = "haskell-nix";
+    };
+
     iohk-nix.url = "github:input-output-hk/iohk-nix";
     iohk-nix.flake = false; # Bad Nix code
 
@@ -316,16 +322,31 @@
         }
       ];
 
+      extraHackagePackages = with nixpkgs.lib;
+        (concatLists (map
+          (extraSource: (map
+            (subdir:
+              if subdir == "." then extraSource.src.outPath else "${extraSource.src.outPath}/${subdir}")
+            extraSource.subdirs))
+          extraSources));
+
       projectFor = system:
         let
           pkgs = nixpkgsFor system;
           pkgs' = nixpkgsFor' system;
+          # Usage:
+          extraHackage = inputs.haskell-nix-extra-hackage.mkHackage.${system} extraHackagePackages;
         in
         pkgs.haskell-nix.cabalProject' {
           src = ./.;
-          inherit cabalProjectLocal extraSources;
+          inherit cabalProjectLocal;
           name = "bot-plutus-interface";
           compiler-nix-name = "ghc8107";
+
+          extra-hackages = [ (import extraHackage.hackageNix) ];
+          extra-hackage-tarballs = [{ name = "extraHackage"; index = extraHackage.hackageTarball; }];
+          modules = [ extraHackage.module ] ++ haskellModules;
+
           shell = {
             additional = ps: [
               ps.plutus-pab
@@ -345,7 +366,6 @@
               nixpkgs-fmt
             ];
           };
-          modules = haskellModules;
         };
 
       formatCheckFor = system:
