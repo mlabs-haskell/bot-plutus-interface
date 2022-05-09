@@ -389,6 +389,30 @@
         "type": "github"
       }
     },
+    "haskell-nix-extra-hackage": {
+      "inputs": {
+        "haskell-nix": [
+          "haskell-nix"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1653405678,
+        "narHash": "sha256-fPpPxuCZDF5b/iQgmUg2jspPObsK0mpcchUti/LR8D0=",
+        "owner": "mlabs-haskell",
+        "repo": "haskell-nix-extra-hackage",
+        "rev": "cf4613eb0d883a8c12c86d7cdbdaaf15fdc70128",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mlabs-haskell",
+        "ref": "main",
+        "repo": "haskell-nix-extra-hackage",
+        "type": "github"
+      }
+    },
     "hpc-coveralls": {
       "flake": false,
       "locked": {
@@ -726,6 +750,7 @@
         "flat": "flat",
         "goblins": "goblins",
         "haskell-nix": "haskell-nix",
+        "haskell-nix-extra-hackage": "haskell-nix-extra-hackage",
         "iohk-monitoring-framework": "iohk-monitoring-framework",
         "iohk-nix": "iohk-nix",
         "nixpkgs": [
