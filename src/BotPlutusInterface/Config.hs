@@ -8,11 +8,15 @@ module BotPlutusInterface.Config (
   docPABConfig,
   loadPABConfig,
   savePABConfig,
-  savePABConfigPartial,
 ) where
 
+import BotPlutusInterface.Effects (
+  ShellArgs (..),
+  callLocalCommand,
+ )
 import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
-import Cardano.Api (ExecutionUnits (..))
+
+import Cardano.Api (ExecutionUnits (..), NetworkId (Mainnet, Testnet), unNetworkMagic)
 import Config (Section (Section), Value (Atom, Sections, Text))
 import Config.Schema (
   HasSpec (anySpec),
@@ -25,8 +29,9 @@ import Config.Schema (
   (<!>),
  )
 import Data.Default (def)
-import Data.Functor ((<&>))
 import Data.String.ToString (toString)
+import Data.Text (Text)
+import Data.Text qualified as Text
 import PlutusConfig.Base (
   enumToAtom,
   filepathSpec,
@@ -37,7 +42,6 @@ import PlutusConfig.Base (
 import PlutusConfig.Cardano.Api ()
 import PlutusConfig.Cardano.Api.Shelley (
   readProtocolParametersJSON,
-  writeProtocolParametersJSON,
  )
 import PlutusConfig.Ledger ()
 import PlutusConfig.Types (
@@ -220,27 +224,57 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
 docPABConfig :: String
 docPABConfig = show $ generateDocs pabConfigSpec
 
+{- |Load 'PABConfig' from the file:
+
+NOTE:
+
+- default value for: @pcProtocolParamsFile@ is "./protocol.json"
+
+- if @pcProtocolParamsFile == "./protocol.json"@ and file don't exist, try to
+  fetch in from @cardano-cli@ on the fly (only for local)
+
+- in other cases -- fail
+-}
 loadPABConfig :: FilePath -> IO (Either String PABConfig)
 loadPABConfig fn = do
   confE <- deserialize <$> readFile fn
   case confE of
     Left err -> return $ Left $ "PABConfig: " <> fn <> ": " <> err
-    Right conf@PABConfig {pcProtocolParamsFile} -> do
-      readProtocolParametersJSON (toString pcProtocolParamsFile)
-        <&> \case
-          Left err -> Left $ "protocolParamsFile: " <> toString pcProtocolParamsFile <> ": " <> err
-          Right pcProtocolParams -> Right conf {pcProtocolParams}
+    Right conf@PABConfig {pcProtocolParamsFile, pcNetwork, pcCliLocation} -> do
+      pparamsE <- readProtocolParametersJSON (toString pcProtocolParamsFile)
+      case pparamsE of
+        Left err
+          | pcProtocolParamsFile == "./protocol.json"
+              && pcCliLocation == Local -> do
+            let shellArgs =
+                  ShellArgs
+                    { cmdName = "cardano-cli"
+                    , cmdArgs =
+                        [ "query"
+                        , "protocol-parameters"
+                        , "--out-file"
+                        , "./protocol.json"
+                        ]
+                          ++ networkArg pcNetwork
+                    , cmdOutParser = id
+                    }
+            callLocalCommand shellArgs
+              >>= \case
+                Left errPParams -> return $ Left $ Text.unpack errPParams
+                Right _ -> loadPABConfig fn
+          | otherwise ->
+            return $ pparamsError pcProtocolParamsFile err
+        Right pcProtocolParams -> return $ Right conf {pcProtocolParams}
+  where
+    pparamsError f e = Left $ "protocolParamsFile: " <> toString f <> ": " <> e
 
-{- |Save 'PABConfig' into two files:
+networkArg :: NetworkId -> [Text]
+networkArg Mainnet = ["--mainnet"]
+networkArg (Testnet magic) = ["--testnet-magic", Text.pack $ show $ unNetworkMagic magic]
 
- - Save 'PABConfig' into a file without `pcProtocolParams`, which specified as the argument
- - Save 'pcProtocolParams' into file, which specified in `pcProtocolParamsFile` field of 'PABConfig'
+{- |Save 'PABConfig'.
+
+NOTE: The functions don't save @pcProtocolParams@ because don't expect that it can be changed.
 -}
 savePABConfig :: FilePath -> PABConfig -> IO ()
-savePABConfig fn conf@PABConfig {pcProtocolParams, pcProtocolParamsFile} = do
-  writeProtocolParametersJSON (toString pcProtocolParamsFile) pcProtocolParams
-  savePABConfigPartial fn conf
-
--- |Partly save 'PABConfig' to file, without `pcProtocolParams`
-savePABConfigPartial :: FilePath -> PABConfig -> IO ()
-savePABConfigPartial fn conf = writeFile fn $ serialize conf <> "\n"
+savePABConfig fn conf = writeFile fn $ serialize conf <> "\n"

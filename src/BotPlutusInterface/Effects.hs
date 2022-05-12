@@ -19,6 +19,7 @@ module BotPlutusInterface.Effects (
   writeFileJSON,
   writeFileTextEnvelope,
   callCommand,
+  callLocalCommand,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
