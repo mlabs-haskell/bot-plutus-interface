@@ -13,7 +13,7 @@ signingKeyFileDir:  "./signing-keys"
 -- Directory where the encoded transaction files will be saved
 txFileDir:          "./txs"
 -- Protocol params file location relative to the cardano-cli working directory (needed for the cli)
-protocolParamsFile: "./config/protocol.json"
+protocolParamsFile: "./protocol.json"
 -- Dry run mode will build the tx, but skip the submit step
 dryRun:             true
 logLevel:           debug

@@ -73,7 +73,7 @@ main :: IO ()
 main = do
   pabConf <-
     either error id
-      <$> BotPlutusInterface.loadPABConfig "pabConfig.value"
+      <$> BotPlutusInterface.loadPABConfig "./pabConfig.value"
   BotPlutusInterface.runPAB @MyContracts pabConf
 ```
 
