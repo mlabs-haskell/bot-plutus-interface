@@ -76,6 +76,7 @@ library
   build-depends:
     , aeson                      ^>=1.5.0.0
     , attoparsec                 >=0.13.2.2
+    , bot-plutus-interface
     , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto

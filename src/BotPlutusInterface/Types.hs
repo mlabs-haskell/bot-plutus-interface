@@ -15,9 +15,16 @@ module BotPlutusInterface.Types (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
   RawTx (..),
+  TxFile (..),
+  TxBudget (..),
+  BudgetEstimationError (..),
+  SpendBudgets,
+  MintBudgets,
+  ContractStats (..),
+  addBudget,
 ) where
 
-import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
+import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
@@ -26,9 +33,17 @@ import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
 import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Ledger (PubKeyHash)
+import Ledger (
+  ExBudget,
+  MintingPolicyHash,
+  PubKeyHash,
+  StakePubKeyHash,
+  TxId,
+  TxOutRef,
+ )
 import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
@@ -64,18 +79,76 @@ data PABConfig = PABConfig
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
   , pcOwnPubKeyHash :: !PubKeyHash
+  , pcOwnStakePubKeyHash :: !(Maybe StakePubKeyHash)
   , pcTipPollingInterval :: !Natural
-  , -- | Forced budget for scripts, as optional (CPU Steps, Memory Units)
-    pcForceBudget :: !(Maybe (Integer, Integer))
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
+  , pcCollectStats :: !Bool
   }
   deriving stock (Show, Eq)
+
+-- Budget estimation types
+
+{- | Error returned in case any error happened during budget estimation
+ (wraps whatever received in `Text`)
+-}
+data BudgetEstimationError
+  = -- | general error for `Cardano.Api` errors
+    BudgetEstimationError !Text
+  | -- | script evaluation failed during budget estimation
+    ScriptFailure ScriptExecutionError
+  | {- budget for input or policy was not found after estimation
+       (arguably should not happen at all) -}
+    BudgetNotFound ScriptWitnessIndex
+  deriving stock (Show)
+
+-- | Type of transaction file used for budget estimation
+data TxFile
+  = -- | for using with ".raw" files
+    Raw !FilePath
+  | -- | for using with ".signed" files
+    Signed !FilePath
+
+-- | Result of budget estimation
+data TxBudget = TxBudget
+  { -- | budgets for spending inputs
+    spendBudgets :: !SpendBudgets
+  , -- | budgets for minting policies
+    mintBudgets :: !MintBudgets
+  }
+  deriving stock (Show)
+
+addBudget :: TxId -> TxBudget -> ContractStats -> ContractStats
+addBudget txId budget stats =
+  stats {estimatedBudgets = Map.insert txId budget (estimatedBudgets stats)}
+
+instance Semigroup TxBudget where
+  TxBudget s m <> TxBudget s' m' = TxBudget (s <> s') (m <> m')
+
+instance Monoid TxBudget where
+  mempty = TxBudget mempty mempty
+
+type SpendBudgets = Map TxOutRef ExBudget
+
+type MintBudgets = Map MintingPolicyHash ExBudget
+
+{- | Collection of stats that could be collected py `bpi`
+   about contract it runs
+-}
+newtype ContractStats = ContractStats
+  { estimatedBudgets :: Map TxId TxBudget
+  }
+  deriving stock (Show)
+  deriving newtype (Semigroup, Monoid)
+
+instance Show (TVar ContractStats) where
+  show _ = "<ContractStats>"
 
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
+  , ceContractStats :: TVar ContractStats
   }
   deriving stock (Show)
 
@@ -130,9 +203,10 @@ instance Default PABConfig where
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
       , pcOwnPubKeyHash = ""
-      , pcForceBudget = Nothing
+      , pcOwnStakePubKeyHash = Nothing
       , pcPort = 9080
       , pcEnableTxEndpoint = False
+      , pcCollectStats = False
       }
 
 data RawTx = RawTx

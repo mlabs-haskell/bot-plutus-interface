@@ -56,15 +56,16 @@ main = do
           , pcProtocolParams = protocolParams
           , pcTipPollingInterval = 10_000_000
           , pcSlotConfig = def
-          , pcOwnPubKeyHash = "3f3464650beb5324d0e463ebe81fbe1fd519b6438521e96d0d35bd75"
+          , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+          , pcOwnStakePubKeyHash = Nothing
           , pcScriptFileDir = "./scripts"
           , pcSigningKeyFileDir = "./signing-keys"
           , pcTxFileDir = "./txs"
           , pcDryRun = False
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
-          , pcForceBudget = Just (1000, 1000)
           , pcEnableTxEndpoint = True
           , pcMetadataDir = "./metadata"
+          , pcCollectStats = False
           }
   BotPlutusInterface.runPAB @MintNFTContracts pabConf

@@ -36,6 +36,7 @@ module Spec.MockContract (
   runContractPure',
   MockContractState (..),
   commandHistory,
+  statsUpdates,
   instanceUpdateHistory,
   logHistory,
   contractEnv,
@@ -43,6 +44,7 @@ module Spec.MockContract (
   files,
   tip,
   utxos,
+  mockBudget,
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
@@ -50,10 +52,13 @@ import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (
+  BudgetEstimationError,
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   LogLevel (..),
   PABConfig (..),
+  TxBudget (TxBudget),
+  TxFile,
  )
 import Cardano.Api (
   AsType,
@@ -63,7 +68,7 @@ import Cardano.Api (
   NetworkId (Mainnet),
   PaymentKey,
   SigningKey (PaymentSigningKey),
-  TextEnvelope,
+  TextEnvelope (TextEnvelope, teDescription, teRawCBOR, teType),
   TextEnvelopeDescr,
   TextEnvelopeError (TextEnvelopeAesonDecodeError),
   deserialiseFromTextEnvelope,
@@ -81,13 +86,13 @@ import Control.Monad.Freer (Eff, reinterpret2, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
-import Data.Aeson (ToJSON)
+import Data.Aeson (Result (Success), ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
 import Data.Default (Default (def))
-import Data.Either.Combinators (mapLeft)
-import Data.Hex (hex)
+import Data.Either.Combinators (fromRight, mapLeft)
+import Data.Hex (hex, unhex)
 import Data.Kind (Type)
 import Data.List (isPrefixOf, sortOn)
 import Data.Map (Map)
@@ -199,6 +204,7 @@ data MockFile
 
 data MockContractState w = MockContractState
   { _files :: Map FilePath MockFile
+  , _statsUpdates :: [String]
   , _commandHistory :: [Text]
   , _instanceUpdateHistory :: [Activity]
   , _observableState :: w
@@ -219,6 +225,7 @@ instance Monoid w => Default (MockContractState w) where
             map
               (toSigningKeyFile "./signing-keys")
               [signingKey1, signingKey2, signingKey3]
+      , _statsUpdates = mempty
       , _commandHistory = mempty
       , _instanceUpdateHistory = mempty
       , _observableState = mempty
@@ -231,9 +238,10 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1, pcForceBudget = Just (500000, 2000)}
+      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
+      , ceContractStats = unsafePerformIO $ newTVarIO mempty
       }
 
 instance Monoid w => Default (ContractState w) where
@@ -296,7 +304,8 @@ runPABEffectPure initState req =
     go (ListDirectory dir) = mockListDirectory dir
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
-
+    go (EstimateBudget file) = mockExBudget file
+    go (SaveBudget txId budget) = mockSaveBudget txId budget
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -328,26 +337,27 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
     ("cardano-cli", "transaction" : "build-raw" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ TextEnvelopeFile dummyTxRawFile)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "build" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "TxBody")
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ TextEnvelopeFile dummyTxRawFile)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "sign" : args) -> do
       case drop 1 $ dropWhile (/= "--out-file") args of
         filepath : _ ->
-          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ OtherFile "Tx")
+          modify @(MockContractState w) (files . at (Text.unpack filepath) ?~ TextEnvelopeFile dummyTxSignedFile)
         _ -> throwError @Text "Out file argument is missing"
 
       pure $ Right $ cmdOutParser ""
     ("cardano-cli", "transaction" : "submit" : _) ->
       pure $ Right $ cmdOutParser ""
+    ("mv", _) -> pure $ Right $ cmdOutParser ""
     (unsupportedCmd, unsupportedArgs) ->
       throwError @Text
         ("Unsupported command: " <> Text.intercalate " " (unsupportedCmd : unsupportedArgs))
@@ -412,6 +422,13 @@ mockQueryUtxoOut utxos' =
             )
             utxos'
       ]
+
+mockBudget :: String
+mockBudget = "Some budget"
+
+mockSaveBudget :: forall (w :: Type). TxId -> TxBudget -> MockContract w ()
+mockSaveBudget _ _ =
+  modify @(MockContractState w) (statsUpdates %~ (mockBudget :))
 
 valueToUtxoOut :: Value.Value -> Text
 valueToUtxoOut =
@@ -523,9 +540,24 @@ mockQueryChainIndex = \case
   TxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
     pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
-  TxFromTxId _ ->
-    -- pure $ TxIdResponse Nothing
-    throwError @Text "TxFromTxId is unimplemented"
+  TxFromTxId txId -> do
+    -- TODO: Track some kind of state here, add tests to ensure this works correctly
+    -- For now, empty txs
+    state <- get @(MockContractState w)
+    let knownUtxos = state ^. utxos
+    pure $
+      TxIdResponse $
+        Just $
+          ChainIndexTx
+            { _citxTxId = txId
+            , _citxInputs = mempty
+            , _citxOutputs = buildOutputsFromKnownUTxOs knownUtxos txId
+            , _citxValidRange = Ledger.always
+            , _citxData = mempty
+            , _citxRedeemers = mempty
+            , _citxScripts = mempty
+            , _citxCardanoTx = Nothing
+            }
   UtxoSetMembership _ ->
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress pageQuery _ -> do
@@ -574,3 +606,46 @@ buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ fillGaps sortedRelatedRef
       | n' == n = txOut : fillGaps outs (n + 1)
       | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
     defTxOut = TxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty Nothing
+
+mockExBudget ::
+  forall (w :: Type).
+  TxFile ->
+  MockContract w (Either BudgetEstimationError TxBudget)
+mockExBudget _ = pure . Right $ TxBudget inBudgets policyBudgets
+  where
+    inBudgets = Map.singleton (TxOutRef txId 1) someBudget
+    policyBudgets = Map.singleton policy someBudget
+
+    someBudget = Ledger.ExBudget (Ledger.ExCPU 500000) (Ledger.ExMemory 2000)
+
+    txId =
+      let txId' =
+            JSON.fromJSON $
+              JSON.object
+                ["getTxId" JSON..= ("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" :: Text)]
+       in case txId' of
+            Success tid -> tid
+            _ -> error "Could not parse TxId"
+
+    policy =
+      let policy' =
+            JSON.fromJSON . JSON.String $
+              "648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198"
+       in case policy' of
+            Success p -> p
+            _ -> error "Could not parse MintingPolicyHash"
+dummyTxRawFile :: TextEnvelope
+dummyTxRawFile =
+  TextEnvelope
+    { teType = "TxBodyAlonzo"
+    , teDescription = ""
+    , teRawCBOR = fromRight (error "failed to unpack CBOR hex") $ unhex "86a500848258205d677265fa5bb21ce6d8c7502aca70b9316d10e958611f3c6b758f65ad9599960182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc9300008258209405c89393ba84b14bf8d3e7ed4788cc6e2257831943b58338bee8d37a3668fc00825820a1be9565ccac4a04d2b5bf0d0167196ae467da0d88161c9c827fbe76452b24ef000d8182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc930000018482581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975461a3b8cc4a582581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1a000d062782581d606696936bb8ae24859d0c2e4d05584106601f58a5e9466282c8561b88821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1282581d60981fc565bcf0c95c0cfa6ee6693875b60d529d87ed7082e9bf03c6a4821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e0f021a000320250e81581c0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975469fff8080f5f6"
+    }
+
+dummyTxSignedFile :: TextEnvelope
+dummyTxSignedFile =
+  TextEnvelope
+    { teType = "Tx AlonzoEra"
+    , teDescription = ""
+    , teRawCBOR = fromRight (error "failed to unpack CBOR hex") $ unhex "84a500848258205d677265fa5bb21ce6d8c7502aca70b9316d10e958611f3c6b758f65ad9599960182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc9300008258209405c89393ba84b14bf8d3e7ed4788cc6e2257831943b58338bee8d37a3668fc00825820a1be9565ccac4a04d2b5bf0d0167196ae467da0d88161c9c827fbe76452b24ef000d8182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc930000018482581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975461a3b8cc4a582581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1a000d062782581d606696936bb8ae24859d0c2e4d05584106601f58a5e9466282c8561b88821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1282581d60981fc565bcf0c95c0cfa6ee6693875b60d529d87ed7082e9bf03c6a4821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e0f021a000320250e81581c0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546a10081825820096092b8515d75c2a2f75d6aa7c5191996755840e81deaa403dba5b690f091b65840295a93849a67cecabb8286e561c407b6bd49abf8d2da8bfb821105eae4d28ef0ef1b9ee5e8abb8fd334059f3dfc78c0a65e74057a2dc8d1d12e46842abea600ff5f6"
+    }

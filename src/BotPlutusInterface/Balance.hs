@@ -58,6 +58,8 @@ import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   TokenName (..),
  )
+
+import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import Prelude
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
@@ -73,7 +75,7 @@ balanceTxIO ::
 balanceTxIO pabConf ownPkh unbalancedTx =
   runEitherT $
     do
-      utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf $ Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
+      utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
@@ -101,17 +103,19 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       -- If we have change but no change UTxO, we need to add an output for it
       -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
       balancedTxWithChange <-
-        if adaChange /= 0 && not (hasChangeUTxO ownPkh balancedTx)
-          then fst <$> loop utxoIndex privKeys minUtxos (addOutput ownPkh balancedTx)
+        if adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx)
+          then fst <$> loop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
           else pure balancedTx
 
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
-          fullyBalancedTx = addAdaChange ownPkh finalAdaChange balancedTxWithChange
+          fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange
 
       -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
+    changeAddr :: Address
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) (pabConf.pcOwnStakePubKeyHash)
     loop ::
       Map TxOutRef TxOut ->
       Map PubKeyHash DummyPrivKey ->
@@ -130,9 +134,10 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
-        hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` 0
+        hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` 0
 
-      exBudget <- newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
+      exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
+
       nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
@@ -140,7 +145,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       lift $ printLog @w Debug $ "Fees: " ++ show fees
 
       -- Rebalance the initial tx with the above fees
-      balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex ownPkh $ tx `withFee` fees
+      balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
 
       if balancedTx == tx
         then pure (balancedTx, minUtxos)
@@ -175,13 +180,13 @@ calculateMinUtxos pabConf datums txOuts =
 balanceTxStep ::
   [(TxOut, Integer)] ->
   Map TxOutRef TxOut ->
-  PubKeyHash ->
+  Address ->
   Tx ->
   Either Text Tx
-balanceTxStep minUtxos utxos ownPkh tx =
+balanceTxStep minUtxos utxos changeAddr tx =
   Right (addLovelaces minUtxos tx)
     >>= balanceTxIns utxos
-    >>= handleNonAdaChange ownPkh utxos
+    >>= handleNonAdaChange changeAddr utxos
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
 getChange :: Map TxOutRef TxOut -> Tx -> Value
@@ -288,10 +293,9 @@ addTxCollaterals utxos tx = do
     filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
 
 -- | Ensures all non ada change goes back to user
-handleNonAdaChange :: PubKeyHash -> Map TxOutRef TxOut -> Tx -> Either Text Tx
-handleNonAdaChange ownPkh utxos tx =
-  let changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
-      nonAdaChange = getNonAdaChange utxos tx
+handleNonAdaChange :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+handleNonAdaChange changeAddr utxos tx =
+  let nonAdaChange = getNonAdaChange utxos tx
       outputs =
         case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
           ([], txOuts) ->
@@ -307,15 +311,13 @@ handleNonAdaChange ownPkh utxos tx =
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
 
-hasChangeUTxO :: PubKeyHash -> Tx -> Bool
-hasChangeUTxO ownPkh tx =
+hasChangeUTxO :: Address -> Tx -> Bool
+hasChangeUTxO changeAddr tx =
   any ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx
-  where
-    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
 
 -- | Adds ada change to a transaction, assuming there is already an output going to ownPkh. Otherwise, this is identity
-addAdaChange :: PubKeyHash -> Integer -> Tx -> Tx
-addAdaChange ownPkh change tx =
+addAdaChange :: Address -> Integer -> Tx -> Tx
+addAdaChange changeAddr change tx =
   tx
     { txOutputs =
         case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
@@ -323,14 +325,11 @@ addAdaChange ownPkh change tx =
             txOut {txOutValue = v <> Ada.lovelaceValueOf change} : (txOuts <> txOuts')
           _ -> txOutputs tx
     }
-  where
-    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
 
 -- | Adds a 1 lovelace output to a transaction
-addOutput :: PubKeyHash -> Tx -> Tx
-addOutput ownPkh tx = tx {txOutputs = changeTxOut : txOutputs tx}
+addOutput :: Address -> Tx -> Tx
+addOutput changeAddr tx = tx {txOutputs = changeTxOut : txOutputs tx}
   where
-    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) Nothing
     changeTxOut =
       TxOut
         { txOutAddress = changeAddr
@@ -338,7 +337,7 @@ addOutput ownPkh tx = tx {txOutputs = changeTxOut : txOutputs tx}
         , txOutDatumHash = Nothing
         }
 
-{- | Add the required signatorioes to the transaction. Be aware the the signature itself is invalid,
+{- | Add the required signatories to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
 -}
 addSignatories :: PubKeyHash -> Map PubKeyHash DummyPrivKey -> [PubKeyHash] -> Tx -> Either Text Tx

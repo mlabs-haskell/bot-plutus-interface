@@ -61,9 +61,9 @@ addUtxosForFees = do
       tx = mempty {txOutputs = [txout]} `withFee` 500_000
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
-      ownPkh = pkh1
+      ownAddr = addr1
       balancedTx =
-        Balance.balanceTxStep minUtxo utxoIndex ownPkh tx
+        Balance.balanceTxStep minUtxo utxoIndex ownAddr tx
 
   txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])
 
@@ -73,9 +73,9 @@ addUtxosForNativeTokens = do
       tx = mempty {txOutputs = [txout]} `withFee` 500_000
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
-      ownPkh = pkh1
+      ownAddr = addr1
       balancedTx =
-        Balance.balanceTxStep minUtxo utxoIndex ownPkh tx
+        Balance.balanceTxStep minUtxo utxoIndex ownAddr tx
 
   txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
 
@@ -85,8 +85,8 @@ addUtxosForChange = do
       tx = mempty {txOutputs = [txout]} `withFee` 500_000
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
-      ownPkh = pkh1
+      ownAddr = addr1
       balancedTx =
-        Balance.balanceTxStep minUtxo utxoIndex ownPkh tx
+        Balance.balanceTxStep minUtxo utxoIndex ownAddr tx
 
   txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])

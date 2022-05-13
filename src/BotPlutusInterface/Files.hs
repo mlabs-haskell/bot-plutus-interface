@@ -120,8 +120,8 @@ signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
   let h = encodeByteString $ fromBuiltin pubKeyHash
    in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
 
-txFilePath :: PABConfig -> Text -> Tx.Tx -> Text
-txFilePath pabConf ext tx = pabConf.pcTxFileDir <> "/" <> txFileName (Tx.txId tx) ext
+txFilePath :: PABConfig -> Text -> TxId.TxId -> Text
+txFilePath pabConf ext txId = pabConf.pcTxFileDir <> "/" <> txFileName txId ext
 
 txFileName :: TxId.TxId -> Text -> Text
 txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext

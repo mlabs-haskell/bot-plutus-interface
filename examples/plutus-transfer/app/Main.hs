@@ -60,14 +60,15 @@ main = do
           , pcTipPollingInterval = 10_000_000
           , pcSlotConfig = def
           , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
+          , pcOwnStakePubKeyHash = Nothing
           , pcScriptFileDir = "./scripts"
           , pcSigningKeyFileDir = "./signing-keys"
           , pcTxFileDir = "./txs"
           , pcDryRun = True
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
-          , pcForceBudget = Nothing
           , pcEnableTxEndpoint = True
           , pcMetadataDir = "./metadata"
+          , pcCollectStats = False
           }
   BotPlutusInterface.runPAB @TransferContracts pabConf
