@@ -13,16 +13,12 @@ import BotPlutusInterface.Types (
   endpointsToSchemas,
  )
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
-import Cardano.PlutusExample.NFT (
-  NFTSchema,
-  mintNft,
- )
+import Cardano.PlutusExample.NFT
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Default (def)
 import Data.Maybe (fromMaybe)
-import Ledger.Value (TokenName)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
@@ -37,11 +33,11 @@ instance HasDefinitions MintNFTContracts where
 
   getContract :: (MintNFTContracts -> SomeBuiltin)
   getContract = \case
-    MintNFT tokenName ->
+    MintNFT p ->
       SomeBuiltin $
-        mintNft tokenName
+        mintNft p
 
-newtype MintNFTContracts = MintNFT TokenName
+newtype MintNFTContracts = MintNFT MintParams
   deriving stock (Show)
 
 $(deriveJSON defaultOptions ''MintNFTContracts)
@@ -65,10 +61,11 @@ main = do
           , pcScriptFileDir = "./scripts"
           , pcSigningKeyFileDir = "./signing-keys"
           , pcTxFileDir = "./txs"
-          , pcDryRun = True
+          , pcDryRun = False
           , pcLogLevel = Debug
           , pcProtocolParamsFile = "./protocol.json"
           , pcEnableTxEndpoint = True
+          , pcMetadataDir = "./metadata"
           , pcCollectStats = False
           }
   BotPlutusInterface.runPAB @MintNFTContracts pabConf
