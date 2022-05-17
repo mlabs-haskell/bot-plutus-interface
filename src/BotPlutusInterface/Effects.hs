@@ -22,10 +22,13 @@ module BotPlutusInterface.Effects (
   callCommand,
   estimateBudget,
   saveBudget,
+  slotToPOSIXTime,
+  posixTimeToSlot,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.ExBudget qualified as ExBudget
+import BotPlutusInterface.TimeSlot qualified as TimeSlot
 import BotPlutusInterface.Types (
   BudgetEstimationError,
   CLILocation (..),
@@ -55,7 +58,7 @@ import Data.Text qualified as Text
 import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
-import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
+import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString), error)
 import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.Process (readProcess, readProcessWithExitCode)
@@ -97,6 +100,8 @@ data PABEffect (w :: Type) (r :: Type) where
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
   EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
   SaveBudget :: Ledger.TxId -> TxBudget -> PABEffect w ()
+  SlotToPOSIXTime :: Ledger.Slot -> PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.POSIXTime)
+  POSIXTimeToSlot :: Ledger.POSIXTime -> PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.Slot)
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -146,6 +151,8 @@ handlePABEffect contractEnv =
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
+        SlotToPOSIXTime slot -> TimeSlot.slotToPOSIXTimeImpl contractEnv.cePABConfig slot
+        POSIXTimeToSlot pTime -> TimeSlot.posixTimeToSlotImpl contractEnv.cePABConfig pTime
     )
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
@@ -302,3 +309,17 @@ saveBudget ::
   TxBudget ->
   Eff effs ()
 saveBudget txId budget = send @(PABEffect w) $ SaveBudget txId budget
+
+slotToPOSIXTime ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.Slot ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.POSIXTime)
+slotToPOSIXTime = send @(PABEffect w) . SlotToPOSIXTime
+
+posixTimeToSlot ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.POSIXTime ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.Slot)
+posixTimeToSlot = send @(PABEffect w) . POSIXTimeToSlot

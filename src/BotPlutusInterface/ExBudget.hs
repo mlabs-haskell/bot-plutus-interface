@@ -30,9 +30,9 @@ import Prelude
  minting to `MintingPolicyHash`'es
 -}
 estimateBudget :: PABConfig -> TxFile -> IO (Either BudgetEstimationError TxBudget)
-estimateBudget bapConf txFile = do
+estimateBudget pabConf txFile = do
   sock <- getEnv "CARDANO_NODE_SOCKET_PATH"
-  let debugNodeInf = NodeInfo (pcNetwork bapConf) sock
+  let debugNodeInf = NodeInfo (pcNetwork pabConf) sock
   txBody <- case txFile of
     Raw rp -> deserialiseRaw rp
     Signed sp -> fmap CAPI.getTxBody <$> deserialiseSigned sp

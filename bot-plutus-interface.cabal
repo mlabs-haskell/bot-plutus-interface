@@ -25,7 +25,8 @@ source-repository head
 common common-lang
   ghc-options:
     -Wall -Wcompat -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wredundant-constraints -Werror
+    -Wincomplete-uni-patterns -Wredundant-constraints 
+    -- -Werror
     -fobject-code -fno-ignore-interface-pragmas
     -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
 
@@ -87,6 +88,7 @@ library
     BotPlutusInterface.Helpers
     BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
+    BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
 
@@ -143,6 +145,9 @@ library
     , wai
     , warp
     , websockets
+    , cardano-ledger-core
+    , ouroboros-consensus
+    , time
 
   hs-source-dirs:  src
 

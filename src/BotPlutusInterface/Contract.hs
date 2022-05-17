@@ -18,8 +18,9 @@ import BotPlutusInterface.Effects (
   queryChainIndex,
   readFileTextEnvelope,
   saveBudget,
+  slotToPOSIXTime,
   threadDelay,
-  uploadDir,
+  uploadDir, posixTimeToSlot
  )
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
@@ -33,7 +34,7 @@ import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
 import Control.Lens (preview, (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
-import Control.Monad.Freer.Error (runError)
+import Control.Monad.Freer.Error (runError, throwError)
 import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
@@ -353,10 +354,11 @@ awaitTime ::
   ContractEnvironment w ->
   POSIXTime ->
   Eff effs POSIXTime
-awaitTime ce = fmap fromSlot . awaitSlot ce . toSlot
-  where
-    toSlot = posixTimeToEnclosingSlot ce.cePABConfig.pcSlotConfig
-    fromSlot = slotToEndPOSIXTime ce.cePABConfig.pcSlotConfig
+awaitTime ce pTime = do
+  slotFromTime <- posixTimeToSlot @w pTime >>= either (error . show) return
+  slot' <- awaitSlot ce slotFromTime
+  ethTime <- slotToPOSIXTime @w slot'
+  either (error . show) return ethTime
 
 currentSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -380,4 +382,6 @@ currentTime ::
   ContractEnvironment w ->
   Eff effs POSIXTime
 currentTime contractEnv =
-  slotToEndPOSIXTime contractEnv.cePABConfig.pcSlotConfig <$> currentSlot @w contractEnv
+  currentSlot @w contractEnv
+    >>= slotToPOSIXTime @w
+    >>= either (error . show) return
