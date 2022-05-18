@@ -103,6 +103,7 @@ library
     , data-default
     , data-default-class
     , directory
+    , prettyprinter
     , either
     , filepath
     , freer-extras

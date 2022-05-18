@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
@@ -34,7 +35,7 @@ import Control.Lens (preview, (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
-import Control.Monad.Freer.Extras.Log (handleLogIgnore)
+import Control.Monad.Freer.Extras.Log (handleLogTrace)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
@@ -71,6 +72,8 @@ import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
+import Prettyprinter
+import Data.String (fromString)
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
@@ -92,9 +95,12 @@ handleContract contractEnv =
     . handleResumable contractEnv
     . handleCheckpointIgnore
     . handleWriter
-    . handleLogIgnore @Value
+    . handleLogTrace
     . runError
     . raiseEnd
+
+instance Pretty Value where
+  pretty = fromString . show
 
 handleWriter ::
   forall (w :: Type) (effs :: [Type -> Type]).
