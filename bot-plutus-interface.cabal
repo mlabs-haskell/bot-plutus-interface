@@ -105,6 +105,7 @@ library
     , directory
     , prettyprinter
     , either
+    , vector
     , filepath
     , freer-extras
     , freer-simple

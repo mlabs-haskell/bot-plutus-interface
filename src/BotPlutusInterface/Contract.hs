@@ -40,7 +40,7 @@ import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
-import Data.Aeson (ToJSON, Value)
+import Data.Aeson (ToJSON, Value (String, Number, Bool, Null, Array, Object))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Either (fromRight)
 import Data.Kind (Type)
@@ -48,6 +48,8 @@ import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import qualified Data.Vector as V
+import qualified Data.HashMap.Strict as HM
 import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
@@ -73,7 +75,7 @@ import PlutusTx.Builtins (fromBuiltin)
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
 import Prettyprinter
-import Data.String (fromString)
+import qualified Prettyprinter as PP
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
@@ -100,7 +102,22 @@ handleContract contractEnv =
     . raiseEnd
 
 instance Pretty Value where
-  pretty = fromString . show
+  pretty (String s) = pretty s
+  pretty (Number n) = pretty $ show n
+  pretty (Bool b) = pretty b
+  pretty (Array arr) = PP.list $ pretty <$> V.toList arr
+  pretty (Object obj) = PP.group
+    . PP.encloseSep (PP.flatAlt "{ " "{") (PP.flatAlt " }" "}") ", "
+    . map
+      ( \(k, v) ->
+          PP.hang 2 $
+            PP.sep
+              [ pretty k <+> ": "
+              , pretty v
+              ]
+      )
+      $ HM.toList obj
+  pretty Null = "null"
 
 handleWriter ::
   forall (w :: Type) (effs :: [Type -> Type]).
