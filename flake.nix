@@ -2,7 +2,7 @@
   description = "bot-plutus-interface";
 
   inputs = {
-    haskell-nix.url = "github:L-as/haskell.nix";
+    haskell-nix.url = "github:mlabs-haskell/haskell.nix";
 
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
 
@@ -15,6 +15,10 @@
     };
 
     # all inputs below here are for pinning with haskell.nix
+    blockfrost-haskell = {
+      url = "github:blockfrost/blockfrost-haskell/755ed1298f994d0c5f0e8447b0c0f420b4b6ca91";
+      flake = false;
+    };
     cardano-addresses = {
       url =
         "github:input-output-hk/cardano-addresses/71006f9eb956b0004022e80aadd4ad50d837b621";
@@ -42,7 +46,7 @@
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/814df2c146f5d56f8c35a681fe75e85b905aed5d";
+        "github:input-output-hk/cardano-node/2b1d18c6c7b7142d9eebfec34da48840ed4409b6";
       # flake = false; -- we need it to be available in shell
     };
     cardano-prelude = {
@@ -51,19 +55,34 @@
       flake = false;
     };
     cardano-wallet = {
-      url =
-        "github:input-output-hk/cardano-wallet/a5085acbd2670c24251cf8d76a4e83c77a2679ba";
+      url = "github:input-output-hk/cardano-wallet/f6d4db733c4e47ee11683c343b440552f59beff7";
+      flake = false;
+    };
+    ekg-forward = {
+      url = "github:input-output-hk/ekg-forward/297cd9db5074339a2fb2e5ae7d0780debb670c63";
+      flake = false;
+    };
+    ekg-json = {
+      url = "github:vshabanov/ekg-json/00ebe7211c981686e65730b7144fbf5350462608";
       flake = false;
     };
     # We don't actually need this. Removing this might make caching worse?
     flat = {
       url =
-        "github:input-output-hk/flat/ee59880f47ab835dbd73bea0847dab7869fc20d8";
+        "github:Quid2/flat/ee59880f47ab835dbd73bea0847dab7869fc20d8";
       flake = false;
     };
     goblins = {
       url =
         "github:input-output-hk/goblins/cde90a2b27f79187ca8310b6549331e59595e7ba";
+      flake = false;
+    };
+    hedgehog-extras = {
+      url = "github:input-output-hk/hedgehog-extras/edf6945007177a638fbeb8802397f3a6f4e47c14";
+      flake = false;
+    };
+    hw-aeson = {
+      url = "github:haskell-works/hw-aeson/d99d2f3e39a287607418ae605b132a3deb2b753f";
       flake = false;
     };
     iohk-monitoring-framework = {
@@ -78,17 +97,17 @@
     };
     ouroboros-network = {
       url =
-        "github:input-output-hk/ouroboros-network/d2d219a86cda42787325bb8c20539a75c2667132";
+        "github:input-output-hk/ouroboros-network/4fac197b6f0d2ff60dc3486c593b68dc00969fbf";
       flake = false;
     };
     plutus = {
       url =
-        "github:input-output-hk/plutus/cc72a56eafb02333c96f662581b57504f8f8992f";
+        "github:input-output-hk/plutus/4127e9cd6e889824d724c30eae55033cb50cbf3e";
       flake = false;
     };
     plutus-apps = {
       url =
-        "github:input-output-hk/plutus-apps/7f543e21d4945a2024e46c572303b9c1684a5832";
+        "github:input-output-hk/plutus-apps/7fb0e73765502b9876a78a5d80e993161823a54f";
       flake = false;
     };
     purescript-bridge = {
@@ -149,6 +168,10 @@
 
       extraSources = [
         {
+          src = inputs.blockfrost-haskell;
+          subdirs = [ "." ];
+        }
+        {
           src = inputs.cardano-addresses;
           subdirs = [ "core" "command-line" ];
         }
@@ -197,7 +220,17 @@
         }
         {
           src = inputs.cardano-node;
-          subdirs = [ "cardano-api" "cardano-node" "cardano-cli" ];
+          subdirs = [
+            "cardano-api"
+            "cardano-cli"
+            "cardano-git-rev"
+            "cardano-node"
+            "cardano-submit-api"
+            "cardano-testnet"
+            "trace-dispatcher"
+            "trace-forward"
+            "trace-resources"
+          ];
         }
         {
           src = inputs.cardano-config;
@@ -223,11 +256,27 @@
           ];
         }
         {
+          src = inputs.ekg-forward;
+          subdirs = [ "." ];
+        }
+        {
+          src = inputs.ekg-json;
+          subdirs = [ "." ];
+        }
+        {
           src = inputs.flat;
           subdirs = [ "." ];
         }
         {
           src = inputs.goblins;
+          subdirs = [ "." ];
+        }
+        {
+          src = inputs.hedgehog-extras;
+          subdirs = [ "." ];
+        }
+        {
+          src = inputs.hw-aeson;
           subdirs = [ "." ];
         }
         {

@@ -30,7 +30,7 @@ common common-lang
     -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
 
   build-depends:
-    , base                     ^>=4.14
+    , base
     , record-dot-preprocessor
     , record-hasfield
 
