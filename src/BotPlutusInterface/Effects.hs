@@ -14,6 +14,7 @@ module BotPlutusInterface.Effects (
   uploadDir,
   updateInstanceState,
   printLog,
+  handleLogTrace',
   logToContract,
   readFileTextEnvelope,
   writeFileJSON,
@@ -40,8 +41,11 @@ import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelo
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM (atomically, modifyTVar, modifyTVar')
+import Control.Lens
 import Control.Monad (void, when)
-import Control.Monad.Freer (Eff, LastMember, Member, interpretM, send, type (~>))
+import Control.Monad.Freer (Eff, LastMember, Member, interpret, interpretM, send, type (~>))
+import Control.Monad.Freer.Extras (LogMsg (LMessage))
+import Control.Monad.Freer.Extras qualified as Freer
 import Control.Monad.Trans.Except.Extra (handleIOExceptT, runExceptT)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
@@ -52,10 +56,13 @@ import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Debug.Trace qualified as Trace
 import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
+import Prettyprinter
+import Prettyprinter.Render.String qualified as Render
 import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.Process (readProcess, readProcessWithExitCode)
@@ -151,6 +158,23 @@ handlePABEffect contractEnv =
 printLog' :: LogLevel -> LogLevel -> String -> IO ()
 printLog' logLevelSetting msgLogLvl msg =
   when (logLevelSetting >= msgLogLvl) $ putStrLn msg
+
+-- | Version of "Control.Monad.Freer.Extras.handleLogTrace" that takes into account the log level setting.
+handleLogTrace' :: Pretty a => LogLevel -> Eff (LogMsg a ': effs) ~> Eff effs
+handleLogTrace' logLevelSetting = interpret $ \case
+  LMessage msg ->
+    if logLevelSetting >= toNativeLogLevel (msg ^. Freer.logLevel)
+      then Trace.trace (Render.renderString . layoutPretty defaultLayoutOptions . pretty $ msg) $ pure ()
+      else pure ()
+  where
+    toNativeLogLevel Freer.Debug = Debug
+    toNativeLogLevel Freer.Info = Info
+    toNativeLogLevel Freer.Notice = Notice
+    toNativeLogLevel Freer.Warning = Warn
+    toNativeLogLevel Freer.Error = Error
+    toNativeLogLevel Freer.Critical = Error
+    toNativeLogLevel Freer.Alert = Error
+    toNativeLogLevel Freer.Emergency = Error
 
 callLocalCommand :: forall (a :: Type). ShellArgs a -> IO (Either Text a)
 callLocalCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} =

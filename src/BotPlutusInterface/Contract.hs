@@ -13,6 +13,7 @@ import BotPlutusInterface.Effects (
   callCommand,
   createDirectoryIfMissing,
   estimateBudget,
+  handleLogTrace',
   handlePABEffect,
   logToContract,
   printLog,
@@ -35,21 +36,20 @@ import Control.Lens (preview, (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
-import Control.Monad.Freer.Extras.Log (handleLogTrace)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
-import Data.Aeson (ToJSON, Value (String, Number, Bool, Null, Array, Object))
+import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Either (fromRight)
+import Data.HashMap.Strict qualified as HM
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import qualified Data.Vector as V
-import qualified Data.HashMap.Strict as HM
+import Data.Vector qualified as V
 import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
@@ -72,10 +72,10 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
+import Prettyprinter
+import Prettyprinter qualified as PP
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
-import Prettyprinter
-import qualified Prettyprinter as PP
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
@@ -97,7 +97,7 @@ handleContract contractEnv =
     . handleResumable contractEnv
     . handleCheckpointIgnore
     . handleWriter
-    . handleLogTrace
+    . handleLogTrace' contractEnv.cePABConfig.pcLogLevel
     . runError
     . raiseEnd
 
@@ -106,16 +106,17 @@ instance Pretty Value where
   pretty (Number n) = pretty $ show n
   pretty (Bool b) = pretty b
   pretty (Array arr) = PP.list $ pretty <$> V.toList arr
-  pretty (Object obj) = PP.group
-    . PP.encloseSep (PP.flatAlt "{ " "{") (PP.flatAlt " }" "}") ", "
-    . map
-      ( \(k, v) ->
-          PP.hang 2 $
-            PP.sep
-              [ pretty k <+> ": "
-              , pretty v
-              ]
-      )
+  pretty (Object obj) =
+    PP.group
+      . PP.encloseSep (PP.flatAlt "{ " "{") (PP.flatAlt " }" "}") ", "
+      . map
+        ( \(k, v) ->
+            PP.hang 2 $
+              PP.sep
+                [ pretty k <+> ": "
+                , pretty v
+                ]
+        )
       $ HM.toList obj
   pretty Null = "null"
 
