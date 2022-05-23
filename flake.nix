@@ -16,12 +16,12 @@
 
     # all inputs below here are for pinning with haskell.nix
     blockfrost-haskell = {
-      url = "github:blockfrost/blockfrost-haskell/755ed1298f994d0c5f0e8447b0c0f420b4b6ca91";
+      url = "github:blockfrost/blockfrost-haskell/edfd43a95a21356b0cc540002bd1583a35883f85";
       flake = false;
     };
     cardano-addresses = {
       url =
-        "github:input-output-hk/cardano-addresses/71006f9eb956b0004022e80aadd4ad50d837b621";
+        "github:input-output-hk/cardano-addresses/b33e0f365550bd9d329bdbb0a0d2dfe2b23a3dcf";
       flake = false;
     };
     cardano-base = {
@@ -46,7 +46,7 @@
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/2b1d18c6c7b7142d9eebfec34da48840ed4409b6";
+        "github:input-output-hk/cardano-node/73f9a746362695dc2cb63ba757fbcabb81733d23";
       # flake = false; -- we need it to be available in shell
     };
     cardano-prelude = {
@@ -55,15 +55,11 @@
       flake = false;
     };
     cardano-wallet = {
-      url = "github:input-output-hk/cardano-wallet/f6d4db733c4e47ee11683c343b440552f59beff7";
+      url = "github:input-output-hk/cardano-wallet/a279df1d01918034eb97fa4311c489a302ffa86c";
       flake = false;
     };
     ekg-forward = {
       url = "github:input-output-hk/ekg-forward/297cd9db5074339a2fb2e5ae7d0780debb670c63";
-      flake = false;
-    };
-    ekg-json = {
-      url = "github:vshabanov/ekg-json/00ebe7211c981686e65730b7144fbf5350462608";
       flake = false;
     };
     # We don't actually need this. Removing this might make caching worse?
@@ -107,7 +103,7 @@
     };
     plutus-apps = {
       url =
-        "github:input-output-hk/plutus-apps/7fb0e73765502b9876a78a5d80e993161823a54f";
+        "github:input-output-hk/plutus-apps/e51f57fa99f4cc0942ba6476b0689e43f0948eb3";
       flake = false;
     };
     purescript-bridge = {
@@ -169,7 +165,12 @@
       extraSources = [
         {
           src = inputs.blockfrost-haskell;
-          subdirs = [ "." ];
+          subdirs = [
+            "blockfrost-api"
+            "blockfrost-client-core"
+            "blockfrost-client"
+            "blockfrost-pretty"
+          ];
         }
         {
           src = inputs.cardano-addresses;
@@ -225,8 +226,7 @@
             "cardano-cli"
             "cardano-git-rev"
             "cardano-node"
-            "cardano-submit-api"
-            "cardano-testnet"
+            "cardano-node-chairman"
             "trace-dispatcher"
             "trace-forward"
             "trace-resources"
@@ -257,10 +257,6 @@
         }
         {
           src = inputs.ekg-forward;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.ekg-json;
           subdirs = [ "." ];
         }
         {
@@ -339,10 +335,12 @@
             "plutus-chain-index"
             "plutus-chain-index-core"
             "plutus-contract"
+            "plutus-contract-certification"
             "plutus-ledger"
             "plutus-ledger-constraints"
             "plutus-pab"
             "plutus-playground-server"
+            "plutus-script-utils"
             "plutus-use-cases"
             "quickcheck-dynamic"
             "web-ghc"
