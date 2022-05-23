@@ -59,7 +59,7 @@ import Data.Text qualified as Text
 import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
-import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString), error)
+import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.Process (readProcess, readProcessWithExitCode)
@@ -102,7 +102,6 @@ data PABEffect (w :: Type) (r :: Type) where
   EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
   SaveBudget :: Ledger.TxId -> TxBudget -> PABEffect w ()
   SlotToPOSIXTime ::
-    TimeSlot.ToWhichSlotTime ->
     Ledger.Slot ->
     PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.POSIXTime)
   POSIXTimeToSlot :: Ledger.POSIXTime -> PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.Slot)
@@ -158,8 +157,8 @@ handlePABEffect contractEnv =
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
-        SlotToPOSIXTime toWhichTime slot ->
-          TimeSlot.slotToPOSIXTimeImpl contractEnv.cePABConfig toWhichTime slot
+        SlotToPOSIXTime slot ->
+          TimeSlot.slotToPOSIXTimeImpl contractEnv.cePABConfig slot
         POSIXTimeToSlot pTime ->
           TimeSlot.posixTimeToSlotImpl contractEnv.cePABConfig pTime
         POSIXTimeRangeToSlotRange pTimeRange ->
@@ -324,10 +323,9 @@ saveBudget txId budget = send @(PABEffect w) $ SaveBudget txId budget
 slotToPOSIXTime ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  TimeSlot.ToWhichSlotTime ->
   Ledger.Slot ->
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.POSIXTime)
-slotToPOSIXTime tw s = send @(PABEffect w) (SlotToPOSIXTime tw s)
+slotToPOSIXTime = send @(PABEffect w) . SlotToPOSIXTime
 
 posixTimeToSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).

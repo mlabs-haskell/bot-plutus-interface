@@ -42,7 +42,6 @@ import Ledger.Interval (
  )
 import Ledger.Scripts (Datum, DatumHash)
 import Ledger.Time (POSIXTimeRange)
-import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange)
 import Ledger.Tx (
   Tx (..),
   TxIn (..),
@@ -60,8 +59,8 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
-import Debug.Trace (traceM, traceShowId)
 import Prelude
+import Data.Bifunctor (bimap)
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
  assets
@@ -89,15 +88,14 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       tx <-
         newEitherT $
-          addValidRange2 @w
-            pabConf
+          addValidRange @w
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
       lift $ printLog @w Debug $ show utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
-      lift $ createDirectoryIfMissingCLI @w False (Text.unpack pabConf.pcTxFileDir)
+      lift $ createDirectoryIfMissingCLI @w False (Text.unpack         "pcTxFileDir"            )
 
       -- Adds required collaterals, only needs to happen once
       -- Also adds signatures for fee calculation
@@ -359,33 +357,21 @@ addSignatories ownPkh privKeys pkhs tx =
     tx
     (ownPkh : pkhs)
 
-addValidRange :: PABConfig -> POSIXTimeRange -> Tx -> Either Text Tx
-addValidRange pabConf timeRange tx =
-  if validateRange timeRange
-    then
-      let r = traceShowId (posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange)
-       in Right $ tx {txValidRange = r}
-    else Left "Invalid validity interval."
-
-addValidRange2 ::
+addValidRange ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  PABConfig ->
   POSIXTimeRange ->
   Tx ->
   Eff effs (Either Text Tx)
-addValidRange2 pabConf timeRange tx =
+addValidRange timeRange tx =
   if validateRange timeRange
-    then do
-      let oldWaySlotRange = posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange
-      traceM $ "Ledger SlotRange: " ++ show oldWaySlotRange
-      newWaySlotRange <- convertTimeRangeToSlotRange @w timeRange
-      case newWaySlotRange of
-        Right range -> do
-          traceM $ "Query  SlotRange: " ++ show range
-          pure $ Right $ tx {txValidRange = range}
-        Left err -> pure $ Left (Text.pack $ show err)
+    then bimap (Text.pack . show) (setRange tx) <$>
+          convertTimeRangeToSlotRange @w timeRange
     else pure $ Left "Invalid validity interval."
+
+  where
+    setRange tx' range = tx' {txValidRange = range}
+
 
 validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
 validateRange (Interval (LowerBound PosInf _) _) = False

@@ -7,14 +7,11 @@ import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (newTVarIO, readTVarIO)
 import Data.Aeson (decodeFileStrict, (.=))
 import Data.Aeson qualified as JSON
-import Data.Default (def)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.UUID.V4 qualified as UUID
 import Ledger (PubKeyHash)
 import TimeDebugContract qualified
-
--- import LockSpendSingle (lockThenSpendSingle)
 
 import GHC.IO.Encoding
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
@@ -75,7 +72,6 @@ mkPabConf pparams pparamsFile bpiDir ownPkh =
     , pcPort = 9080
     , pcProtocolParams = pparams
     , pcTipPollingInterval = 1_000_000
-    , pcSlotConfig = def
     , pcOwnPubKeyHash = ownPkh
     , pcOwnStakePubKeyHash = Nothing
     , pcScriptFileDir = Text.pack $ bpiDir </> "scripts"

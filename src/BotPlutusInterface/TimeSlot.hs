@@ -1,10 +1,8 @@
 module BotPlutusInterface.TimeSlot (
   TimeSlotConversionError,
-  ToWhichSlotTime (..),
   slotToPOSIXTimeImpl,
   posixTimeToSlotImpl,
   posixTimeRangeToContainedSlotRangeImpl,
-  stackExchangeConvert,
 ) where
 
 import Cardano.Ledger.Alonzo.TxInfo (slotToPOSIXTime)
@@ -26,63 +24,60 @@ import Data.Text qualified as Text
 import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import System.Environment (getEnv)
 
-import Cardano.Slotting.Time (RelativeTime, slotLengthToMillisec, toRelativeTime)
+import Cardano.Slotting.Time (RelativeTime, toRelativeTime)
 import Data.Time (secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Debug.Trace (traceM)
 import Ledger (Closure, Extended (Finite, NegInf, PosInf), Interval (Interval), LowerBound (LowerBound), UpperBound (UpperBound))
-import Ledger.TimeSlot (SlotConfig (SlotConfig), posixTimeToEnclosingSlot)
 import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
 
 data TimeSlotConversionError
   = TimeSlotConversionError !Text
   deriving stock (Show)
 
-data ToWhichSlotTime
-  = ToBeginTime
-  | ToEndTime
+slotToPOSIXTimeImpl :: PABConfig -> Ledger.Slot -> IO (Either TimeSlotConversionError Ledger.POSIXTime)
+slotToPOSIXTimeImpl pabConf slot = runEitherT (slotToPOSIXTimeImpl' pabConf slot)
 
-slotToPOSIXTimeImpl :: PABConfig -> ToWhichSlotTime -> Ledger.Slot -> IO (Either TimeSlotConversionError Ledger.POSIXTime)
-slotToPOSIXTimeImpl pabConf toWhichTime (Ledger.Slot s) = runEitherT $ do
-  let pparams =
-        CAPI.toLedgerPParams
-          CAPI.ShelleyBasedEraAlonzo -- TODO: should era be passed as an argument?
-          (pcProtocolParams pabConf)
-
-  sock <- liftIO $ getEnv "CARDANO_NODE_SOCKET_PATH"
-  let nodeInfo = NodeInfo (pcNetwork pabConf) sock
-
+slotToPOSIXTimeImpl' :: PABConfig -> Ledger.Slot -> EitherT TimeSlotConversionError IO  Ledger.POSIXTime
+slotToPOSIXTimeImpl' pabConf (Ledger.Slot s) = do
+  nodeInfo <- NodeInfo (pcNetwork pabConf) <$>
+                liftIO (getEnv "CARDANO_NODE_SOCKET_PATH")
   eraHsitory <- newET (queryEraHistory nodeInfo)
-
   sysStart <- newET $ querySystemStart nodeInfo
 
   let slotNo = CAPI.SlotNo $ fromInteger s
       epochInfo = toLedgerEpochInfo eraHsitory
+      pparams = 
+        CAPI.toLedgerPParams
+          CAPI.ShelleyBasedEraAlonzo
+          (pcProtocolParams pabConf)
 
-  (_relativeTime, slotLength) <-
-    firstEitherT toError $
-      hoistEither $ CAPI.getProgress slotNo eraHsitory
+  -- TODO: doc about diff in ToEnd conversions
+  firstEitherT toError $
+    hoistEither $
+      slotToPOSIXTime pparams epochInfo sysStart slotNo
 
-  traceM $ "Slot length: " ++ show (Ledger.POSIXTime $ slotLengthToMillisec slotLength)
+-- return $ case toWhichTime of
+--   ToBeginTime -> resultTime
+--   ToEndTime -> resultTime -- + Ledger.POSIXTime (slotLengthToMillisec slotLength - 1)
+  where
+    toLedgerEpochInfo ::
+      CAPI.EraHistory mode ->
+      EpochInfo (Either CAPI.TransactionValidityError)
+    toLedgerEpochInfo (CAPI.EraHistory _ interpreter) =
+      hoistEpochInfo (first CAPI.TransactionValidityIntervalError . runExcept) $
+        Consensus.interpreterToEpochInfo interpreter
 
-  resultTime <-
-    firstEitherT toError $
-      hoistEither $
-        slotToPOSIXTime pparams epochInfo sysStart slotNo
+posixTimeToSlotImpl :: 
+  PABConfig -> 
+  Ledger.POSIXTime -> 
+  IO (Either TimeSlotConversionError Ledger.Slot)
+posixTimeToSlotImpl pabConf pTime = runEitherT (posixTimeToSlotImpl' pabConf pTime)
 
-  return $ case toWhichTime of
-    ToBeginTime -> resultTime
-    ToEndTime -> resultTime -- + Ledger.POSIXTime (slotLengthToMillisec slotLength - 1)
-
-toLedgerEpochInfo ::
-  CAPI.EraHistory mode ->
-  EpochInfo (Either CAPI.TransactionValidityError)
-toLedgerEpochInfo (CAPI.EraHistory _ interpreter) =
-  hoistEpochInfo (first CAPI.TransactionValidityIntervalError . runExcept) $
-    Consensus.interpreterToEpochInfo interpreter
-
-posixTimeToSlotImpl :: PABConfig -> Ledger.POSIXTime -> IO (Either TimeSlotConversionError Ledger.Slot)
-posixTimeToSlotImpl pabConf pTime = runEitherT $ do
+posixTimeToSlotImpl' :: 
+  PABConfig -> 
+  Ledger.POSIXTime -> 
+  EitherT TimeSlotConversionError IO Ledger.Slot
+posixTimeToSlotImpl' pabConf pTime = do
   sock <- liftIO $ getEnv "CARDANO_NODE_SOCKET_PATH"
   let nodeInfo = NodeInfo (pcNetwork pabConf) sock
 
@@ -91,21 +86,15 @@ posixTimeToSlotImpl pabConf pTime = runEitherT $ do
 
   let time :: RelativeTime = toRelativeTime sysStart (toUtc pTime)
       timeQuery = HF.wallclockToSlot time
-      int = HF.interpretQuery interpreter timeQuery
-  (CAPI.SlotNo s, _, _) <- firstEitherT toError $ hoistEither int
+  (CAPI.SlotNo s, _, _) <- firstEitherT toError $ 
+                            hoistEither (HF.interpretQuery interpreter timeQuery)
 
   return $ Ledger.Slot (toInteger s)
   where
     toUtc (Ledger.POSIXTime milliseconds) =
       posixSecondsToUTCTime $
         secondsToNominalDiffTime
-          (fromInteger $ milliseconds `div` 1000) -- FIXME: is it safe?
-
-newET :: Show e => IO (Either e a) -> EitherT TimeSlotConversionError IO a
-newET = firstEitherT toError . newEitherT
-
-toError :: Show e => e -> TimeSlotConversionError
-toError = TimeSlotConversionError . Text.pack . show
+          (fromInteger $ milliseconds `div` 1000)
 
 posixTimeRangeToContainedSlotRangeImpl ::
   PABConfig ->
@@ -114,53 +103,35 @@ posixTimeRangeToContainedSlotRangeImpl ::
 posixTimeRangeToContainedSlotRangeImpl
   pabConf
   ptr@(Interval (LowerBound start startIncl) (UpperBound end endIncl)) = runEitherT $ do
-    startSlot <- newET $ convertExtended start
-    startSlotClosure <- getClosure ToBeginTime startSlot startIncl
+    startSlot <- convertExtended start
+    startSlotClosure <- getClosure startSlot startIncl
 
-    endSlot <- newET $ convertExtended end
-    endSlotClosure <- getClosure ToEndTime endSlot endIncl
+    endSlot <- convertExtended end
+    endSlotClosure <- getClosure endSlot endIncl
 
     let lowerB = LowerBound startSlot startSlotClosure
         upperB = UpperBound endSlot endSlotClosure
 
     pure $ Interval lowerB upperB
     where
-      toSlot pTime =
-        posixTimeToSlotImpl pabConf pTime
-
-      convertExtended :: Extended Ledger.POSIXTime -> IO (Either TimeSlotConversionError (Extended Ledger.Slot))
+      convertExtended :: Extended Ledger.POSIXTime -> EitherT TimeSlotConversionError IO (Extended Ledger.Slot)
       convertExtended = \case
-        Finite pTime -> fmap Finite <$> toSlot pTime
-        NegInf -> pure $ Right NegInf
-        PosInf -> pure $ Right PosInf
+        Finite pTime -> Finite <$> posixTimeToSlotImpl' pabConf pTime
+        NegInf -> pure NegInf
+        PosInf -> pure PosInf
 
-      getClosure :: ToWhichSlotTime -> Extended Ledger.Slot -> Closure -> EitherT TimeSlotConversionError IO Bool
-      getClosure toWhichTime exSlot currentClosure = case exSlot of
+      getClosure :: Extended Ledger.Slot -> Closure -> EitherT TimeSlotConversionError IO Bool
+      getClosure exSlot currentClosure = case exSlot of
         Finite slot -> do
-          slotsTime <- newEitherT $ slotToPOSIXTimeImpl pabConf toWhichTime slot
+          slotsTime <- slotToPOSIXTimeImpl' pabConf slot
           pure $ slotsTime `Ledger.member` ptr
         NegInf -> pure currentClosure
         PosInf -> pure currentClosure
 
--- posixTimeRangeToContainedSlotRange :: SlotConfig -> POSIXTimeRange -> SlotRange
--- posixTimeRangeToContainedSlotRange sc ptr = case fmap (posixTimeToEnclosingSlot sc) ptr of
---   Interval (LowerBound start startIncl) (UpperBound end endIncl) ->
---     Interval
---       (LowerBound start (case start of Finite s -> slotToBeginPOSIXTime sc s `member` ptr; _ -> startIncl))
---       (UpperBound end (case end of Finite e -> slotToEndPOSIXTime sc e `member` ptr; _ -> endIncl))
+-- helper functions
 
-stackExchangeConvert :: Ledger.POSIXTime -> Ledger.Slot
-stackExchangeConvert = posixTimeToSlotTestnetConverter
-  where
-    posixTimeToSlotTestnetConverter :: Ledger.POSIXTime -> Ledger.Slot
-    posixTimeToSlotTestnetConverter time =
-      slotWhenSlotChangedTo1Sec
-        + posixTimeToEnclosingSlot testnetConf time
+newET :: Show e => IO (Either e a) -> EitherT TimeSlotConversionError IO a
+newET = firstEitherT toError . newEitherT
 
-    timeWhenSlotChangedTo1Sec :: Ledger.POSIXTime
-    timeWhenSlotChangedTo1Sec = Ledger.POSIXTime 1595967616000 -- 2020/07/28 20:20:16 - epoch:74 - slot:1598400 - block:1597133
-    slotWhenSlotChangedTo1Sec :: Ledger.Slot
-    slotWhenSlotChangedTo1Sec = Ledger.Slot 1598400
-
-    testnetConf :: SlotConfig
-    testnetConf = SlotConfig 1000 timeWhenSlotChangedTo1Sec
+toError :: Show e => e -> TimeSlotConversionError
+toError = TimeSlotConversionError . Text.pack . show
