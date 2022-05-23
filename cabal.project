@@ -4,6 +4,7 @@ packages: ./bot-plutus-interface.cabal
           ./examples/plutus-game/plutus-game.cabal
           ./examples/plutus-transfer/plutus-transfer.cabal
           ./examples/plutus-nft/plutus-nft.cabal
+          ./examples/ex-units/ex-units.cabal
 
 tests: true
 benchmarks: true

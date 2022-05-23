@@ -7,7 +7,7 @@ module BotPlutusInterface.Balance (
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissingCLI, printLog)
+import BotPlutusInterface.Effects (PABEffect, convertTimeRangeToSlotRange, createDirectoryIfMissingCLI, printLog)
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
@@ -60,6 +60,7 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
+import Debug.Trace (traceM, traceShowId)
 import Prelude
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
@@ -79,9 +80,16 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+      -- tx <-
+      --   hoistEither $
+      --     addValidRange
+      --       pabConf
+      --       (unBalancedTxValidityTimeRange unbalancedTx)
+      --       (unBalancedTxTx unbalancedTx)
+
       tx <-
-        hoistEither $
-          addValidRange
+        newEitherT $
+          addValidRange2 @w
             pabConf
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
@@ -354,8 +362,30 @@ addSignatories ownPkh privKeys pkhs tx =
 addValidRange :: PABConfig -> POSIXTimeRange -> Tx -> Either Text Tx
 addValidRange pabConf timeRange tx =
   if validateRange timeRange
-    then Right $ tx {txValidRange = posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange}
+    then
+      let r = traceShowId (posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange)
+       in Right $ tx {txValidRange = r}
     else Left "Invalid validity interval."
+
+addValidRange2 ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  POSIXTimeRange ->
+  Tx ->
+  Eff effs (Either Text Tx)
+addValidRange2 pabConf timeRange tx =
+  if validateRange timeRange
+    then do
+      let oldWaySlotRange = posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange
+      traceM $ "Ledger SlotRange: " ++ show oldWaySlotRange
+      newWaySlotRange <- convertTimeRangeToSlotRange @w timeRange
+      case newWaySlotRange of
+        Right range -> do
+          traceM $ "Query  SlotRange: " ++ show range
+          pure $ Right $ tx {txValidRange = range}
+        Left err -> pure $ Left (Text.pack $ show err)
+    else pure $ Left "Invalid validity interval."
 
 validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
 validateRange (Interval (LowerBound PosInf _) _) = False
