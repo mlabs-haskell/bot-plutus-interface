@@ -2316,31 +2316,15 @@
     "plutus": {
       "flake": false,
       "locked": {
-<<<<<<< HEAD
         "lastModified": 1646650116,
         "narHash": "sha256-S8uvyld7ZpPsmxZlWJeRNAPd+mw3PafrtaiiuU8H3KA=",
         "owner": "input-output-hk",
-||||||| 9ca5939
-        "lastModified": 1642505687,
-        "narHash": "sha256-Pl3M9rMEoiEKRsTdDr4JwNnRo5Xs4uN66uVpOfaMCfE=",
-        "owner": "input-output-hk",
-=======
-        "lastModified": 1646406347,
-        "narHash": "sha256-F3qhDJYisd3IapOskQMMccqK+iyKS3rB6vlzW8cEdA0=",
-        "owner": "mlabs-haskell",
->>>>>>> 629023e8ed38d45320f2791cf17c1d8bd0281acb
         "repo": "plutus",
-<<<<<<< HEAD
         "rev": "4127e9cd6e889824d724c30eae55033cb50cbf3e",
-||||||| 9ca5939
-        "rev": "cc72a56eafb02333c96f662581b57504f8f8992f",
-=======
-        "rev": "1a3c3a761cf048371c52a34b004f8b3fcf0dab43",
->>>>>>> 629023e8ed38d45320f2791cf17c1d8bd0281acb
         "type": "github"
       },
       "original": {
-        "owner": "mlabs-haskell",
+        "owner": "input-output-hk",
         "repo": "plutus",
         "rev": "4127e9cd6e889824d724c30eae55033cb50cbf3e",
         "type": "github"
@@ -2357,7 +2341,7 @@
         "type": "github"
       },
       "original": {
-        "owner": "mlabs-haskell",
+        "owner": "input-output-hk",
         "repo": "plutus-apps",
         "rev": "e51f57fa99f4cc0942ba6476b0689e43f0948eb3",
         "type": "github"
