@@ -96,6 +96,9 @@
         "github:input-output-hk/ouroboros-network/4fac197b6f0d2ff60dc3486c593b68dc00969fbf";
       flake = false;
     };
+    # Patched plutus for metadata support. We need this until `plutus-apps` will update `plutus`,
+    # rewrite of `plutus-ledger-constraints`, and possibly some bpi adjustments afterwards.
+    # tldr: Dependency hell
     plutus = {
       url =
         "github:input-output-hk/plutus/4127e9cd6e889824d724c30eae55033cb50cbf3e";
