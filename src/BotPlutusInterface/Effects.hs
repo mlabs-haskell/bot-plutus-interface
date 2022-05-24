@@ -14,7 +14,7 @@ module BotPlutusInterface.Effects (
   uploadDir,
   updateInstanceState,
   printLog,
-  handleLogTrace',
+  handleContractLog,
   logToContract,
   readFileTextEnvelope,
   writeFileJSON,
@@ -41,9 +41,9 @@ import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelo
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM (atomically, modifyTVar, modifyTVar')
-import Control.Lens
+import Control.Lens ((^.))
 import Control.Monad (void, when)
-import Control.Monad.Freer (Eff, LastMember, Member, interpret, interpretM, send, type (~>))
+import Control.Monad.Freer (Eff, LastMember, Member, interpretM, reinterpret, send, subsume, type (~>))
 import Control.Monad.Freer.Extras (LogMsg (LMessage))
 import Control.Monad.Freer.Extras qualified as Freer
 import Control.Monad.Trans.Except.Extra (handleIOExceptT, runExceptT)
@@ -56,12 +56,11 @@ import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Debug.Trace qualified as Trace
 import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
-import Prettyprinter
+import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty)
 import Prettyprinter.Render.String qualified as Render
 import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
@@ -159,13 +158,16 @@ printLog' :: LogLevel -> LogLevel -> String -> IO ()
 printLog' logLevelSetting msgLogLvl msg =
   when (logLevelSetting >= msgLogLvl) $ putStrLn msg
 
--- | Version of "Control.Monad.Freer.Extras.handleLogTrace" that takes into account the log level setting.
-handleLogTrace' :: Pretty a => LogLevel -> Eff (LogMsg a ': effs) ~> Eff effs
-handleLogTrace' logLevelSetting = interpret $ \case
+-- | Reinterpret contract logs to be handled by PABEffect later down the line.
+handleContractLog :: forall w a effs. Member (PABEffect w) effs => Pretty a => Eff (LogMsg a ': effs) ~> Eff effs
+handleContractLog x = subsume $ handleContractLogInternal @w x
+
+handleContractLogInternal :: forall w a effs. Pretty a => Eff (LogMsg a ': effs) ~> Eff (PABEffect w ': effs)
+handleContractLogInternal = reinterpret $ \case
   LMessage msg ->
-    if logLevelSetting >= toNativeLogLevel (msg ^. Freer.logLevel)
-      then Trace.trace (Render.renderString . layoutPretty defaultLayoutOptions . pretty $ msg) $ pure ()
-      else pure ()
+    let msgLogLevel = toNativeLogLevel (msg ^. Freer.logLevel)
+        msgPretty = Render.renderString . layoutPretty defaultLayoutOptions . pretty $ msg
+     in printLog @w msgLogLevel msgPretty
   where
     toNativeLogLevel Freer.Debug = Debug
     toNativeLogLevel Freer.Info = Info

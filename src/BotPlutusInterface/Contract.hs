@@ -13,7 +13,7 @@ import BotPlutusInterface.Effects (
   callCommand,
   createDirectoryIfMissing,
   estimateBudget,
-  handleLogTrace',
+  handleContractLog,
   handlePABEffect,
   logToContract,
   printLog,
@@ -72,7 +72,7 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
-import Prettyprinter
+import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
@@ -97,7 +97,7 @@ handleContract contractEnv =
     . handleResumable contractEnv
     . handleCheckpointIgnore
     . handleWriter
-    . handleLogTrace' contractEnv.cePABConfig.pcLogLevel
+    . handleContractLog @w
     . runError
     . raiseEnd
 
