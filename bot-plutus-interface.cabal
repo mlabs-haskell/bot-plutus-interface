@@ -175,6 +175,7 @@ test-suite bot-plutus-interface-test
     , data-default-class
     , either
     , extra
+    , prettyprinter
     , filepath
     , freer-extras
     , freer-simple
