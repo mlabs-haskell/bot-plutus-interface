@@ -301,8 +301,15 @@ writeBalancedTx contractEnv (Right tx) = do
 
     collectBudgetStats txId pabConf = do
       let path = Text.unpack (Files.txFilePath pabConf "signed" (Tx.txId tx))
-      b <- firstEitherT (Text.pack . show) $ newEitherT $ estimateBudget @w (Signed path)
-      void $ newEitherT (Right <$> saveBudget @w txId b)
+      txBudget <-
+        firstEitherT toBudgetSaveError $
+          newEitherT $ estimateBudget @w (Signed path)
+      void $ newEitherT (Right <$> saveBudget @w txId txBudget)
+
+    toBudgetSaveError =
+      Text.pack
+        . ("Failed to save Tx budgets statistics: " ++)
+        . show
 
 pkhToText :: Ledger.PubKey -> Text
 pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
