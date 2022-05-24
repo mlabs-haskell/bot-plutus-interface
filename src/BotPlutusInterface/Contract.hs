@@ -298,6 +298,9 @@ writeBalancedTx contractEnv (Right tx) = do
           , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
           ]
 
+    when (pabConf.pcCollectStats && signable) $
+      collectBudgetStats (Tx.txId tx) pabConf
+
     when (not pabConf.pcDryRun && signable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx
 
@@ -307,9 +310,6 @@ writeBalancedTx contractEnv (Right tx) = do
         signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
     mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" cardanoTxId)
     when signable $ mvFiles signedSrcPath signedDstPath
-
-    when contractEnv.cePABConfig.pcCollectStats $
-      collectBudgetStats cardanoTxId signedDstPath
 
     pure cardanoTx
   where
@@ -323,10 +323,17 @@ writeBalancedTx contractEnv (Right tx) = do
             , cmdOutParser = const ()
             }
 
-    collectBudgetStats txId txPath = do
-      let path = Text.unpack txPath
-      b <- firstEitherT (Text.pack . show) $ newEitherT $ estimateBudget @w (Signed path)
-      void $ newEitherT (Right <$> saveBudget @w txId b)
+    collectBudgetStats txId pabConf = do
+      let path = Text.unpack (Files.txFilePath pabConf "signed" (Tx.txId tx))
+      txBudget <-
+        firstEitherT toBudgetSaveError $
+          newEitherT $ estimateBudget @w (Signed path)
+      void $ newEitherT (Right <$> saveBudget @w txId txBudget)
+
+    toBudgetSaveError =
+      Text.pack
+        . ("Failed to save Tx budgets statistics: " ++)
+        . show
 
 pkhToText :: Ledger.PubKey -> Text
 pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
