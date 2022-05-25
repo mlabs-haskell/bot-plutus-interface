@@ -1,4 +1,4 @@
-index-state: 2022-02-15T00:00:00Z
+index-state: 2022-02-22T20:47:03Z
 
 packages: ./bot-plutus-interface.cabal
           ./examples/plutus-game/plutus-game.cabal
@@ -7,3 +7,9 @@ packages: ./bot-plutus-interface.cabal
 
 tests: true
 benchmarks: true
+constraints:
+     -- Because later versions of hedgehog introduce a change which break 'cardano-ledger':
+     -- Test/Cardano/Chain/Delegation/Model.hs:91:41: error:
+     --   ¥ Could not deduce (TraversableB SignalSDELEG)
+     -- TODO: Try to remove on next `cardano-node` version upgrade.
+     hedgehog >= 1.0.2 && < 1.1

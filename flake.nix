@@ -55,7 +55,7 @@
       flake = false;
     };
     cardano-wallet = {
-      url = "github:input-output-hk/cardano-wallet/a279df1d01918034eb97fa4311c489a302ffa86c";
+      url = "github:input-output-hk/cardano-wallet/f6d4db733c4e47ee11683c343b440552f59beff7";
       flake = false;
     };
     ekg-forward = {
@@ -96,9 +96,6 @@
         "github:input-output-hk/ouroboros-network/4fac197b6f0d2ff60dc3486c593b68dc00969fbf";
       flake = false;
     };
-    # Patched plutus for metadata support. We need this until `plutus-apps` will update `plutus`,
-    # rewrite of `plutus-ledger-constraints`, and possibly some bpi adjustments afterwards.
-    # tldr: Dependency hell
     plutus = {
       url =
         "github:input-output-hk/plutus/4127e9cd6e889824d724c30eae55033cb50cbf3e";
@@ -151,6 +148,7 @@
               marlowe.flags.defer-plugin-errors = true;
               plutus-use-cases.flags.defer-plugin-errors = true;
               plutus-ledger.flags.defer-plugin-errors = true;
+              plutus-script-utils.flags.defer-plugin-errors = true;
               plutus-contract.flags.defer-plugin-errors = true;
               cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
               cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
