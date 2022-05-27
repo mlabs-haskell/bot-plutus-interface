@@ -21,10 +21,10 @@ import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
 import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List (partition, (\\), find)
+import Data.List (find, partition, (\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -281,10 +281,13 @@ balanceTxIns utxos tx = do
  (suboptimally we just pick a random utxo from the tx inputs)
 -}
 addTxCollaterals :: Map TxOutRef TxOut -> Tx -> Either Text Tx
-addTxCollaterals utxos tx = if not $ usesScripts tx then Right tx else do
-  let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
-  txIn <- findPubKeyTxIn txIns
-  pure $ tx {txCollateral = Set.singleton txIn}
+addTxCollaterals utxos tx =
+  if not $ usesScripts tx
+    then Right tx
+    else do
+      let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
+      txIn <- findPubKeyTxIn txIns
+      pure $ tx {txCollateral = Set.singleton txIn}
   where
     findPubKeyTxIn = \case
       x@(TxIn _ (Just ConsumePublicKeyAddress)) : _ -> Right x
@@ -292,11 +295,11 @@ addTxCollaterals utxos tx = if not $ usesScripts tx then Right tx else do
       _ : xs -> findPubKeyTxIn xs
       _ -> Left "There are no utxos to be used as collateral"
     filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
-    usesScripts Tx{txInputs, txMintScripts}
-      = not (null txMintScripts)
+    usesScripts Tx {txInputs, txMintScripts} =
+      not (null txMintScripts)
         || isJust
-          (find (\TxIn{txInType} -> case txInType of { Just ConsumeScriptAddress{} -> True; _ -> False })
-            $ Set.toList txInputs
+          ( find (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False) $
+              Set.toList txInputs
           )
 
 -- | Ensures all non ada change goes back to user
