@@ -38,12 +38,13 @@ import BotPlutusInterface.Types (
   TxBudget,
   TxFile,
   addBudget,
+  LogsList (LogsList),
  )
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
-import Control.Concurrent.STM (atomically, modifyTVar, modifyTVar')
 import Control.Lens ((^.))
+import Control.Concurrent.STM (atomically, modifyTVar, modifyTVar', TVar)
 import Control.Monad (void, when)
 import Control.Monad.Freer (Eff, LastMember, Member, interpretM, reinterpret, send, subsume, type (~>))
 import Control.Monad.Freer.Extras (LogMsg (LMessage))
@@ -126,7 +127,11 @@ handlePABEffect contractEnv =
           case contractEnv.cePABConfig.pcCliLocation of
             Local -> Directory.createDirectoryIfMissing createParents filePath
             Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
-        PrintLog logCtx logLevel txt -> printLog' contractEnv.cePABConfig.pcLogLevel logCtx logLevel txt
+        PrintLog logCtx logLevel txt ->
+          let logMsg = prettyLog logCtx logLevel txt in do
+            printLog' contractEnv.cePABConfig.pcLogLevel logCtx logLevel logMsg
+            when contractEnv.cePABConfig.pcCollectLogs $
+              collectLog contractEnv.ceContractLogs logLevel logMsg
         UpdateInstanceState s -> do
           atomically $
             modifyTVar contractEnv.ceContractState $
@@ -163,7 +168,17 @@ printLog' logLevelSetting msgCtx msgLogLvl msg =
   where
     target =
       Render.renderString . layoutPretty defaultLayoutOptions $
-        pretty msgCtx <+> pretty msgLogLvl <+> msg
+        prettyLog msgCtx msgLogLvl msg
+
+prettyLog :: LogContext -> LogLevel -> PP.Doc () -> PP.Doc ()
+prettyLog msgCtx msgLogLvl msg = pretty msgCtx <+> pretty msgLogLvl <+> msg
+
+collectLog :: TVar LogsList -> LogLevel -> PP.Doc () -> IO ()
+collectLog logs msgLogLvl msg = atomically $ modifyTVar' logs (appendLog msgLogLvl msg)
+  where 
+    appendLog :: LogLevel -> PP.Doc () -> LogsList -> LogsList
+    appendLog logLvl str (LogsList ls) = LogsList $ (logLvl, str) : ls
+
 
 -- | Reinterpret contract logs to be handled by PABEffect later down the line.
 handleContractLog :: forall w a effs. Member (PABEffect w) effs => Pretty a => Eff (LogMsg a ': effs) ~> Eff effs
