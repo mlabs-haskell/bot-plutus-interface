@@ -69,5 +69,6 @@ main = do
           , pcEnableTxEndpoint = True
           , pcMetadataDir = "./metadata"
           , pcCollectStats = False
+          , pcCollectLogs = False
           }
   BotPlutusInterface.runPAB @GameContracts pabConf

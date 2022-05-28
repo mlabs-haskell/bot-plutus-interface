@@ -22,6 +22,7 @@ module BotPlutusInterface.Types (
   SpendBudgets,
   MintBudgets,
   ContractStats (..),
+  LogsList (..),
   addBudget,
 ) where
 
@@ -54,6 +55,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
   endpointsToSchemas,
  )
 import Prettyprinter (Pretty (pretty))
+import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -83,6 +85,7 @@ data PABConfig = PABConfig
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
   , pcCollectStats :: !Bool
+  , pcCollectLogs :: !Bool  
   }
   deriving stock (Show, Eq)
 
@@ -143,11 +146,22 @@ newtype ContractStats = ContractStats
 instance Show (TVar ContractStats) where
   show _ = "<ContractStats>"
 
+-- | List of string logs.
+newtype LogsList = LogsList
+  { getLogsList :: [(LogLevel, PP.Doc ())]
+  }
+  deriving stock (Show)
+  deriving newtype (Semigroup, Monoid)
+
+instance Show (TVar LogsList) where 
+  show _ = "<ContractLogs>"
+
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
   , ceContractStats :: TVar ContractStats
+  , ceContractLogs  :: TVar LogsList
   }
   deriving stock (Show)
 
@@ -221,6 +235,7 @@ instance Default PABConfig where
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       , pcCollectStats = False
+      , pcCollectLogs = False
       }
 
 data RawTx = RawTx
