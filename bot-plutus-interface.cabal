@@ -103,9 +103,7 @@ library
     , data-default
     , data-default-class
     , directory
-    , prettyprinter
     , either
-    , vector
     , filepath
     , freer-extras
     , freer-simple
@@ -126,6 +124,7 @@ library
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
+    , prettyprinter
     , process
     , QuickCheck
     , row-types
@@ -142,6 +141,7 @@ library
     , transformers-except
     , unordered-containers
     , uuid
+    , vector
     , wai
     , warp
     , websockets
@@ -175,7 +175,6 @@ test-suite bot-plutus-interface-test
     , data-default-class
     , either
     , extra
-    , prettyprinter
     , filepath
     , freer-extras
     , freer-simple
@@ -196,6 +195,7 @@ test-suite bot-plutus-interface-test
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
+    , prettyprinter
     , QuickCheck
     , quickcheck-instances
     , row-types
