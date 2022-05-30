@@ -540,6 +540,9 @@ mockQueryChainIndex = \case
   TxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
     pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
+  UnspentTxOutFromRef txOutRef -> do
+    state <- get @(MockContractState w)
+    pure $ UnspentTxOutResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
   TxFromTxId txId -> do
     -- TODO: Track some kind of state here, add tests to ensure this works correctly
     -- For now, empty txs

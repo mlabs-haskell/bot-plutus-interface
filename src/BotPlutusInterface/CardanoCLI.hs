@@ -18,7 +18,8 @@ import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand)
 import BotPlutusInterface.Files (
   DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
-  metadataFilePath,
+  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+  -- metadataFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
   signingKeyFilePath,
@@ -86,6 +87,7 @@ import Ledger.TxId (TxId (..))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.Contract.CardanoAPI (toCardanoAddress)
+import Plutus.Script.Utils.V1.Scripts qualified as Scripts
 import Plutus.V1.Ledger.Ada (fromValue, getLovelace)
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
@@ -94,7 +96,7 @@ import Plutus.V1.Ledger.Api (
   ExMemory (..),
   TokenName (..),
  )
-import PlutusTx.Builtins (BuiltinByteString, fromBuiltin)
+import PlutusTx.Builtins (fromBuiltin)
 import Prelude
 
 -- | Getting information of the latest block
@@ -216,8 +218,9 @@ buildTx pabConf privKeys txBudget tx = do
         , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mints
         , validRangeOpts (txValidRange tx)
-        , metadataOpts pabConf (txMetadata tx)
-        , requiredSigners
+        , -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+          -- , metadataOpts pabConf (txMetadata tx)
+          requiredSigners
         , ["--fee", showText . getLovelace . fromValue $ txFee tx]
         , mconcat
             [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
@@ -292,15 +295,15 @@ txInOpts spendIndex pabConf =
             mconcat
               [
                 [ "--tx-in-script-file"
-                , validatorScriptFilePath pabConf (Ledger.validatorHash validator)
+                , validatorScriptFilePath pabConf (Scripts.validatorHash validator)
                 ]
               ,
                 [ "--tx-in-datum-file"
-                , datumJsonFilePath pabConf (Ledger.datumHash datum)
+                , datumJsonFilePath pabConf (Scripts.datumHash datum)
                 ]
               ,
                 [ "--tx-in-redeemer-file"
-                , redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
+                , redeemerJsonFilePath pabConf (Scripts.redeemerHash redeemer)
                 ]
               ,
                 [ "--tx-in-execution-units"
@@ -333,7 +336,7 @@ mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
                     (,exBudget) $
                       mconcat
                         [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
-                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Ledger.redeemerHash r)]
+                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Scripts.redeemerHash r)]
                         , ["--mint-execution-units", exBudgetToCliArg exBudget]
                         ]
                in orMempty $ fmap toOpts redeemer
@@ -420,12 +423,8 @@ exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
 
--- -- TODO: There is some issue with this function, the generated wallet key is incorrect
--- toWalletKey :: Wallet -> Text
--- toWalletKey =
---   decodeUtf8 . convertToBase Base16 . hash @ByteString @Blake2b_160 . unXPub . walletXPub
-
-metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]
-metadataOpts _ Nothing = mempty
-metadataOpts pabConf (Just meta) =
-  ["--metadata-json-file", metadataFilePath pabConf meta]
+-- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+-- metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]
+-- metadataOpts _ Nothing = mempty
+-- metadataOpts pabConf (Just meta) =
+--   ["--metadata-json-file", metadataFilePath pabConf meta]

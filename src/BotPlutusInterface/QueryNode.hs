@@ -10,7 +10,7 @@ module BotPlutusInterface.QueryNode (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Api.ProtocolParameters (ProtocolParameters)
+import Cardano.Api.Shelley (ProtocolParameters)
 import Cardano.Slotting.Time (SystemStart)
 import Control.Arrow (left)
 import Data.Set qualified as Set

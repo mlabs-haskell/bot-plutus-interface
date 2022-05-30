@@ -25,7 +25,7 @@ module BotPlutusInterface.Types (
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
-import Cardano.Api.ProtocolParameters (ProtocolParameters)
+import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
@@ -38,12 +38,12 @@ import Data.Text (Text)
 import GHC.Generics (Generic)
 import Ledger (
   ExBudget,
-  MintingPolicyHash,
   PubKeyHash,
   StakePubKeyHash,
   TxId,
   TxOutRef,
  )
+import Ledger.Scripts (MintingPolicyHash)
 import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)

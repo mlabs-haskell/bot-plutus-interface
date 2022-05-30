@@ -53,7 +53,7 @@ import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
 import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
-import Ledger.Tx (CardanoTx)
+import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx))
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
 import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
@@ -232,7 +232,12 @@ balanceTx contractEnv unbalancedTx = do
       pabConf.pcOwnPubKeyHash
       unbalancedTx
 
-  pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
+  pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . EmulatorTx) eitherPreBalancedTx
+
+fromCardanoTx :: CardanoTx -> Tx.Tx
+fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
+fromCardanoTx (EmulatorTx tx) = tx
+fromCardanoTx (Tx.Both tx _) = tx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -241,13 +246,13 @@ writeBalancedTx ::
   ContractEnvironment w ->
   CardanoTx ->
   Eff effs WriteBalancedTxResponse
-writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
-writeBalancedTx contractEnv (Right tx) = do
+writeBalancedTx contractEnv cardanoTx = do
   let pabConf = contractEnv.cePABConfig
+      tx = fromCardanoTx cardanoTx
   uploadDir @w pabConf.pcSigningKeyFileDir
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
 
-  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Left) $ do
+  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . CardanoApiTx) $ do
     void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
     lift $ uploadDir @w pabConf.pcScriptFileDir
 
@@ -263,7 +268,7 @@ writeBalancedTx contractEnv (Right tx) = do
     let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx)
     -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
     alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsAlonzoEra) path
-    let cardanoTx = Tx.SomeTx (Tx alonzoBody []) AlonzoEraInCardanoMode
+    let cardanoApiTx = Tx.SomeTx (Tx alonzoBody []) AlonzoEraInCardanoMode
 
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
@@ -278,7 +283,7 @@ writeBalancedTx contractEnv (Right tx) = do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
-    let cardanoTxId = Ledger.getCardanoTxId $ Left cardanoTx
+    let cardanoTxId = Ledger.getCardanoTxId $ Tx.CardanoApiTx cardanoApiTx
         signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx)
         signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
     mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" cardanoTxId)
@@ -287,7 +292,7 @@ writeBalancedTx contractEnv (Right tx) = do
     when contractEnv.cePABConfig.pcCollectStats $
       collectBudgetStats cardanoTxId signedDstPath
 
-    pure cardanoTx
+    pure cardanoApiTx
   where
     mvFiles :: Text -> Text -> EitherT Text (Eff effs) ()
     mvFiles src dst =

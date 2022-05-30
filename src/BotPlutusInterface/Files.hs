@@ -10,7 +10,8 @@ module BotPlutusInterface.Files (
   txFilePath,
   txFileName,
   txIdToText,
-  metadataFilePath,
+  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+  -- metadataFilePath,
   writeAll,
   writePolicyScriptFile,
   redeemerJsonFilePath,
@@ -29,7 +30,6 @@ import BotPlutusInterface.Effects (
   listDirectory,
   readFileTextEnvelope,
   writeFileJSON,
-  writeFileRaw,
   writeFileTextEnvelope,
  )
 import BotPlutusInterface.Types (PABConfig)
@@ -50,13 +50,11 @@ import Cardano.Api.Shelley (
   scriptDataToJson,
  )
 import Cardano.Crypto.Wallet qualified as Crypto
-import Cardano.Prelude ((<<$>>))
 import Codec.Serialise qualified as Codec
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
-import Data.ByteString.Hash (blake2b)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
@@ -64,16 +62,17 @@ import Data.Kind (Type)
 import Data.List (sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, mapMaybe, maybeToList)
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger qualified
 import Ledger.Crypto (PrivateKey, PubKey (PubKey), PubKeyHash (PubKeyHash))
+import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
+import Plutus.Script.Utils.V1.Scripts qualified as Scripts
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),
@@ -87,9 +86,9 @@ import Plutus.V1.Ledger.Api (
   ValidatorHash (..),
   toBuiltin,
  )
+import Plutus.V1.Ledger.Api qualified as Ledger
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
-import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import System.FilePath (takeExtension, (</>))
 import Prelude
 
@@ -129,11 +128,14 @@ txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext
 txIdToText :: TxId.TxId -> Text
 txIdToText = encodeByteString . fromBuiltin . TxId.getTxId
 
--- | Path of stored metadata files
-metadataFilePath :: PABConfig -> BuiltinByteString -> Text
-metadataFilePath pabConf (BuiltinByteString meta) =
-  let h = encodeByteString $ blake2b meta
-   in pabConf.pcMetadataDir <> "/metadata-" <> h <> ".json"
+-- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+
+{- | Path of stored metadata files
+ metadataFilePath :: PABConfig -> BuiltinByteString -> Text
+ metadataFilePath pabConf (BuiltinByteString meta) =
+   let h = encodeByteString $ blake2b meta
+    in pabConf.pcMetadataDir <> "/metadata-" <> h <> ".json"
+-}
 
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile ::
@@ -144,7 +146,7 @@ writePolicyScriptFile ::
   Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
   let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
-      filepath = policyScriptFilePath pabConf (Ledger.scriptCurrencySymbol mintingPolicy)
+      filepath = policyScriptFilePath pabConf (Scripts.scriptCurrencySymbol mintingPolicy)
    in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
 -- | Compiles and writes a script file under the given folder
@@ -156,19 +158,20 @@ writeValidatorScriptFile ::
   Eff effs (Either (FileError ()) Text)
 writeValidatorScriptFile pabConf validatorScript =
   let script = serialiseScript $ Ledger.unValidatorScript validatorScript
-      filepath = validatorScriptFilePath pabConf (Ledger.validatorHash validatorScript)
+      filepath = validatorScriptFilePath pabConf (Scripts.validatorHash validatorScript)
    in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
--- | Writes metadata file under the given folder
-writeMetadataFile ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  PABConfig ->
-  BuiltinByteString ->
-  Eff effs (Either (FileError ()) Text)
-writeMetadataFile pabConf metadata =
-  let filepath = metadataFilePath pabConf metadata
-   in const filepath <<$>> writeFileRaw @w (Text.unpack filepath) metadata
+-- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+-- -- | Writes metadata file under the given folder
+-- writeMetadataFile ::
+--   forall (w :: Type) (effs :: [Type -> Type]).
+--   Member (PABEffect w) effs =>
+--   PABConfig ->
+--   BuiltinByteString ->
+--   Eff effs (Either (FileError ()) Text)
+-- writeMetadataFile pabConf metadata =
+--   let filepath = metadataFilePath pabConf metadata
+--    in const filepath <<$>> writeFileRaw @w (Text.unpack filepath) metadata
 
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
@@ -179,12 +182,13 @@ writeAll ::
   Eff effs (Either (FileError ()) [Text])
 writeAll pabConf tx = do
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
-  createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
+  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+  -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
   let (validatorScripts, redeemers, datums) =
         unzip3 $ mapMaybe Tx.inScripts $ Set.toList $ Tx.txInputs tx
 
-      policyScripts = Set.toList $ Ledger.txMintScripts tx
+      policyScripts = Set.toList $ Tx.txMintScripts tx
       allDatums = datums <> Map.elems (Tx.txData tx)
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
 
@@ -195,7 +199,8 @@ writeAll pabConf tx = do
         , map (writeValidatorScriptFile @w pabConf) validatorScripts
         , map (writeDatumJsonFile @w pabConf) allDatums
         , map (writeRedeemerJsonFile @w pabConf) allRedeemers
-        , map (writeMetadataFile @w pabConf) (maybeToList $ Tx.txMetadata tx)
+        -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+        -- , map (writeMetadataFile @w pabConf) (maybeToList $ Tx.txMetadata tx)
         ]
 
   pure $ sequence results
@@ -226,7 +231,7 @@ readPrivateKeys pabConf = do
     toPrivKeyMap =
       foldl
         ( \pKeyMap pKey ->
-            let pkh = Ledger.pubKeyHash $ Ledger.toPublicKey $ unDummyPrivateKey pKey
+            let pkh = Crypto.pubKeyHash $ Crypto.toPublicKey $ unDummyPrivateKey pKey
              in Map.insert pkh pKey pKeyMap
         )
         Map.empty
@@ -306,7 +311,7 @@ writeDatumJsonFile ::
   Eff effs (Either (FileError ()) Text)
 writeDatumJsonFile pabConf datum =
   let json = dataToJson $ getDatum datum
-      filepath = datumJsonFilePath pabConf (Ledger.datumHash datum)
+      filepath = datumJsonFilePath pabConf (Scripts.datumHash datum)
    in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
 
 writeRedeemerJsonFile ::
@@ -317,7 +322,7 @@ writeRedeemerJsonFile ::
   Eff effs (Either (FileError ()) Text)
 writeRedeemerJsonFile pabConf redeemer =
   let json = dataToJson $ getRedeemer redeemer
-      filepath = redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
+      filepath = redeemerJsonFilePath pabConf (Scripts.redeemerHash redeemer)
    in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
 
 dataToJson :: forall (a :: Type). ToData a => a -> JSON.Value

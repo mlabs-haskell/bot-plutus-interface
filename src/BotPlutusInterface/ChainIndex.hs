@@ -40,6 +40,8 @@ handleChainIndexReq pabConf = \case
   --   pure $ RedeemerHashResponse (Maybe Redeemer)
   TxOutFromRef txOutRef ->
     TxOutRefResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTxOut txOutRef)
+  UnspentTxOutFromRef txOutRef ->
+    UnspentTxOutResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getUnspentTxOut txOutRef)
   TxFromTxId txId ->
     TxIdResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTx txId)
   UtxoSetMembership txOutRef ->

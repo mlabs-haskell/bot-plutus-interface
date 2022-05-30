@@ -19,7 +19,8 @@ import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text qualified as Text
-import Ledger (ExBudget (ExBudget), ExCPU (ExCPU), ExMemory (ExMemory), MintingPolicyHash, TxOutRef)
+import Ledger (ExBudget (ExBudget), ExCPU (ExCPU), ExMemory (ExMemory), TxOutRef)
+import Ledger.Scripts (MintingPolicyHash)
 import Ledger.Tx.CardanoAPI (fromCardanoPolicyId, fromCardanoTxIn)
 import System.Directory.Internal.Prelude (getEnv)
 import Prelude
