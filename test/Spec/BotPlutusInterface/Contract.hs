@@ -519,7 +519,7 @@ mintTokens = do
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --mint-execution-units (500000,2000)
+          --mint-execution-units (0,0)
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
@@ -532,14 +532,14 @@ mintTokens = do
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
-          --tx-out ${addr1}+496700
+          --tx-out ${addr1}+998700
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --mint-execution-units (500000,2000)
+          --mint-execution-units (0,0)
           --mint 5 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 502300
+          --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
@@ -711,20 +711,19 @@ redeemFromValidator = do
           |]
         )
       ,
-        ( 20
+        ( 17
         , [text|
           cardano-cli transaction build-raw --alonzo-era
-          --tx-in ${inTxId}#0
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${inTxId}#0
-          --tx-out ${addr1}+498350
+          --tx-out ${addr1}+299
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 502400
+          --fee 451
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
