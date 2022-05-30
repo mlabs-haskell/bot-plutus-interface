@@ -158,11 +158,11 @@ handlePABEffect contractEnv =
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
         SlotToPOSIXTime slot ->
-          TimeSlot.slotToPOSIXTimeImpl contractEnv.cePABConfig slot
+          TimeSlot.slotToPOSIXTimeIO contractEnv.cePABConfig slot
         POSIXTimeToSlot pTime ->
-          TimeSlot.posixTimeToSlotImpl contractEnv.cePABConfig pTime
+          TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
         POSIXTimeRangeToSlotRange pTimeRange ->
-          TimeSlot.posixTimeRangeToContainedSlotRangeImpl contractEnv.cePABConfig pTimeRange
+          TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
     )
 
 printLog' :: LogLevel -> LogLevel -> String -> IO ()

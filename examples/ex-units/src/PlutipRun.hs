@@ -74,8 +74,8 @@ mkPabConf pparams pparamsFile clusterDir ownPkh =
     , pcPort = 9080
     , pcProtocolParams = pparams
     , pcTipPollingInterval = 1_000_000
-    -- , pcSlotConfig = def {scSlotZeroTime = POSIXTime $ 1652956123 * 1000}
-    , pcOwnPubKeyHash = ownPkh
+    , -- , pcSlotConfig = def {scSlotZeroTime = POSIXTime $ 1652956123 * 1000}
+      pcOwnPubKeyHash = ownPkh
     , pcOwnStakePubKeyHash = Nothing
     , pcScriptFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/scripts"
     , pcSigningKeyFileDir = Text.pack $ clusterDir </> "bot-plutus-interface/signing-keys"

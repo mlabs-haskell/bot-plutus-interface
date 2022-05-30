@@ -44,7 +44,6 @@ import Ledger (
   TxId,
   TxOutRef,
  )
-import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)

@@ -59,8 +59,8 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
-import Prelude
 import Data.Bifunctor (bimap)
+import Prelude
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
  assets
@@ -95,7 +95,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       lift $ printLog @w Debug $ show utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
-      lift $ createDirectoryIfMissingCLI @w False (Text.unpack         "pcTxFileDir"            )
+      lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
 
       -- Adds required collaterals, only needs to happen once
       -- Also adds signatures for fee calculation
@@ -365,13 +365,12 @@ addValidRange ::
   Eff effs (Either Text Tx)
 addValidRange timeRange tx =
   if validateRange timeRange
-    then bimap (Text.pack . show) (setRange tx) <$>
-          convertTimeRangeToSlotRange @w timeRange
+    then
+      bimap (Text.pack . show) (setRange tx)
+        <$> convertTimeRangeToSlotRange @w timeRange
     else pure $ Left "Invalid validity interval."
-
   where
     setRange tx' range = tx' {txValidRange = range}
-
 
 validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
 validateRange (Interval (LowerBound PosInf _) _) = False

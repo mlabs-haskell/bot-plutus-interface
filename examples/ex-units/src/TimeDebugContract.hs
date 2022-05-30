@@ -28,6 +28,7 @@ import Ledger
     strictUpperBound,
     unitDatum,
     validatorHash,
+    getCardanoTxId
   )
 import Ledger.Constraints qualified as Constraints
 import Ledger.Typed.Scripts.Validators qualified as Validators
@@ -174,12 +175,12 @@ unlockWithTimeCheck = do
                 Constraints.unspentOutputs (Map.fromList utxos)
               ]
       !tx <- submitTxConstraintsWith @TestTime lkps txc
-      wait 10
+      -- Contract.awaitTxConfirmed (getCardanoTxId tx)
       utxosAfterSpent <- Map.toList <$> Contract.utxosAt validatorAddr
       pure (Hask.show utxosAfterSpent)
     rest -> Contract.throwError $ "Unlocking error: Unwanted set of utxos: " Hask.<> Text.pack (Hask.show rest)
   where
-    wait = void . Contract.waitNSlots
+    -- wait = void . Contract.waitNSlots
 
 lockAtScript :: Contract () EmptySchema Text Hask.String
 lockAtScript = do
@@ -189,5 +190,5 @@ lockAtScript = do
           unitDatum
           (Value.adaValueOf 10)
   !tx <- submitTx constr
-  -- awaitTxConfirmed $ getCardanoTxId tx
+  -- Contract.awaitTxConfirmed $ getCardanoTxId tx
   pure "Lock done"
