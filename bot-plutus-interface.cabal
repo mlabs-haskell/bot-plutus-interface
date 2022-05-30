@@ -103,7 +103,9 @@ library
     , data-default
     , data-default-class
     , directory
+    , prettyprinter
     , either
+    , vector
     , filepath
     , freer-extras
     , freer-simple
@@ -173,6 +175,7 @@ test-suite bot-plutus-interface-test
     , data-default-class
     , either
     , extra
+    , prettyprinter
     , filepath
     , freer-extras
     , freer-simple
