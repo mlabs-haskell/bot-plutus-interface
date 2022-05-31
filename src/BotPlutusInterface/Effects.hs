@@ -24,7 +24,7 @@ module BotPlutusInterface.Effects (
   saveBudget,
   slotToPOSIXTime,
   posixTimeToSlot,
-  convertTimeRangeToSlotRange,
+  posixTimeRangeToContainedSlotRange,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
@@ -334,9 +334,9 @@ posixTimeToSlot ::
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.Slot)
 posixTimeToSlot = send @(PABEffect w) . POSIXTimeToSlot
 
-convertTimeRangeToSlotRange ::
+posixTimeRangeToContainedSlotRange ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   Ledger.POSIXTimeRange ->
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
-convertTimeRangeToSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange
+posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange

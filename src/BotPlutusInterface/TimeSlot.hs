@@ -57,9 +57,9 @@ slotToPOSIXTimeIO pabConf lSlot = runEitherT $ do
   firstEitherT toError . hoistEither $
     slotToPOSIXTime pparams epochInfo sysStart (toSlotNo lSlot)
 
--- Analogous to `posixTimeToEnclosingSlot` from plutus-ledger
-
 -- | Convert `POSIXTime` to `Slot`.
+
+-- Analogous to `posixTimeToEnclosingSlot` from plutus-ledger
 posixTimeToSlotIO ::
   PABConfig ->
   Ledger.POSIXTime ->
@@ -71,11 +71,11 @@ posixTimeToSlotIO pabConf pTime = runEitherT $ do
   firstEitherT toError . hoistEither $
     posixTimeToSlot sysStart eraHist pTime
 
--- Analogous to `posixTimeRangeToContainedSlotRange` from plutus-ledger
-
 {- | Convert a `POSIXTimeRange` to `SlotRange`.
  Gives the biggest slot range that is entirely contained by the given time range.
 -}
+
+-- Analogous to `posixTimeRangeToContainedSlotRange` from plutus-ledger
 posixTimeRangeToContainedSlotRangeIO ::
   PABConfig ->
   Ledger.POSIXTimeRange ->

@@ -7,7 +7,12 @@ module BotPlutusInterface.Balance (
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (PABEffect, convertTimeRangeToSlotRange, createDirectoryIfMissingCLI, printLog)
+import BotPlutusInterface.Effects (
+  PABEffect,
+  createDirectoryIfMissingCLI,
+  posixTimeRangeToContainedSlotRange,
+  printLog,
+ )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
@@ -79,12 +84,6 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
-      -- tx <-
-      --   hoistEither $
-      --     addValidRange
-      --       pabConf
-      --       (unBalancedTxValidityTimeRange unbalancedTx)
-      --       (unBalancedTxTx unbalancedTx)
 
       tx <-
         newEitherT $
@@ -367,7 +366,7 @@ addValidRange timeRange tx =
   if validateRange timeRange
     then
       bimap (Text.pack . show) (setRange tx)
-        <$> convertTimeRangeToSlotRange @w timeRange
+        <$> posixTimeRangeToContainedSlotRange @w timeRange
     else pure $ Left "Invalid validity interval."
   where
     setRange tx' range = tx' {txValidRange = range}

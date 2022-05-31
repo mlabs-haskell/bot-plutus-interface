@@ -10,11 +10,11 @@ import BotPlutusInterface.Effects (
   PABEffect,
   ShellArgs (..),
   callCommand,
-  convertTimeRangeToSlotRange,
   createDirectoryIfMissing,
   estimateBudget,
   handlePABEffect,
   logToContract,
+  posixTimeRangeToContainedSlotRange,
   posixTimeToSlot,
   printLog,
   queryChainIndex,
@@ -163,7 +163,7 @@ handlePABReq contractEnv req = do
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
       either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
-        <$> convertTimeRangeToSlotRange @w posixTimeRange
+        <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     ------------------------
     -- Unhandled requests --
