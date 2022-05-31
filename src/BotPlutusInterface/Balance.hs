@@ -8,7 +8,7 @@ module BotPlutusInterface.Balance (
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissingCLI, printLog)
+import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissingCLI, printBpiLog)
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
@@ -61,6 +61,7 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
+import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
@@ -87,7 +88,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
-      lift $ printLog @w Debug $ show utxoIndex
+      lift $ printBpiLog @w Debug $ viaShow utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack pabConf.pcTxFileDir)
@@ -131,7 +132,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
-      lift $ printLog @w Debug $ "Min utxos: " ++ show minUtxos
+      lift $ printBpiLog @w Debug $ "Min utxos:" <+> pretty minUtxos
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
@@ -143,7 +144,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
-      lift $ printLog @w Debug $ "Fees: " ++ show fees
+      lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
       balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees

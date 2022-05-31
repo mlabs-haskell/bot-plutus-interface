@@ -14,6 +14,8 @@ module BotPlutusInterface.Effects (
   uploadDir,
   updateInstanceState,
   printLog,
+  printBpiLog,
+  handleContractLog,
   logToContract,
   readFileTextEnvelope,
   writeFileJSON,
@@ -31,6 +33,7 @@ import BotPlutusInterface.Types (
   CLILocation (..),
   ContractEnvironment,
   ContractState (ContractState),
+  LogContext (BpiLog, ContractLog),
   LogLevel (..),
   TxBudget,
   TxFile,
@@ -40,8 +43,11 @@ import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelo
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM (atomically, modifyTVar, modifyTVar')
+import Control.Lens ((^.))
 import Control.Monad (void, when)
-import Control.Monad.Freer (Eff, LastMember, Member, interpretM, send, type (~>))
+import Control.Monad.Freer (Eff, LastMember, Member, interpretM, reinterpret, send, subsume, type (~>))
+import Control.Monad.Freer.Extras (LogMsg (LMessage))
+import Control.Monad.Freer.Extras qualified as Freer
 import Control.Monad.Trans.Except.Extra (handleIOExceptT, runExceptT)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
@@ -56,6 +62,9 @@ import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
+import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty, (<+>))
+import Prettyprinter qualified as PP
+import Prettyprinter.Render.String qualified as Render
 import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.Process (readProcess, readProcessWithExitCode)
@@ -75,7 +84,7 @@ data PABEffect (w :: Type) (r :: Type) where
   CreateDirectoryIfMissing :: Bool -> FilePath -> PABEffect w ()
   -- Same as above but creates folder on the CLI machine, be that local or remote.
   CreateDirectoryIfMissingCLI :: Bool -> FilePath -> PABEffect w ()
-  PrintLog :: LogLevel -> String -> PABEffect w ()
+  PrintLog :: LogContext -> LogLevel -> PP.Doc () -> PABEffect w ()
   UpdateInstanceState :: Activity -> PABEffect w ()
   LogToContract :: (ToJSON w, Monoid w) => w -> PABEffect w ()
   ThreadDelay :: Int -> PABEffect w ()
@@ -117,7 +126,7 @@ handlePABEffect contractEnv =
           case contractEnv.cePABConfig.pcCliLocation of
             Local -> Directory.createDirectoryIfMissing createParents filePath
             Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
-        PrintLog logLevel txt -> printLog' contractEnv.cePABConfig.pcLogLevel logLevel txt
+        PrintLog logCtx logLevel txt -> printLog' contractEnv.cePABConfig.pcLogLevel logCtx logLevel txt
         UpdateInstanceState s -> do
           atomically $
             modifyTVar contractEnv.ceContractState $
@@ -148,9 +157,34 @@ handlePABEffect contractEnv =
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
     )
 
-printLog' :: LogLevel -> LogLevel -> String -> IO ()
-printLog' logLevelSetting msgLogLvl msg =
-  when (logLevelSetting >= msgLogLvl) $ putStrLn msg
+printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
+printLog' logLevelSetting msgCtx msgLogLvl msg =
+  when (logLevelSetting >= msgLogLvl) $ putStrLn target
+  where
+    target =
+      Render.renderString . layoutPretty defaultLayoutOptions $
+        pretty msgCtx <+> pretty msgLogLvl <+> msg
+
+-- | Reinterpret contract logs to be handled by PABEffect later down the line.
+handleContractLog :: forall w a effs. Member (PABEffect w) effs => Pretty a => Eff (LogMsg a ': effs) ~> Eff effs
+handleContractLog x = subsume $ handleContractLogInternal @w x
+
+handleContractLogInternal :: forall w a effs. Pretty a => Eff (LogMsg a ': effs) ~> Eff (PABEffect w ': effs)
+handleContractLogInternal = reinterpret $ \case
+  LMessage logMsg ->
+    let msgContent = logMsg ^. Freer.logMessageContent
+        msgLogLevel = toNativeLogLevel (logMsg ^. Freer.logLevel)
+        msgPretty = pretty msgContent
+     in printLog @w ContractLog msgLogLevel msgPretty
+  where
+    toNativeLogLevel Freer.Debug = Debug
+    toNativeLogLevel Freer.Info = Info
+    toNativeLogLevel Freer.Notice = Notice
+    toNativeLogLevel Freer.Warning = Warn
+    toNativeLogLevel Freer.Error = Error
+    toNativeLogLevel Freer.Critical = Error
+    toNativeLogLevel Freer.Alert = Error
+    toNativeLogLevel Freer.Emergency = Error
 
 callLocalCommand :: forall (a :: Type). ShellArgs a -> IO (Either Text a)
 callLocalCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} =
@@ -223,10 +257,19 @@ createDirectoryIfMissingCLI createParents path = send @(PABEffect w) $ CreateDir
 printLog ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
+  LogContext ->
   LogLevel ->
-  String ->
+  PP.Doc () ->
   Eff effs ()
-printLog logLevel msg = send @(PABEffect w) $ PrintLog logLevel msg
+printLog logCtx logLevel msg = send @(PABEffect w) $ PrintLog logCtx logLevel msg
+
+printBpiLog ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  LogLevel ->
+  PP.Doc () ->
+  Eff effs ()
+printBpiLog = printLog @w BpiLog
 
 updateInstanceState ::
   forall (w :: Type) (effs :: [Type -> Type]). Member (PABEffect w) effs => Activity -> Eff effs ()
