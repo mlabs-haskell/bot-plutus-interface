@@ -2,7 +2,7 @@
   description = "bot-plutus-interface";
 
   inputs = {
-    haskell-nix.url = "github:L-as/haskell.nix";
+    haskell-nix.url = "github:mlabs-haskell/haskell.nix";
 
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
 

@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
@@ -12,9 +13,10 @@ import BotPlutusInterface.Effects (
   callCommand,
   createDirectoryIfMissing,
   estimateBudget,
+  handleContractLog,
   handlePABEffect,
   logToContract,
-  printLog,
+  printBpiLog,
   queryChainIndex,
   readFileTextEnvelope,
   saveBudget,
@@ -34,19 +36,20 @@ import Control.Lens (preview, (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
-import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
-import Data.Aeson (ToJSON, Value)
+import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Either (fromRight)
+import Data.HashMap.Strict qualified as HM
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Vector qualified as V
 import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
@@ -69,6 +72,8 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
+import Prettyprinter (Pretty (pretty), (<+>))
+import Prettyprinter qualified as PP
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
 
@@ -92,9 +97,28 @@ handleContract contractEnv =
     . handleResumable contractEnv
     . handleCheckpointIgnore
     . handleWriter
-    . handleLogIgnore @Value
+    . handleContractLog @w
     . runError
     . raiseEnd
+
+instance Pretty Value where
+  pretty (String s) = pretty s
+  pretty (Number n) = pretty $ show n
+  pretty (Bool b) = pretty b
+  pretty (Array arr) = PP.list $ pretty <$> V.toList arr
+  pretty (Object obj) =
+    PP.group
+      . PP.encloseSep (PP.flatAlt "{ " "{") (PP.flatAlt " }" "}") ", "
+      . map
+        ( \(k, v) ->
+            PP.hang 2 $
+              PP.sep
+                [ pretty k <+> ": "
+                , pretty v
+                ]
+        )
+      $ HM.toList obj
+  pretty Null = "null"
 
 handleWriter ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -140,7 +164,7 @@ handlePABReq ::
   PABReq ->
   Eff effs PABResp
 handlePABReq contractEnv req = do
-  printLog @w Debug $ show req
+  printBpiLog @w Debug $ pretty req
   resp <- case req of
     ----------------------
     -- Handled requests --
@@ -176,7 +200,7 @@ handlePABReq contractEnv req = do
     -- YieldUnbalancedTxReq UnbalancedTx
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
-  printLog @w Debug $ show resp
+  printBpiLog @w Debug $ pretty resp
   pure resp
 
 awaitTxStatusChange ::
@@ -193,7 +217,7 @@ awaitTxStatusChange contractEnv txId = do
   case mTx of
     Nothing -> pure Unknown
     Just txState -> do
-      printLog @w Debug $ "Found transaction in node, waiting " ++ show chainConstant ++ " blocks for it to settle."
+      printBpiLog @w Debug $ "Found transaction in node, waiting" <+> pretty chainConstant <+> " blocks for it to settle."
       awaitNBlocks @w contractEnv (chainConstant + 1)
       -- Check if the tx is still present in chain-index, in case of a rollback
       -- we might not find it anymore.
@@ -268,10 +292,10 @@ writeBalancedTx contractEnv (Right tx) = do
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
       else
-        lift . printLog @w Warn . Text.unpack . Text.unlines $
+        lift . printBpiLog @w Warn . PP.vsep $
           [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-          , "Tx file: " <> Files.txFilePath pabConf "raw" (Tx.txId tx)
-          , "Signatories (pkh): " <> Text.unwords (map pkhToText requiredSigners)
+          , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx))
+          , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
           ]
 
     when (pabConf.pcCollectStats && signable) $
