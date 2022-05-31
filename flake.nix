@@ -21,12 +21,12 @@
     };
     cardano-addresses = {
       url =
-        "github:input-output-hk/cardano-addresses/b33e0f365550bd9d329bdbb0a0d2dfe2b23a3dcf";
+        "github:input-output-hk/cardano-addresses/56746f558d57a6b1d66d20eaac8a83dc4455cb4f";
       flake = false;
     };
     cardano-base = {
       url =
-        "github:input-output-hk/cardano-base/41545ba3ac6b3095966316a99883d678b5ab8da8";
+        "github:input-output-hk/cardano-base/394c4637c24d82325bd04ceb99c8e8df5617e663";
       flake = false;
     };
     cardano-config = {
@@ -41,12 +41,12 @@
     };
     cardano-ledger = {
       url =
-        "github:input-output-hk/cardano-ledger/1a9ec4ae9e0b09d54e49b2a40c4ead37edadcce5";
+        "github:input-output-hk/cardano-ledger/1db68a3ec0a2dcb5751004beb22b906162474f23";
       flake = false;
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/73f9a746362695dc2cb63ba757fbcabb81733d23";
+        "github:input-output-hk/cardano-node/65422ff373f2f88a563afa746a9a16d211ffdc7c";
       # flake = false; -- we need it to be available in shell
     };
     cardano-prelude = {
@@ -55,7 +55,11 @@
       flake = false;
     };
     cardano-wallet = {
-      url = "github:input-output-hk/cardano-wallet/f6d4db733c4e47ee11683c343b440552f59beff7";
+      url = "github:ak3n/cw/538375cb3efa0c66604ff0b13b6ecc0c4a694d64";
+      flake = false;
+    };
+    ekg-json = {
+      url = "github:vshabanov/ekg-json/00ebe7211c981686e65730b7144fbf5350462608";
       flake = false;
     };
     ekg-forward = {
@@ -74,7 +78,7 @@
       flake = false;
     };
     hedgehog-extras = {
-      url = "github:input-output-hk/hedgehog-extras/edf6945007177a638fbeb8802397f3a6f4e47c14";
+      url = "github:input-output-hk/hedgehog-extras/967d79533c21e33387d0227a5f6cc185203fe658";
       flake = false;
     };
     hw-aeson = {
@@ -83,7 +87,12 @@
     };
     iohk-monitoring-framework = {
       url =
-        "github:input-output-hk/iohk-monitoring-framework/46f994e216a1f8b36fe4669b47b2a7011b0e153c";
+        "github:input-output-hk/iohk-monitoring-framework/eb7854d1337637b8672af1227b276aa33a658f47";
+      flake = false;
+    };
+    io-sim = {
+      url =
+        "github:input-output-hk/io-sim/606de33fa2f467d108fb1efb86daeb3348bf34e3";
       flake = false;
     };
     optparse-applicative = {
@@ -93,17 +102,17 @@
     };
     ouroboros-network = {
       url =
-        "github:input-output-hk/ouroboros-network/4fac197b6f0d2ff60dc3486c593b68dc00969fbf";
+        "github:input-output-hk/ouroboros-network/ad47441e9e399495579d7dd05ccaf96b46a487b2";
       flake = false;
     };
     plutus = {
       url =
-        "github:input-output-hk/plutus/4127e9cd6e889824d724c30eae55033cb50cbf3e";
+        "github:input-output-hk/plutus/5cc518f1202930ad52b8ba838af32af084c0e754";
       flake = false;
     };
     plutus-apps = {
       url =
-        "github:input-output-hk/plutus-apps/1d89b1ef604998744974d4e654fefc5d7e91e3ee";
+        "github:input-output-hk/plutus-apps/76cb0e89bea75b9d0b415043ce762e2060032444";
       flake = false;
     };
     purescript-bridge = {
@@ -114,6 +123,11 @@
     servant-purescript = {
       url =
         "github:input-output-hk/servant-purescript/44e7cacf109f84984cd99cd3faf185d161826963";
+      flake = false;
+    };
+    typed-protocols = {
+      url =
+        "github:input-output-hk/typed-protocols/91c3fba44d68439df207796171cd6f867354b76b";
       flake = false;
     };
     Win32-network = {
@@ -164,15 +178,15 @@
       ];
 
       extraSources = [
-        {
-          src = inputs.blockfrost-haskell;
-          subdirs = [
-            "blockfrost-api"
-            "blockfrost-client-core"
-            "blockfrost-client"
-            "blockfrost-pretty"
-          ];
-        }
+        # {
+        #   src = inputs.blockfrost-haskell;
+        #   subdirs = [
+        #     "blockfrost-api"
+        #     "blockfrost-client-core"
+        #     "blockfrost-client"
+        #     "blockfrost-pretty"
+        #   ];
+        # }
         {
           src = inputs.cardano-addresses;
           subdirs = [ "core" "command-line" ];
@@ -185,7 +199,6 @@
             "binary/test"
             "cardano-crypto-class"
             "cardano-crypto-praos"
-            "cardano-crypto-tests"
             "measures"
             "orphans-deriving-via"
             "slotting"
@@ -200,6 +213,7 @@
           src = inputs.cardano-ledger;
           subdirs = [
             "eras/alonzo/impl"
+            "eras/babbage/impl"
             "eras/byron/chain/executable-spec"
             "eras/byron/crypto"
             "eras/byron/crypto/test"
@@ -207,8 +221,8 @@
             "eras/byron/ledger/impl"
             "eras/byron/ledger/impl/test"
             "eras/shelley/impl"
-            "eras/shelley-ma/impl"
             "eras/shelley/test-suite"
+            "eras/shelley-ma/impl"
             "libs/cardano-data"
             "libs/cardano-ledger-core"
             "libs/cardano-ledger-pretty"
@@ -227,7 +241,8 @@
             "cardano-cli"
             "cardano-git-rev"
             "cardano-node"
-            "cardano-node-chairman"
+            "cardano-submit-api"
+            "cardano-testnet"
             "trace-dispatcher"
             "trace-forward"
             "trace-resources"
@@ -257,6 +272,10 @@
           ];
         }
         {
+          src = inputs.ekg-json;
+          subdirs = [ "." ];
+        }
+        {
           src = inputs.ekg-forward;
           subdirs = [ "." ];
         }
@@ -279,16 +298,23 @@
         {
           src = inputs.iohk-monitoring-framework;
           subdirs = [
+            "contra-tracer"
             "iohk-monitoring"
             "tracer-transformers"
-            "contra-tracer"
-            "plugins/backend-aggregation"
             "plugins/backend-ekg"
+            "plugins/backend-aggregation"
             "plugins/backend-monitoring"
             "plugins/backend-trace-forwarder"
-            "plugins/scribe-systemd"
           ];
         }
+        # {
+        #   src = inputs.io-sim;
+        #   subdirs = [
+        #     "io-classes"
+        #     "io-sim"
+        #     "strict-stm"
+        #   ];
+        # }
         {
           src = inputs.optparse-applicative;
           subdirs = [ "." ];
@@ -355,6 +381,14 @@
           src = inputs.servant-purescript;
           subdirs = [ "." ];
         }
+        # {
+        #   src = inputs.typed-protocols;
+        #   subdirs = [
+        #     "typed-protocols"
+        #     "typed-protocols-cborg"
+        #     "typed-protocols-examples"
+        #   ];
+        # }
         {
           src = inputs.Win32-network;
           subdirs = [ "." ];
@@ -375,7 +409,7 @@
             additional = ps: [
               ps.plutus-pab
             ];
-            withHoogle = true;
+            withHoogle = false;
             tools.haskell-language-server = { };
             exactDeps = true;
             nativeBuildInputs = with pkgs'; [

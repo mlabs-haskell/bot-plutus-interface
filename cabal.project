@@ -7,9 +7,11 @@ packages: ./bot-plutus-interface.cabal
 
 tests: true
 benchmarks: true
+
+allow-newer:
+    *:aeson
+  , size-based:template-haskell
+
 constraints:
-     -- Because later versions of hedgehog introduce a change which break 'cardano-ledger':
-     -- Test/Cardano/Chain/Delegation/Model.hs:91:41: error:
-     --   ¥ Could not deduce (TraversableB SignalSDELEG)
-     -- TODO: Try to remove on next `cardano-node` version upgrade.
-     hedgehog >= 1.0.2 && < 1.1
+    aeson >= 2
+  , hedgehog >= 1.1
