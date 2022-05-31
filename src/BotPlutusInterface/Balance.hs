@@ -21,10 +21,10 @@ import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
 import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List (find, partition, (\\))
+import Data.List (partition, (\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -297,10 +297,9 @@ addTxCollaterals utxos tx =
     filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
     usesScripts Tx {txInputs, txMintScripts} =
       not (null txMintScripts)
-        || isJust
-          ( find (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False) $
-              Set.toList txInputs
-          )
+        || any
+          (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
+          (Set.toList txInputs)
 
 -- | Ensures all non ada change goes back to user
 handleNonAdaChange :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
