@@ -66,11 +66,10 @@ import Data.Maybe (catMaybes, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger.Crypto (PrivateKey, PubKey (PubKey), PubKeyHash (PubKeyHash))
+import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
 import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
-import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
 import Plutus.Script.Utils.V1.Scripts qualified as Scripts
 import Plutus.V1.Ledger.Api (
@@ -119,14 +118,14 @@ signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
   let h = encodeByteString $ fromBuiltin pubKeyHash
    in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
 
-txFilePath :: PABConfig -> Text -> TxId.TxId -> Text
+txFilePath :: PABConfig -> Text -> Tx.TxId -> Text
 txFilePath pabConf ext txId = pabConf.pcTxFileDir <> "/" <> txFileName txId ext
 
-txFileName :: TxId.TxId -> Text -> Text
+txFileName :: Tx.TxId -> Text -> Text
 txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext
 
-txIdToText :: TxId.TxId -> Text
-txIdToText = encodeByteString . fromBuiltin . TxId.getTxId
+txIdToText :: Tx.TxId -> Text
+txIdToText = encodeByteString . fromBuiltin . Tx.getTxId
 
 -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
 
@@ -242,10 +241,10 @@ readPrivateKeys pabConf = do
     keyPriority (FromVKey _) = 0
 
 data DummyPrivKey
-  = FromSKey PrivateKey
-  | FromVKey PrivateKey
+  = FromSKey Crypto.XPrv
+  | FromVKey Crypto.XPrv
 
-unDummyPrivateKey :: DummyPrivKey -> PrivateKey
+unDummyPrivateKey :: DummyPrivKey -> Crypto.XPrv
 unDummyPrivateKey (FromSKey key) = key
 unDummyPrivateKey (FromVKey key) = key
 
@@ -282,11 +281,11 @@ skeyToDummyPrivKey =
  This key's sole purpose is to be able to derive a public key from it, which is then used for
  mapping to a signing key file for the CLI
 -}
-vkeyToDummyPrivKey' :: VerificationKey PaymentKey -> Either Text PrivateKey
+vkeyToDummyPrivKey' :: VerificationKey PaymentKey -> Either Text Crypto.XPrv
 vkeyToDummyPrivKey' =
   mkDummyPrivateKey . PubKey . LedgerBytes . toBuiltin . serialiseToRawBytes
 
-mkDummyPrivateKey :: PubKey -> Either Text PrivateKey
+mkDummyPrivateKey :: PubKey -> Either Text Crypto.XPrv
 mkDummyPrivateKey (PubKey (LedgerBytes pubkey)) =
   let dummyPrivKey = ByteString.replicate 32 0
       dummyPrivKeySuffix = ByteString.replicate 32 0

@@ -60,6 +60,7 @@ import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
 import Ledger (Slot (Slot), SlotRange)
 import Ledger qualified
+import Ledger.Ada (fromValue, getLovelace)
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
 import Ledger.Crypto (PubKey, PubKeyHash (getPubKeyHash))
@@ -71,24 +72,10 @@ import Ledger.Interval (
  )
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
-import Ledger.Tx (
-  ChainIndexTxOut,
-  RedeemerPtr (..),
-  Redeemers,
-  ScriptTag (..),
-  Tx (..),
-  TxIn (..),
-  TxInType (..),
-  TxOut (..),
-  TxOutRef (..),
-  txId,
- )
-import Ledger.TxId (TxId (..))
+import Ledger.Tx (ChainIndexTxOut, RedeemerPtr (..), Redeemers, ScriptTag (..), Tx (..), TxId (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..), txId)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.Contract.CardanoAPI (toCardanoAddress)
-import Plutus.Script.Utils.V1.Scripts qualified as Scripts
-import Plutus.V1.Ledger.Ada (fromValue, getLovelace)
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   ExBudget (..),

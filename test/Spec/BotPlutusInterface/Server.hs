@@ -9,7 +9,7 @@ import BotPlutusInterface.Types (
   SomeBuiltin (..),
  )
 
-import Ledger.TxId (TxId)
+import Ledger.Tx (TxId)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 

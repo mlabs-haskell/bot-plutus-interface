@@ -152,7 +152,9 @@ balanceTxIO pabConf ownPkh unbalancedTx =
         else loop utxoIndex privKeys minUtxos balancedTx
 
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
-getExecutionUnitPrices pabConf = fromMaybe (ExecutionUnitPrices 0 0) $ protocolParamPrices pabConf.pcProtocolParams
+getExecutionUnitPrices pabConf = fromMaybe (ExecutionUnitPrices 0 0) $ do
+  pparams <- pabConf.pcProtocolParams
+  protocolParamPrices pparams
 
 getBudgetPrice :: ExecutionUnitPrices -> Ledger.ExBudget -> Integer
 getBudgetPrice (ExecutionUnitPrices cpuPrice memPrice) (Ledger.ExBudget cpuUsed memUsed) =

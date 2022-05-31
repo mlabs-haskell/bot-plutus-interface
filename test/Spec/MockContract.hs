@@ -111,9 +111,8 @@ import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
 import Ledger.Scripts (DatumHash (DatumHash))
 import Ledger.Slot (Slot (getSlot))
-import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef))
+import Ledger.Tx (TxId (TxId), TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
-import Ledger.TxId (TxId (TxId))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
 import Plutus.ChainIndex.Api (UtxosResponse (..))

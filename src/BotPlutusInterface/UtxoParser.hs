@@ -31,11 +31,7 @@ import Data.Text (Text)
 import Ledger (Address (addressCredential))
 import Ledger.Ada qualified as Ada
 import Ledger.Scripts (DatumHash (..))
-import Ledger.Tx (
-  ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
-  TxOutRef (..),
- )
-import Ledger.TxId (TxId (..))
+import Ledger.Tx (ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut), TxId (..), TxOutRef (..))
 import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (

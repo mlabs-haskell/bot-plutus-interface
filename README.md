@@ -82,7 +82,7 @@ main = do
           , pcNetwork = Testnet (NetworkMagic 42)
           , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
           , pcPort = 9080
-          , pcProtocolParams = protocolParams
+          , pcProtocolParams = Just protocolParams
           , pcTipPollingInterval = 10_000_000
           , -- | Slot configuration of the network, the default value can be used for the mainnet
             pcSlotConfig = def

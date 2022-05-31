@@ -47,7 +47,7 @@
     cardano-node = {
       url =
         "github:input-output-hk/cardano-node/65422ff373f2f88a563afa746a9a16d211ffdc7c";
-      # flake = false; -- we need it to be available in shell
+      flake = false; # we need it to be available in shell
     };
     cardano-prelude = {
       url =
@@ -112,7 +112,7 @@
     };
     plutus-apps = {
       url =
-        "github:input-output-hk/plutus-apps/76cb0e89bea75b9d0b415043ce762e2060032444";
+        "github:gege251/plutus-apps/d40efd6707aa30525b3ebc695e4ba890d944cde3";
       flake = false;
     };
     purescript-bridge = {
