@@ -56,6 +56,7 @@ import BotPlutusInterface.Types (
   BudgetEstimationError,
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
+  LogContext,
   LogLevel (..),
   PABConfig (..),
   TxBudget (TxBudget),
@@ -136,6 +137,7 @@ import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import Plutus.V1.Ledger.Credential (Credential (PubKeyCredential))
 import PlutusTx.Builtins (fromBuiltin)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
+import Prettyprinter qualified as PP
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
@@ -219,7 +221,7 @@ data MockContractState w = MockContractState
   , _commandHistory :: [Text]
   , _instanceUpdateHistory :: [Activity]
   , _observableState :: w
-  , _logHistory :: [(LogLevel, String)]
+  , _logHistory :: [(LogContext, LogLevel, PP.Doc ())]
   , _contractEnv :: ContractEnvironment w
   , _utxos :: [(TxOutRef, TxOut)]
   , _tip :: Tip
@@ -303,7 +305,7 @@ runPABEffectPure initState req =
       mockCreateDirectoryIfMissing createParents filePath
     go (CreateDirectoryIfMissingCLI createParents filePath) =
       mockCreateDirectoryIfMissing createParents filePath
-    go (PrintLog logLevel msg) = mockPrintLog logLevel msg
+    go (PrintLog logCtx logLevel msg) = mockPrintLog logCtx logLevel msg
     go (UpdateInstanceState msg) = mockUpdateInstanceState msg
     go (LogToContract msg) = mockLogToContract msg
     go (ThreadDelay microseconds) = mockThreadDelay microseconds
@@ -468,9 +470,9 @@ valueToUtxoOut =
 mockCreateDirectoryIfMissing :: forall (w :: Type). Bool -> FilePath -> MockContract w ()
 mockCreateDirectoryIfMissing _ _ = pure ()
 
-mockPrintLog :: forall (w :: Type). LogLevel -> String -> MockContract w ()
-mockPrintLog logLevel msg =
-  modify @(MockContractState w) (logHistory %~ ((logLevel, msg) <|))
+mockPrintLog :: forall (w :: Type). LogContext -> LogLevel -> PP.Doc () -> MockContract w ()
+mockPrintLog logCtx logLevel msg =
+  modify @(MockContractState w) (logHistory %~ ((logCtx, logLevel, msg) <|))
 
 mockUpdateInstanceState :: forall (w :: Type). Activity -> MockContract w ()
 mockUpdateInstanceState msg =

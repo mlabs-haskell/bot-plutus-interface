@@ -7,6 +7,7 @@ module BotPlutusInterface.Types (
   CLILocation (..),
   AppState (AppState),
   LogLevel (..),
+  LogContext (..),
   ContractEnvironment (..),
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
@@ -52,6 +53,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
+import Prettyprinter (Pretty (pretty))
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -181,7 +183,23 @@ data CLILocation = Local | Remote Text
   deriving stock (Show, Eq)
 
 data LogLevel = Error | Warn | Notice | Info | Debug
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Bounded, Enum, Eq, Ord, Show)
+
+instance Pretty LogLevel where
+  pretty = \case
+    Debug -> "[DEBUG]"
+    Info -> "[INFO]"
+    Notice -> "[NOTICE]"
+    Warn -> "[WARNING]"
+    Error -> "[ERROR]"
+
+data LogContext = BpiLog | ContractLog
+  deriving stock (Bounded, Enum, Eq, Ord, Show)
+
+instance Pretty LogContext where
+  pretty = \case
+    BpiLog -> "[BPI]"
+    ContractLog -> "[CONTRACT]"
 
 instance Default PABConfig where
   def =
