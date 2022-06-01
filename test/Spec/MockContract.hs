@@ -670,10 +670,11 @@ mockSlotRange ::
   forall (w :: Type).
   POSIXTimeRange ->
   MockContract w (Either TimeSlotConversionError SlotRange)
-mockSlotRange = pure . Right . \case
-  Interval (LowerBound NegInf True) (UpperBound PosInf True) ->
-    Interval (LowerBound NegInf True) (UpperBound PosInf True)
-  _ ->
-     slotRange
+mockSlotRange =
+  pure . Right . \case
+    Interval (LowerBound NegInf True) (UpperBound PosInf True) ->
+      Interval (LowerBound NegInf True) (UpperBound PosInf True)
+    _ ->
+      slotRange
   where
     slotRange = Interval (lowerBound 47577202) (strictUpperBound 50255602)
