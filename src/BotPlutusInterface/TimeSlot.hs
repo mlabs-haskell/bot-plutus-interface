@@ -11,8 +11,16 @@ module BotPlutusInterface.TimeSlot (
   posixTimeRangeToContainedSlotRangeIO,
 ) where
 
-import BotPlutusInterface.QueryNode (NodeInfo (NodeInfo), queryEraHistory, querySystemStart)
-import BotPlutusInterface.Types (PABConfig, pcNetwork, pcProtocolParams)
+import BotPlutusInterface.QueryNode (
+  NodeInfo (NodeInfo),
+  queryEraHistory,
+  querySystemStart,
+ )
+import BotPlutusInterface.Types (
+  PABConfig,
+  pcNetwork,
+  pcProtocolParams,
+ )
 import Cardano.Api (CardanoMode, EraHistory)
 import Cardano.Api qualified as CAPI
 import Cardano.Ledger.Alonzo.PParams (_protocolVersion)
@@ -22,13 +30,24 @@ import Cardano.Slotting.EpochInfo (hoistEpochInfo)
 import Cardano.Slotting.Time (SystemStart, toRelativeTime)
 import Control.Monad.Except (runExcept)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Either (EitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (
+  EitherT,
+  firstEitherT,
+  hoistEither,
+  newEitherT,
+  runEitherT,
+ )
 import Data.Bifunctor (first)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Time (secondsToNominalDiffTime)
+import Data.Time (UTCTime, secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Ledger (Extended (Finite, NegInf, PosInf), Interval (Interval), LowerBound (LowerBound), UpperBound (UpperBound))
+import Ledger (
+  Extended (Finite, NegInf, PosInf),
+  Interval (Interval),
+  LowerBound (LowerBound),
+  UpperBound (UpperBound),
+ )
 import Ledger qualified
 import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
@@ -86,7 +105,7 @@ posixTimeRangeToContainedSlotRangeIO
     -- getting required info from node
     nodeInfo <- liftIO $ mkNodeInfo pabConf
     sysStart <- newET $ querySystemStart nodeInfo
-    eraHsitory <- newET (queryEraHistory nodeInfo)
+    eraHsitory <- newET $ queryEraHistory nodeInfo
     let epochInfo = toLedgerEpochInfo eraHsitory
         pparams =
           CAPI.toLedgerPParams
@@ -101,9 +120,16 @@ posixTimeRangeToContainedSlotRangeIO
     startSlotClosure <- getClosure startSlot startIncl
     endSlot <- extTimeToExtSlot end
     endSlotClosure <- getClosure endSlot endIncl
-    let lowerB = LowerBound startSlot startSlotClosure
+    let lowerB :: LowerBound Ledger.Slot
+        lowerB = LowerBound startSlot startSlotClosure
+
+        upperB :: UpperBound Ledger.Slot
         upperB = UpperBound endSlot endSlotClosure
-    pure $ Interval lowerB upperB
+
+        range :: Ledger.SlotRange
+        range = Interval lowerB upperB
+
+    pure range
     where
       convertExtended sysStart eraHist =
         firstEitherT toError . hoistEither . \case
@@ -128,13 +154,16 @@ posixTimeToSlot ::
   EraHistory CardanoMode ->
   Ledger.POSIXTime ->
   Either HF.PastHorizonException Ledger.Slot
-posixTimeToSlot sysStart eraHist pTime =
+posixTimeToSlot sysStart eraHist pTime = do
   -- toRelativeTime checks that pTime >= sysStart via `Control.Exception.assert`
   let relativeTime = toRelativeTime sysStart (toUtc pTime)
       (CAPI.EraHistory _ int) = eraHist
-   in HF.interpretQuery int (HF.wallclockToSlot relativeTime)
-        >>= \(s, _, _) -> return (fromSlotNo s)
+      query = HF.wallclockToSlot relativeTime
+
+  (sn, _, _) <- HF.interpretQuery int query
+  return (fromSlotNo sn)
   where
+    toUtc :: Ledger.POSIXTime -> UTCTime
     toUtc (Ledger.POSIXTime milliseconds) =
       posixSecondsToUTCTime
         . secondsToNominalDiffTime

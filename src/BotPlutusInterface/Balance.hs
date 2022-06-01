@@ -95,7 +95,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       lift $ printBpiLog @w Debug $ viaShow utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
-      lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
+      lift $ createDirectoryIfMissingCLI @w False (Text.unpack pabConf.pcTxFileDir)
 
       -- Adds required collaterals, only needs to happen once
       -- Also adds signatures for fee calculation
