@@ -8539,17 +8539,17 @@
     "plutus-apps_5": {
       "flake": false,
       "locked": {
-        "lastModified": 1654014204,
-        "narHash": "sha256-PjwEmvlo9JuIQ40ylBH9UJvVBbbb6YmXy3DMLaqs578=",
-        "owner": "gege251",
+        "lastModified": 1654169877,
+        "narHash": "sha256-rkOmV6O0n/7vbyDT0nSiou3yHjjrI+hvprXp4KBvE9A=",
+        "owner": "input-output-hk",
         "repo": "plutus-apps",
-        "rev": "d40efd6707aa30525b3ebc695e4ba890d944cde3",
+        "rev": "5fb99da7bb5a3e5d6ca02527802856c51835f6e0",
         "type": "github"
       },
       "original": {
-        "owner": "gege251",
+        "owner": "input-output-hk",
         "repo": "plutus-apps",
-        "rev": "d40efd6707aa30525b3ebc695e4ba890d944cde3",
+        "rev": "5fb99da7bb5a3e5d6ca02527802856c51835f6e0",
         "type": "github"
       }
     },
