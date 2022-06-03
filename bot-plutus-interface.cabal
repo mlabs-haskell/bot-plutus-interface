@@ -91,6 +91,12 @@ library
     BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
+    PlutusConfig.Base
+    PlutusConfig.Cardano.Api
+    PlutusConfig.Cardano.Api.Shelley
+    PlutusConfig.Ledger
+    PlutusConfig.Misc
+    PlutusConfig.Types
 
   build-depends:
     , aeson                      ^>=1.5.0.0
@@ -122,7 +128,6 @@ library
     , playground-common
     , plutus-chain-index
     , plutus-chain-index-core
-    , plutus-config
     , plutus-contract
     , plutus-core
     , plutus-ledger
@@ -131,17 +136,21 @@ library
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
+    , pretty
     , prettyprinter
     , process
     , QuickCheck
+    , regex-compat
     , row-types
     , serialise
     , servant
     , servant-client
+    , servant-client-core
     , servant-server
     , servant-websockets
     , split
     , stm
+    , temporary
     , text                       ^>=1.2.4.0
     , time
     , tostring
@@ -197,7 +206,6 @@ test-suite bot-plutus-interface-test
     , playground-common
     , plutus-chain-index
     , plutus-chain-index-core
-    , plutus-config
     , plutus-contract
     , plutus-core
     , plutus-ledger
