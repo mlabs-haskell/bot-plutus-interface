@@ -151,7 +151,7 @@ mkBudgetMaps exUnitsMap txBody = do
         CAPI.TxMintValue _ value _ ->
           {- The minting policies are indexed in policy id order in the value
              reference:
-             https://github.com/input-output-hk/cardano-node/blob/e31455eaeca98530ce561b79687a8e465ebb3fdd/cardano-api/src/Cardano/Api/TxBody.hs#L2851
+             https://github.com/input-output-hk/cardano-node/blob/e31455eaeca98530ce561b79687a8e465ebb3fdd/cardano-api/src/Cardano/Api/TxBody.hs#L2881
           -}
           let CAPI.ValueNestedRep bundle = CAPI.valueToNestedRep value
            in Map.fromList

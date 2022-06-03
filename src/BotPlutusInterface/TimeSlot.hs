@@ -23,7 +23,7 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (CardanoMode, EraHistory)
 import Cardano.Api qualified as CAPI
-import Cardano.Ledger.Alonzo.PParams (_protocolVersion)
+import Cardano.Ledger.Alonzo.PParams (_protocolVersion, PParams)
 import Cardano.Ledger.Alonzo.TxInfo (slotToPOSIXTime)
 import Cardano.Ledger.Slot (EpochInfo)
 import Cardano.Slotting.EpochInfo (hoistEpochInfo)
@@ -53,6 +53,8 @@ import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
 import System.Environment (getEnv)
 import Prelude
+import Cardano.Ledger.Crypto (StandardCrypto)
+import Cardano.Ledger.Alonzo (AlonzoEra)
 
 -- | Error returned by the functions of this module
 data TimeSlotConversionError
@@ -65,9 +67,9 @@ data TimeSlotConversionError
 slotToPOSIXTimeIO :: PABConfig -> Ledger.Slot -> IO (Either TimeSlotConversionError Ledger.POSIXTime)
 slotToPOSIXTimeIO pabConf lSlot = runEitherT $ do
   nodeInfo <- liftIO $ mkNodeInfo pabConf
-  eraHsitory <- newET (queryEraHistory nodeInfo)
+  eraHistory <- newET (queryEraHistory nodeInfo)
   sysStart <- newET $ querySystemStart nodeInfo
-  let epochInfo = toLedgerEpochInfo eraHsitory
+  let epochInfo = toLedgerEpochInfo eraHistory
       pparams =
         CAPI.toLedgerPParams
           CAPI.ShelleyBasedEraAlonzo
@@ -105,14 +107,14 @@ posixTimeRangeToContainedSlotRangeIO
     -- getting required info from node
     nodeInfo <- liftIO $ mkNodeInfo pabConf
     sysStart <- newET $ querySystemStart nodeInfo
-    eraHsitory <- newET $ queryEraHistory nodeInfo
-    let epochInfo = toLedgerEpochInfo eraHsitory
+    eraHistory <- newET $ queryEraHistory nodeInfo
+    let epochInfo = toLedgerEpochInfo eraHistory
         pparams =
           CAPI.toLedgerPParams
             CAPI.ShelleyBasedEraAlonzo
             (pcProtocolParams pabConf)
 
-    let extTimeToExtSlot = convertExtended sysStart eraHsitory
+    let extTimeToExtSlot = convertExtended sysStart eraHistory
         getClosure = getExtClosure pparams epochInfo sysStart
 
     -- conversions
@@ -120,6 +122,7 @@ posixTimeRangeToContainedSlotRangeIO
     startSlotClosure <- getClosure startSlot startIncl
     endSlot <- extTimeToExtSlot end
     endSlotClosure <- getClosure endSlot endIncl
+
     let lowerB :: LowerBound Ledger.Slot
         lowerB = LowerBound startSlot startSlotClosure
 
@@ -131,14 +134,30 @@ posixTimeRangeToContainedSlotRangeIO
 
     pure range
     where
+      -- helper to convert `Extended POSIXTime` to `Extended Slot` 
+      -- using `posixTimeToSlot`
+      convertExtended ::
+        Monad m =>
+        SystemStart ->
+        EraHistory CardanoMode ->
+        Extended Ledger.POSIXTime ->
+        EitherT TimeSlotConversionError m (Extended Ledger.Slot)
       convertExtended sysStart eraHist =
         firstEitherT toError . hoistEither . \case
-          Finite pTime -> do
-            s <- posixTimeToSlot sysStart eraHist pTime
-            pure . Finite . Ledger.Slot . toInteger $ s
+          Finite pTime -> Finite <$> posixTimeToSlot sysStart eraHist pTime
           NegInf -> pure NegInf
           PosInf -> pure PosInf
 
+      -- helper to calulate bound's closure
+      -- if bound is not `NegInf` or `PosInf`, then `Closure` need to be calculated
+      -- https://github.com/input-output-hk/plutus-apps/blob/e51f57fa99f4cc0942ba6476b0689e43f0948eb3/plutus-ledger/src/Ledger/TimeSlot.hs#L125-L130
+      getExtClosure ::
+        PParams (AlonzoEra StandardCrypto) ->
+        EpochInfo (Either  CAPI.TransactionValidityError) ->
+        SystemStart ->
+        Extended Ledger.Slot ->
+        Bool -> -- current `Closure` of lower or upper bound of `Ledger.POSIXTimeRange`
+        EitherT TimeSlotConversionError IO Bool
       getExtClosure pparams epochInfo sysStart exSlot currentClosure =
         firstEitherT toError . hoistEither $
           case exSlot of
