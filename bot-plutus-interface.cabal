@@ -77,14 +77,18 @@ library
   exposed-modules:
     BotPlutusInterface
     BotPlutusInterface.Balance
+    BotPlutusInterface.BodyBuilder
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.Config
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
+    BotPlutusInterface.ExBudget
     BotPlutusInterface.Files
     BotPlutusInterface.Helpers
+    BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
+    BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
 
@@ -95,6 +99,9 @@ library
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-ledger-core
+    , cardano-prelude
+    , cardano-slotting
     , config-schema
     , config-value
     , containers
@@ -111,6 +118,7 @@ library
     , lens
     , memory
     , mtl
+    , ouroboros-consensus
     , playground-common
     , plutus-chain-index
     , plutus-chain-index-core
@@ -123,6 +131,7 @@ library
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
+    , prettyprinter
     , process
     , QuickCheck
     , row-types
@@ -135,10 +144,13 @@ library
     , stm
     , text                       ^>=1.2.4.0
     , tostring
+    , time
     , transformers
     , transformers-either
+    , transformers-except
     , unordered-containers
     , uuid
+    , vector
     , wai
     , warp
     , websockets
@@ -154,6 +166,7 @@ test-suite bot-plutus-interface-test
     Spec.BotPlutusInterface.Balance
     Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Contract
+    Spec.BotPlutusInterface.ContractStats
     Spec.BotPlutusInterface.Server
     Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
@@ -193,6 +206,7 @@ test-suite bot-plutus-interface-test
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
+    , prettyprinter
     , QuickCheck
     , quickcheck-instances
     , row-types

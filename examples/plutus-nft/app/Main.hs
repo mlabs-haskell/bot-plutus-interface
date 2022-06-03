@@ -10,12 +10,8 @@ import BotPlutusInterface.Types (
   SomeBuiltin (..),
   endpointsToSchemas,
  )
-import Cardano.PlutusExample.NFT (
-  NFTSchema,
-  mintNft,
- )
+import Cardano.PlutusExample.NFT
 import Data.Aeson.TH (defaultOptions, deriveJSON)
-import Ledger.Value (TokenName)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 import Prelude
@@ -29,11 +25,11 @@ instance HasDefinitions MintNFTContracts where
 
   getContract :: (MintNFTContracts -> SomeBuiltin)
   getContract = \case
-    MintNFT tokenName ->
+    MintNFT p ->
       SomeBuiltin $
-        mintNft tokenName
+        mintNft p
 
-newtype MintNFTContracts = MintNFT TokenName
+newtype MintNFTContracts = MintNFT MintParams
   deriving stock (Show)
 
 $(deriveJSON defaultOptions ''MintNFTContracts)

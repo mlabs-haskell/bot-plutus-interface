@@ -1,50 +1,63 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
 import BotPlutusInterface.Balance qualified as PreBalance
+import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (
   PABEffect,
   ShellArgs (..),
   callCommand,
   createDirectoryIfMissing,
+  estimateBudget,
+  handleContractLog,
   handlePABEffect,
   logToContract,
-  printLog,
+  posixTimeRangeToContainedSlotRange,
+  posixTimeToSlot,
+  printBpiLog,
   queryChainIndex,
   readFileTextEnvelope,
+  saveBudget,
+  slotToPOSIXTime,
   threadDelay,
   uploadDir,
  )
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Types (ContractEnvironment (..), LogLevel (Debug, Warn), Tip (block, slot))
+import BotPlutusInterface.Types (
+  ContractEnvironment (..),
+  LogLevel (Debug, Warn),
+  Tip (block, slot),
+  TxFile (Signed),
+ )
 import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
 import Control.Lens (preview, (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
-import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
-import Data.Aeson (ToJSON, Value)
+import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Either (fromRight)
+import Data.HashMap.Strict qualified as HM
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Vector qualified as V
 import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
-import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
@@ -61,6 +74,8 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
+import Prettyprinter (Pretty (pretty), (<+>))
+import Prettyprinter qualified as PP
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
 
@@ -84,9 +99,28 @@ handleContract contractEnv =
     . handleResumable contractEnv
     . handleCheckpointIgnore
     . handleWriter
-    . handleLogIgnore @Value
+    . handleContractLog @w
     . runError
     . raiseEnd
+
+instance Pretty Value where
+  pretty (String s) = pretty s
+  pretty (Number n) = pretty $ show n
+  pretty (Bool b) = pretty b
+  pretty (Array arr) = PP.list $ pretty <$> V.toList arr
+  pretty (Object obj) =
+    PP.group
+      . PP.encloseSep (PP.flatAlt "{ " "{") (PP.flatAlt " }" "}") ", "
+      . map
+        ( \(k, v) ->
+            PP.hang 2 $
+              PP.sep
+                [ pretty k <+> ": "
+                , pretty v
+                ]
+        )
+      $ HM.toList obj
+  pretty Null = "null"
 
 handleWriter ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -132,7 +166,7 @@ handlePABReq ::
   PABReq ->
   Eff effs PABResp
 handlePABReq contractEnv req = do
-  printLog @w Debug $ show req
+  printBpiLog @w Debug $ pretty req
   resp <- case req of
     ----------------------
     -- Handled requests --
@@ -152,10 +186,8 @@ handlePABReq contractEnv req = do
     CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
-      pure $
-        PosixTimeRangeToContainedSlotRangeResp $
-          Right $
-            posixTimeRangeToContainedSlotRange contractEnv.cePABConfig.pcSlotConfig posixTimeRange
+      either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
+        <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     ------------------------
     -- Unhandled requests --
@@ -168,7 +200,7 @@ handlePABReq contractEnv req = do
     -- YieldUnbalancedTxReq UnbalancedTx
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
-  printLog @w Debug $ show resp
+  printBpiLog @w Debug $ pretty resp
   pure resp
 
 awaitTxStatusChange ::
@@ -185,7 +217,7 @@ awaitTxStatusChange contractEnv txId = do
   case mTx of
     Nothing -> pure Unknown
     Just txState -> do
-      printLog @w Debug $ "Found transaction in node, waiting " ++ show chainConstant ++ " blocks for it to settle."
+      printBpiLog @w Debug $ "Found transaction in node, waiting" <+> pretty chainConstant <+> " blocks for it to settle."
       awaitNBlocks @w contractEnv (chainConstant + 1)
       -- Check if the tx is still present in chain-index, in case of a rollback
       -- we might not find it anymore.
@@ -249,7 +281,7 @@ writeBalancedTx contractEnv (Right tx) = do
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
         signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-    void $ newEitherT $ CardanoCLI.buildTx @w pabConf privKeys tx
+    void $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx
 
     -- TODO: This whole part is hacky and we should remove it.
     let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx)
@@ -260,18 +292,24 @@ writeBalancedTx contractEnv (Right tx) = do
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
       else
-        lift . printLog @w Warn . Text.unpack . Text.unlines $
+        lift . printBpiLog @w Warn . PP.vsep $
           [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-          , "Tx file: " <> Files.txFilePath pabConf "raw" (Tx.txId tx)
-          , "Signatories (pkh): " <> Text.unwords (map pkhToText requiredSigners)
+          , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx))
+          , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
           ]
+
+    when (pabConf.pcCollectStats && signable) $
+      collectBudgetStats (Tx.txId tx) pabConf
 
     when (not pabConf.pcDryRun && signable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
-    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" (Ledger.getCardanoTxId $ Left cardanoTx))
-    when signable $ mvFiles (Files.txFilePath pabConf "signed" (Tx.txId tx)) (Files.txFilePath pabConf "signed" (Ledger.getCardanoTxId $ Left cardanoTx))
+    let cardanoTxId = Ledger.getCardanoTxId $ Left cardanoTx
+        signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx)
+        signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
+    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" cardanoTxId)
+    when signable $ mvFiles signedSrcPath signedDstPath
 
     pure cardanoTx
   where
@@ -284,6 +322,18 @@ writeBalancedTx contractEnv (Right tx) = do
             , cmdArgs = [src, dst]
             , cmdOutParser = const ()
             }
+
+    collectBudgetStats txId pabConf = do
+      let path = Text.unpack (Files.txFilePath pabConf "signed" (Tx.txId tx))
+      txBudget <-
+        firstEitherT toBudgetSaveError $
+          newEitherT $ estimateBudget @w (Signed path)
+      void $ newEitherT (Right <$> saveBudget @w txId txBudget)
+
+    toBudgetSaveError =
+      Text.pack
+        . ("Failed to save Tx budgets statistics: " ++)
+        . show
 
 pkhToText :: Ledger.PubKey -> Text
 pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
@@ -334,10 +384,12 @@ awaitTime ::
   ContractEnvironment w ->
   POSIXTime ->
   Eff effs POSIXTime
-awaitTime ce = fmap fromSlot . awaitSlot ce . toSlot
+awaitTime ce pTime = do
+  slotFromTime <- rightOrErr <$> posixTimeToSlot @w pTime
+  slot' <- awaitSlot ce slotFromTime
+  rightOrErr <$> slotToPOSIXTime @w slot'
   where
-    toSlot = posixTimeToEnclosingSlot ce.cePABConfig.pcSlotConfig
-    fromSlot = slotToEndPOSIXTime ce.cePABConfig.pcSlotConfig
+    rightOrErr = either (error . show) id
 
 currentSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -361,4 +413,6 @@ currentTime ::
   ContractEnvironment w ->
   Eff effs POSIXTime
 currentTime contractEnv =
-  slotToEndPOSIXTime contractEnv.cePABConfig.pcSlotConfig <$> currentSlot @w contractEnv
+  currentSlot @w contractEnv
+    >>= slotToPOSIXTime @w
+    >>= either (error . show) return

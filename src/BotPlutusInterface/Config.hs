@@ -96,19 +96,19 @@ instance ToValue PABConfig where
         pcChainIndexUrl
         pcNetwork
         _pcProtocolParams
-        pcSlotConfig
         pcScriptFileDir
         pcSigningKeyFileDir
         pcTxFileDir
+        pcMetadataDir
         pcProtocolParamsFile
         pcDryRun
         pcLogLevel
         pcOwnPubKeyHash
         pcOwnStakePubKeyHash
         pcTipPollingInterval
-        pcForceBudget
         pcPort
         pcEnableTxEndpoint
+        pcCollectStats
       ) =
       Sections
         ()
@@ -117,19 +117,19 @@ instance ToValue PABConfig where
         , Section () "networkId"          $ toValue pcNetwork
         -- due to conflict, should be stored in pcProtocolParamsFile .json file
         -- , Section () "protocolParams"     $ toValue pcProtocolParams
-        , Section () "slotConfig"         $ toValue pcSlotConfig
         , Section () "scriptFileDir"      $ toValue pcScriptFileDir
         , Section () "signingKeyFileDir"  $ toValue pcSigningKeyFileDir
         , Section () "txFileDir"          $ toValue pcTxFileDir
+        , Section () "metadataDir"        $ toValue pcMetadataDir
         , Section () "protocolParamsFile" $ toValue pcProtocolParamsFile
         , Section () "dryRun"             $ toValue pcDryRun
         , Section () "logLevel"           $ toValue pcLogLevel
         , Section () "ownPubKeyHash"      $ toValue pcOwnPubKeyHash
         , Section () "ownStakePubKeyHash" $ toValue pcOwnStakePubKeyHash
         , Section () "tipPollingInterval" $ toValue pcTipPollingInterval
-        , Section () "forceBudget"        $ toValue pcForceBudget
         , Section () "port"               $ toValue pcPort
         , Section () "enableTxEndpoint"   $ toValue pcEnableTxEndpoint
+        , Section () "collectStats"       $ toValue pcCollectStats
         ]
 {- ORMOLU_ENABLE -}
 
@@ -157,9 +157,6 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
   --   sectionWithDefault (pcProtocolParams def) "protocolParams" ""
   let pcProtocolParams = def
 
-  pcSlotConfig <-
-    sectionWithDefault (pcSlotConfig def) "slotConfig" ""
-
   pcScriptFileDir <-
     sectionWithDefault'
       (pcScriptFileDir def)
@@ -180,6 +177,9 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       "txFileDir"
       pathSpec
       "Directory name of the transaction files"
+
+  pcMetadataDir <-
+    sectionWithDefault (pcMetadataDir def) "metadataDir" "Directory name of metadata files"
 
   pcProtocolParamsFile <-
     sectionWithDefault'
@@ -207,17 +207,18 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
   pcTipPollingInterval <-
     sectionWithDefault' (pcTipPollingInterval def) "tipPollingInterval" naturalSpec ""
 
-  pcForceBudget <-
-    sectionWithDefault
-      (pcForceBudget def)
-      "forceBudget"
-      "Forced budget for scripts, as optional (CPU Steps, Memory Units)"
-
   pcPort <-
     sectionWithDefault' (pcPort def) "port" portSpec ""
 
   pcEnableTxEndpoint <-
     sectionWithDefault' (pcEnableTxEndpoint def) "enableTxEndpoint" trueOrFalseSpec ""
+
+  pcCollectStats <-
+    sectionWithDefault'
+      (pcCollectStats def)
+      "collectStats"
+      trueOrFalseSpec
+      "Save some stats during contract run (only transactions execution budgets supported atm)"
 
   pure PABConfig {..}
 

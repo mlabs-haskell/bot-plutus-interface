@@ -7,6 +7,7 @@ module BotPlutusInterface.Types (
   CLILocation (..),
   AppState (AppState),
   LogLevel (..),
+  LogContext (..),
   ContractEnvironment (..),
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
@@ -15,9 +16,16 @@ module BotPlutusInterface.Types (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
   RawTx (..),
+  TxFile (..),
+  TxBudget (..),
+  BudgetEstimationError (..),
+  SpendBudgets,
+  MintBudgets,
+  ContractStats (..),
+  addBudget,
 ) where
 
-import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
+import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
@@ -26,10 +34,17 @@ import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
 import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Ledger (PubKeyHash, StakePubKeyHash)
-import Ledger.TimeSlot (SlotConfig)
+import Ledger (
+  ExBudget,
+  MintingPolicyHash,
+  PubKeyHash,
+  StakePubKeyHash,
+  TxId,
+  TxOutRef,
+ )
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -38,6 +53,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
+import Prettyprinter (Pretty (pretty))
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -48,8 +64,6 @@ data PABConfig = PABConfig
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !ProtocolParameters
-  , -- | Slot configuration of the network, the default value can be used for the mainnet
-    pcSlotConfig :: !SlotConfig
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -58,23 +72,82 @@ data PABConfig = PABConfig
     pcTxFileDir :: !Text
   , -- | Protocol params file location relative to the cardano-cli working directory (needed for the cli)
     pcProtocolParamsFile :: !Text
+  , -- | Directory name of metadata files
+    pcMetadataDir :: !Text
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
   , pcOwnPubKeyHash :: !PubKeyHash
   , pcOwnStakePubKeyHash :: !(Maybe StakePubKeyHash)
   , pcTipPollingInterval :: !Natural
-  , -- | Forced budget for scripts, as optional (CPU Steps, Memory Units)
-    pcForceBudget :: !(Maybe (Integer, Integer))
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
+  , pcCollectStats :: !Bool
   }
   deriving stock (Show, Eq)
+
+-- Budget estimation types
+
+{- | Error returned in case any error happened during budget estimation
+ (wraps whatever received in `Text`)
+-}
+data BudgetEstimationError
+  = -- | general error for `Cardano.Api` errors
+    BudgetEstimationError !Text
+  | -- | script evaluation failed during budget estimation
+    ScriptFailure ScriptExecutionError
+  | {- budget for input or policy was not found after estimation
+       (arguably should not happen at all) -}
+    BudgetNotFound ScriptWitnessIndex
+  deriving stock (Show)
+
+-- | Type of transaction file used for budget estimation
+data TxFile
+  = -- | for using with ".raw" files
+    Raw !FilePath
+  | -- | for using with ".signed" files
+    Signed !FilePath
+
+-- | Result of budget estimation
+data TxBudget = TxBudget
+  { -- | budgets for spending inputs
+    spendBudgets :: !SpendBudgets
+  , -- | budgets for minting policies
+    mintBudgets :: !MintBudgets
+  }
+  deriving stock (Show)
+
+addBudget :: TxId -> TxBudget -> ContractStats -> ContractStats
+addBudget txId budget stats =
+  stats {estimatedBudgets = Map.insert txId budget (estimatedBudgets stats)}
+
+instance Semigroup TxBudget where
+  TxBudget s m <> TxBudget s' m' = TxBudget (s <> s') (m <> m')
+
+instance Monoid TxBudget where
+  mempty = TxBudget mempty mempty
+
+type SpendBudgets = Map TxOutRef ExBudget
+
+type MintBudgets = Map MintingPolicyHash ExBudget
+
+{- | Collection of stats that could be collected py `bpi`
+   about contract it runs
+-}
+newtype ContractStats = ContractStats
+  { estimatedBudgets :: Map TxId TxBudget
+  }
+  deriving stock (Show)
+  deriving newtype (Semigroup, Monoid)
+
+instance Show (TVar ContractStats) where
+  show _ = "<ContractStats>"
 
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
+  , ceContractStats :: TVar ContractStats
   }
   deriving stock (Show)
 
@@ -110,7 +183,23 @@ data CLILocation = Local | Remote Text
   deriving stock (Show, Eq)
 
 data LogLevel = Error | Warn | Notice | Info | Debug
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Bounded, Enum, Eq, Ord, Show)
+
+instance Pretty LogLevel where
+  pretty = \case
+    Debug -> "[DEBUG]"
+    Info -> "[INFO]"
+    Notice -> "[NOTICE]"
+    Warn -> "[WARNING]"
+    Error -> "[ERROR]"
+
+data LogContext = BpiLog | ContractLog
+  deriving stock (Bounded, Enum, Eq, Ord, Show)
+
+instance Pretty LogContext where
+  pretty = \case
+    BpiLog -> "[BPI]"
+    ContractLog -> "[CONTRACT]"
 
 instance Default PABConfig where
   def =
@@ -119,19 +208,19 @@ instance Default PABConfig where
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = def
-      , pcSlotConfig = def
       , pcTipPollingInterval = 10_000_000
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"
       , pcTxFileDir = "./txs"
+      , pcMetadataDir = "/metadata"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
       , pcOwnPubKeyHash = ""
       , pcOwnStakePubKeyHash = Nothing
-      , pcForceBudget = Nothing
       , pcPort = 9080
       , pcEnableTxEndpoint = False
+      , pcCollectStats = False
       }
 
 data RawTx = RawTx

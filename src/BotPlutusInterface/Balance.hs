@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Balance (
   balanceTxStep,
@@ -7,7 +8,12 @@ module BotPlutusInterface.Balance (
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissingCLI, printLog)
+import BotPlutusInterface.Effects (
+  PABEffect,
+  createDirectoryIfMissingCLI,
+  posixTimeRangeToContainedSlotRange,
+  printBpiLog,
+ )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
@@ -42,7 +48,6 @@ import Ledger.Interval (
  )
 import Ledger.Scripts (Datum, DatumHash)
 import Ledger.Time (POSIXTimeRange)
-import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange)
 import Ledger.Tx (
   Tx (..),
   TxIn (..),
@@ -58,6 +63,10 @@ import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   TokenName (..),
  )
+
+import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
+import Data.Bifunctor (bimap)
+import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
@@ -77,14 +86,14 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+
       tx <-
-        hoistEither $
-          addValidRange
-            pabConf
+        newEitherT $
+          addValidRange @w
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
-      lift $ printLog @w Debug $ show utxoIndex
+      lift $ printBpiLog @w Debug $ viaShow utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack pabConf.pcTxFileDir)
@@ -128,18 +137,19 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
-      lift $ printLog @w Debug $ "Min utxos: " ++ show minUtxos
+      lift $ printBpiLog @w Debug $ "Min utxos:" <+> pretty minUtxos
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
         hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` 0
 
-      exBudget <- newEitherT $ CardanoCLI.buildTx @w pabConf privKeys txWithoutFees
+      exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
+
       nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
-      lift $ printLog @w Debug $ "Fees: " ++ show fees
+      lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
       balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
@@ -277,10 +287,13 @@ balanceTxIns utxos tx = do
  (suboptimally we just pick a random utxo from the tx inputs)
 -}
 addTxCollaterals :: Map TxOutRef TxOut -> Tx -> Either Text Tx
-addTxCollaterals utxos tx = do
-  let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
-  txIn <- findPubKeyTxIn txIns
-  pure $ tx {txCollateral = Set.singleton txIn}
+addTxCollaterals utxos tx =
+  if not $ usesScripts tx
+    then Right tx
+    else do
+      let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
+      txIn <- findPubKeyTxIn txIns
+      pure $ tx {txCollateral = Set.singleton txIn}
   where
     findPubKeyTxIn = \case
       x@(TxIn _ (Just ConsumePublicKeyAddress)) : _ -> Right x
@@ -288,6 +301,11 @@ addTxCollaterals utxos tx = do
       _ : xs -> findPubKeyTxIn xs
       _ -> Left "There are no utxos to be used as collateral"
     filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
+    usesScripts Tx {txInputs, txMintScripts} =
+      not (null txMintScripts)
+        || any
+          (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
+          (Set.toList txInputs)
 
 -- | Ensures all non ada change goes back to user
 handleNonAdaChange :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
@@ -348,11 +366,20 @@ addSignatories ownPkh privKeys pkhs tx =
     tx
     (ownPkh : pkhs)
 
-addValidRange :: PABConfig -> POSIXTimeRange -> Tx -> Either Text Tx
-addValidRange pabConf timeRange tx =
+addValidRange ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  POSIXTimeRange ->
+  Tx ->
+  Eff effs (Either Text Tx)
+addValidRange timeRange tx =
   if validateRange timeRange
-    then Right $ tx {txValidRange = posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange}
-    else Left "Invalid validity interval."
+    then
+      bimap (Text.pack . show) (setRange tx)
+        <$> posixTimeRangeToContainedSlotRange @w timeRange
+    else pure $ Left "Invalid validity interval."
+  where
+    setRange tx' range = tx' {txValidRange = range}
 
 validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
 validateRange (Interval (LowerBound PosInf _) _) = False

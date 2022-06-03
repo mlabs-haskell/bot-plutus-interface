@@ -272,6 +272,7 @@ handleContract ::
 handleContract pabConf state@(AppState st) contract = liftIO $ do
   contractInstanceID <- liftIO $ ContractInstanceId <$> UUID.nextRandom
   contractState <- newTVarIO (ContractState Active mempty)
+  contractStats <- newTVarIO mempty
 
   atomically $ modifyTVar st (Map.insert contractInstanceID (SomeContractState contractState))
 
@@ -280,6 +281,7 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
           { cePABConfig = pabConf
           , ceContractState = contractState
           , ceContractInstanceId = contractInstanceID
+          , ceContractStats = contractStats
           }
   void $
     forkIO $ do

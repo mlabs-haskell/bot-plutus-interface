@@ -132,7 +132,6 @@ sendAda = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
@@ -140,7 +139,7 @@ sendAda = do
           |]
         )
       ,
-        ( 3
+        ( 4
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -153,11 +152,10 @@ sendAda = do
         )
       , -- Steps 4 to 11 are near repeats of 1, 2 and 3, to ensure min utxo values are met, and change is dispursed
 
-        ( 12
+        ( 17
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+50
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -166,7 +164,7 @@ sendAda = do
         |]
         )
       ,
-        ( 13
+        ( 18
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
@@ -193,11 +191,10 @@ sendAdaNoChange = do
     assertCommandHistory
       state
       [
-        ( 6
+        ( 8
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 200
@@ -246,7 +243,6 @@ sendAdaStaking = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2Staking}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
@@ -254,7 +250,7 @@ sendAdaStaking = do
           |]
         )
       ,
-        ( 3
+        ( 4
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -266,11 +262,10 @@ sendAdaStaking = do
           |]
         )
       ,
-        ( 6
+        ( 9
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2Staking}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 200
@@ -278,7 +273,7 @@ sendAdaStaking = do
         |]
         )
       ,
-        ( 7
+        ( 10
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
@@ -307,7 +302,7 @@ multisigSupport = do
     assertCommandHistory
       state
       [
-        ( 3
+        ( 4
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -319,11 +314,10 @@ multisigSupport = do
           |]
         )
       ,
-        ( 6
+        ( 9
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --required-signer ./signing-keys/signing-key-${pkh3'}.skey
@@ -332,7 +326,7 @@ multisigSupport = do
           |]
         )
       ,
-        ( 7
+        ( 10
         , [text| 
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
@@ -370,11 +364,10 @@ withoutSigning = do
     assertCommandHistory
       state
       [
-        ( 6
+        ( 9
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --required-signer-hash ${pkh3'}
@@ -401,7 +394,6 @@ sendTokens = do
           Nothing
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef1
-      inTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef2
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
@@ -415,11 +407,10 @@ sendTokens = do
     assertCommandHistory
       state
       [
-        ( 10
+        ( 13
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId1}#0
-          --tx-in-collateral ${inTxId2}#1
           --tx-out ${addr1}+50 + 95 abcd1234.74657374546F6B656E
           --tx-out ${addr2}+1000 + 5 abcd1234.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -445,7 +436,6 @@ sendTokensWithoutName = do
           Nothing
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef1
-      inTxId2 = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef2
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
@@ -459,11 +449,10 @@ sendTokensWithoutName = do
     assertCommandHistory
       state
       [
-        ( 10
+        ( 13
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId1}#0
-          --tx-in-collateral ${inTxId2}#1
           --tx-out ${addr1}+50 + 95 abcd1234
           --tx-out ${addr2}+1000 + 5 abcd1234
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -510,7 +499,7 @@ mintTokens = do
     assertCommandHistory
       state
       [
-        ( 2
+        ( 3
         , [text| 
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -526,7 +515,7 @@ mintTokens = do
           |]
         )
       ,
-        ( 12
+        ( 17
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -608,7 +597,6 @@ spendToValidator = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${valAddr'}+500
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -617,11 +605,10 @@ spendToValidator = do
           |]
         )
       ,
-        ( 12
+        ( 17
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+200
           --tx-out ${valAddr'}+500
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
@@ -695,7 +682,7 @@ redeemFromValidator = do
     assertCommandHistory
       state
       [
-        ( 2
+        ( 3
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#1
@@ -710,7 +697,7 @@ redeemFromValidator = do
           |]
         )
       ,
-        ( 14
+        ( 20
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
@@ -790,7 +777,6 @@ withValidRange = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
           --invalid-before 47577202
           --invalid-hereafter 50255602
@@ -800,11 +786,10 @@ withValidRange = do
           |]
         )
       ,
-        ( 6
+        ( 9
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
           --invalid-before 47577202
           --invalid-hereafter 50255602

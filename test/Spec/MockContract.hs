@@ -36,6 +36,7 @@ module Spec.MockContract (
   runContractPure',
   MockContractState (..),
   commandHistory,
+  statsUpdates,
   instanceUpdateHistory,
   logHistory,
   contractEnv,
@@ -43,17 +44,23 @@ module Spec.MockContract (
   files,
   tip,
   utxos,
+  mockBudget,
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
 import BotPlutusInterface.Files qualified as Files
+import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
+  BudgetEstimationError,
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
+  LogContext,
   LogLevel (..),
   PABConfig (..),
+  TxBudget (TxBudget),
+  TxFile,
  )
 import Cardano.Api (
   AsType,
@@ -81,7 +88,7 @@ import Control.Monad.Freer (Eff, reinterpret2, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
-import Data.Aeson (ToJSON)
+import Data.Aeson (Result (Success), ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
@@ -101,6 +108,16 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Tuple.Extra (first)
 import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
+import Ledger (
+  Extended (NegInf, PosInf),
+  Interval (Interval),
+  LowerBound (LowerBound),
+  POSIXTimeRange,
+  SlotRange,
+  UpperBound (UpperBound),
+  lowerBound,
+  strictUpperBound,
+ )
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
@@ -119,6 +136,8 @@ import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import Plutus.V1.Ledger.Credential (Credential (PubKeyCredential))
 import PlutusTx.Builtins (fromBuiltin)
+import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
+import Prettyprinter qualified as PP
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
@@ -198,10 +217,11 @@ data MockFile
 
 data MockContractState w = MockContractState
   { _files :: Map FilePath MockFile
+  , _statsUpdates :: [String]
   , _commandHistory :: [Text]
   , _instanceUpdateHistory :: [Activity]
   , _observableState :: w
-  , _logHistory :: [(LogLevel, String)]
+  , _logHistory :: [(LogContext, LogLevel, PP.Doc ())]
   , _contractEnv :: ContractEnvironment w
   , _utxos :: [(TxOutRef, TxOut)]
   , _tip :: Tip
@@ -218,6 +238,7 @@ instance Monoid w => Default (MockContractState w) where
             map
               (toSigningKeyFile "./signing-keys")
               [signingKey1, signingKey2, signingKey3]
+      , _statsUpdates = mempty
       , _commandHistory = mempty
       , _instanceUpdateHistory = mempty
       , _observableState = mempty
@@ -230,9 +251,10 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1, pcForceBudget = Just (500000, 2000)}
+      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
+      , ceContractStats = unsafePerformIO $ newTVarIO mempty
       }
 
 instance Monoid w => Default (ContractState w) where
@@ -283,18 +305,23 @@ runPABEffectPure initState req =
       mockCreateDirectoryIfMissing createParents filePath
     go (CreateDirectoryIfMissingCLI createParents filePath) =
       mockCreateDirectoryIfMissing createParents filePath
-    go (PrintLog logLevel msg) = mockPrintLog logLevel msg
+    go (PrintLog logCtx logLevel msg) = mockPrintLog logCtx logLevel msg
     go (UpdateInstanceState msg) = mockUpdateInstanceState msg
     go (LogToContract msg) = mockLogToContract msg
     go (ThreadDelay microseconds) = mockThreadDelay microseconds
     go (ReadFileTextEnvelope asType filepath) = mockReadFileTextEnvelope asType filepath
     go (WriteFileJSON filepath value) = mockWriteFileJSON filepath value
+    go (WriteFileRaw filepath value) = mockWriteFileRaw filepath value
     go (WriteFileTextEnvelope filepath envelopeDescr contents) =
       mockWriteFileTextEnvelope filepath envelopeDescr contents
     go (ListDirectory dir) = mockListDirectory dir
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = mockQueryChainIndex query
-
+    go (EstimateBudget file) = mockExBudget file
+    go (SaveBudget txId budget) = mockSaveBudget txId budget
+    go (SlotToPOSIXTime _) = pure $ Right 1506203091
+    go (POSIXTimeToSlot _) = pure $ Right 1
+    go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -412,6 +439,13 @@ mockQueryUtxoOut utxos' =
             utxos'
       ]
 
+mockBudget :: String
+mockBudget = "Some budget"
+
+mockSaveBudget :: forall (w :: Type). TxId -> TxBudget -> MockContract w ()
+mockSaveBudget _ _ =
+  modify @(MockContractState w) (statsUpdates %~ (mockBudget :))
+
 valueToUtxoOut :: Value.Value -> Text
 valueToUtxoOut =
   Text.intercalate " + " . map stringifyValue' . Value.flattenValue
@@ -436,9 +470,9 @@ valueToUtxoOut =
 mockCreateDirectoryIfMissing :: forall (w :: Type). Bool -> FilePath -> MockContract w ()
 mockCreateDirectoryIfMissing _ _ = pure ()
 
-mockPrintLog :: forall (w :: Type). LogLevel -> String -> MockContract w ()
-mockPrintLog logLevel msg =
-  modify @(MockContractState w) (logHistory %~ ((logLevel, msg) <|))
+mockPrintLog :: forall (w :: Type). LogContext -> LogLevel -> PP.Doc () -> MockContract w ()
+mockPrintLog logCtx logLevel msg =
+  modify @(MockContractState w) (logHistory %~ ((logCtx, logLevel, msg) <|))
 
 mockUpdateInstanceState :: forall (w :: Type). Activity -> MockContract w ()
 mockUpdateInstanceState msg =
@@ -470,6 +504,13 @@ mockReadFileTextEnvelope ttoken filepath = do
 mockWriteFileJSON :: forall (w :: Type). FilePath -> JSON.Value -> MockContract w (Either (FileError ()) ())
 mockWriteFileJSON filepath value = do
   let fileContent = JsonFile value
+  modify @(MockContractState w) (files . at filepath ?~ fileContent)
+
+  pure $ Right ()
+
+mockWriteFileRaw :: forall (w :: Type). FilePath -> BuiltinByteString -> MockContract w (Either (FileError ()) ())
+mockWriteFileRaw filepath (BuiltinByteString value) = do
+  let fileContent = OtherFile $ encodeByteString value
   modify @(MockContractState w) (files . at filepath ?~ fileContent)
 
   pure $ Right ()
@@ -582,6 +623,33 @@ buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ fillGaps sortedRelatedRef
       | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
     defTxOut = TxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty Nothing
 
+mockExBudget ::
+  forall (w :: Type).
+  TxFile ->
+  MockContract w (Either BudgetEstimationError TxBudget)
+mockExBudget _ = pure . Right $ TxBudget inBudgets policyBudgets
+  where
+    inBudgets = Map.singleton (TxOutRef txId 1) someBudget
+    policyBudgets = Map.singleton policy someBudget
+
+    someBudget = Ledger.ExBudget (Ledger.ExCPU 500000) (Ledger.ExMemory 2000)
+
+    txId =
+      let txId' =
+            JSON.fromJSON $
+              JSON.object
+                ["getTxId" JSON..= ("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" :: Text)]
+       in case txId' of
+            Success tid -> tid
+            _ -> error "Could not parse TxId"
+
+    policy =
+      let policy' =
+            JSON.fromJSON . JSON.String $
+              "648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198"
+       in case policy' of
+            Success p -> p
+            _ -> error "Could not parse MintingPolicyHash"
 dummyTxRawFile :: TextEnvelope
 dummyTxRawFile =
   TextEnvelope
@@ -597,3 +665,16 @@ dummyTxSignedFile =
     , teDescription = ""
     , teRawCBOR = fromRight (error "failed to unpack CBOR hex") $ unhex "84a500848258205d677265fa5bb21ce6d8c7502aca70b9316d10e958611f3c6b758f65ad9599960182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc9300008258209405c89393ba84b14bf8d3e7ed4788cc6e2257831943b58338bee8d37a3668fc00825820a1be9565ccac4a04d2b5bf0d0167196ae467da0d88161c9c827fbe76452b24ef000d8182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc930000018482581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975461a3b8cc4a582581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1a000d062782581d606696936bb8ae24859d0c2e4d05584106601f58a5e9466282c8561b88821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1282581d60981fc565bcf0c95c0cfa6ee6693875b60d529d87ed7082e9bf03c6a4821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e0f021a000320250e81581c0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546a10081825820096092b8515d75c2a2f75d6aa7c5191996755840e81deaa403dba5b690f091b65840295a93849a67cecabb8286e561c407b6bd49abf8d2da8bfb821105eae4d28ef0ef1b9ee5e8abb8fd334059f3dfc78c0a65e74057a2dc8d1d12e46842abea600ff5f6"
     }
+
+mockSlotRange ::
+  forall (w :: Type).
+  POSIXTimeRange ->
+  MockContract w (Either TimeSlotConversionError SlotRange)
+mockSlotRange =
+  pure . Right . \case
+    Interval (LowerBound NegInf True) (UpperBound PosInf True) ->
+      Interval (LowerBound NegInf True) (UpperBound PosInf True)
+    _ ->
+      slotRange
+  where
+    slotRange = Interval (lowerBound 47577202) (strictUpperBound 50255602)
