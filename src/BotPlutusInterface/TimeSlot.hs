@@ -23,8 +23,10 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (CardanoMode, EraHistory)
 import Cardano.Api qualified as CAPI
-import Cardano.Ledger.Alonzo.PParams (_protocolVersion, PParams)
+import Cardano.Ledger.Alonzo (AlonzoEra)
+import Cardano.Ledger.Alonzo.PParams (PParams, _protocolVersion)
 import Cardano.Ledger.Alonzo.TxInfo (slotToPOSIXTime)
+import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Slot (EpochInfo)
 import Cardano.Slotting.EpochInfo (hoistEpochInfo)
 import Cardano.Slotting.Time (SystemStart, toRelativeTime)
@@ -53,8 +55,6 @@ import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
 import System.Environment (getEnv)
 import Prelude
-import Cardano.Ledger.Crypto (StandardCrypto)
-import Cardano.Ledger.Alonzo (AlonzoEra)
 
 -- | Error returned by the functions of this module
 data TimeSlotConversionError
@@ -134,7 +134,7 @@ posixTimeRangeToContainedSlotRangeIO
 
     pure range
     where
-      -- helper to convert `Extended POSIXTime` to `Extended Slot` 
+      -- helper to convert `Extended POSIXTime` to `Extended Slot`
       -- using `posixTimeToSlot`
       convertExtended ::
         Monad m =>
@@ -153,7 +153,7 @@ posixTimeRangeToContainedSlotRangeIO
       -- https://github.com/input-output-hk/plutus-apps/blob/e51f57fa99f4cc0942ba6476b0689e43f0948eb3/plutus-ledger/src/Ledger/TimeSlot.hs#L125-L130
       getExtClosure ::
         PParams (AlonzoEra StandardCrypto) ->
-        EpochInfo (Either  CAPI.TransactionValidityError) ->
+        EpochInfo (Either CAPI.TransactionValidityError) ->
         SystemStart ->
         Extended Ledger.Slot ->
         Bool -> -- current `Closure` of lower or upper bound of `Ledger.POSIXTimeRange`
