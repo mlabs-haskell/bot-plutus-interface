@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Balance (
   balanceTxStep,
@@ -286,10 +287,13 @@ balanceTxIns utxos tx = do
  (suboptimally we just pick a random utxo from the tx inputs)
 -}
 addTxCollaterals :: Map TxOutRef TxOut -> Tx -> Either Text Tx
-addTxCollaterals utxos tx = do
-  let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
-  txIn <- findPubKeyTxIn txIns
-  pure $ tx {txCollateral = Set.singleton txIn}
+addTxCollaterals utxos tx =
+  if not $ usesScripts tx
+    then Right tx
+    else do
+      let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
+      txIn <- findPubKeyTxIn txIns
+      pure $ tx {txCollateral = Set.singleton txIn}
   where
     findPubKeyTxIn = \case
       x@(TxIn _ (Just ConsumePublicKeyAddress)) : _ -> Right x
@@ -297,6 +301,11 @@ addTxCollaterals utxos tx = do
       _ : xs -> findPubKeyTxIn xs
       _ -> Left "There are no utxos to be used as collateral"
     filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
+    usesScripts Tx {txInputs, txMintScripts} =
+      not (null txMintScripts)
+        || any
+          (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
+          (Set.toList txInputs)
 
 -- | Ensures all non ada change goes back to user
 handleNonAdaChange :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
