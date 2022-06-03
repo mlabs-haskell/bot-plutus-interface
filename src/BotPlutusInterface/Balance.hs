@@ -8,7 +8,12 @@ module BotPlutusInterface.Balance (
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissingCLI, printBpiLog)
+import BotPlutusInterface.Effects (
+  PABEffect,
+  createDirectoryIfMissingCLI,
+  posixTimeRangeToContainedSlotRange,
+  printBpiLog,
+ )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
@@ -43,7 +48,6 @@ import Ledger.Interval (
  )
 import Ledger.Scripts (Datum, DatumHash)
 import Ledger.Time (POSIXTimeRange)
-import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange)
 import Ledger.Tx (
   Tx (..),
   TxIn (..),
@@ -61,6 +65,7 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
+import Data.Bifunctor (bimap)
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
@@ -81,10 +86,10 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+
       tx <-
-        hoistEither $
-          addValidRange
-            pabConf
+        newEitherT $
+          addValidRange @w
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
@@ -361,11 +366,20 @@ addSignatories ownPkh privKeys pkhs tx =
     tx
     (ownPkh : pkhs)
 
-addValidRange :: PABConfig -> POSIXTimeRange -> Tx -> Either Text Tx
-addValidRange pabConf timeRange tx =
+addValidRange ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  POSIXTimeRange ->
+  Tx ->
+  Eff effs (Either Text Tx)
+addValidRange timeRange tx =
   if validateRange timeRange
-    then Right $ tx {txValidRange = posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange}
-    else Left "Invalid validity interval."
+    then
+      bimap (Text.pack . show) (setRange tx)
+        <$> posixTimeRangeToContainedSlotRange @w timeRange
+    else pure $ Left "Invalid validity interval."
+  where
+    setRange tx' range = tx' {txValidRange = range}
 
 validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
 validateRange (Interval (LowerBound PosInf _) _) = False

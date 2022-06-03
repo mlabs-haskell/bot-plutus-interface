@@ -87,6 +87,7 @@ library
     BotPlutusInterface.Helpers
     BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
+    BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
 
@@ -97,6 +98,7 @@ library
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-ledger-core
     , cardano-prelude
     , cardano-slotting
     , containers
@@ -113,6 +115,7 @@ library
     , lens
     , memory
     , mtl
+    , ouroboros-consensus
     , playground-common
     , plutus-chain-index
     , plutus-chain-index-core
@@ -136,6 +139,7 @@ library
     , split
     , stm
     , text                       ^>=1.2.4.0
+    , time
     , transformers
     , transformers-either
     , transformers-except

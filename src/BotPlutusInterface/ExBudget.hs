@@ -30,9 +30,9 @@ import Prelude
  minting to `MintingPolicyHash`'es
 -}
 estimateBudget :: PABConfig -> TxFile -> IO (Either BudgetEstimationError TxBudget)
-estimateBudget bapConf txFile = do
+estimateBudget pabConf txFile = do
   sock <- getEnv "CARDANO_NODE_SOCKET_PATH"
-  let debugNodeInf = NodeInfo (pcNetwork bapConf) sock
+  let debugNodeInf = NodeInfo (pcNetwork pabConf) sock
   txBody <- case txFile of
     Raw rp -> deserialiseRaw rp
     Signed sp -> fmap CAPI.getTxBody <$> deserialiseSigned sp
@@ -151,7 +151,7 @@ mkBudgetMaps exUnitsMap txBody = do
         CAPI.TxMintValue _ value _ ->
           {- The minting policies are indexed in policy id order in the value
              reference:
-             https://github.com/input-output-hk/cardano-node/blob/e31455eaeca98530ce561b79687a8e465ebb3fdd/cardano-api/src/Cardano/Api/TxBody.hs#L2851
+             https://github.com/input-output-hk/cardano-node/blob/e31455eaeca98530ce561b79687a8e465ebb3fdd/cardano-api/src/Cardano/Api/TxBody.hs#L2881
           -}
           let CAPI.ValueNestedRep bundle = CAPI.valueToNestedRep value
            in Map.fromList
