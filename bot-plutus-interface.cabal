@@ -143,8 +143,8 @@ library
     , split
     , stm
     , text                       ^>=1.2.4.0
-    , tostring
     , time
+    , tostring
     , transformers
     , transformers-either
     , transformers-except
