@@ -985,22 +985,6 @@
         "type": "github"
       }
     },
-    "plutus-config": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1649978818,
-        "narHash": "sha256-aa9b1aPD324/WBZmDKENIANhbM+lWnT+tA5ejFUKm4E=",
-        "rev": "599266c16d5575e640721c542b256902b2d11aae",
-        "revCount": 10,
-        "type": "git",
-        "url": "ssh://git@github.com/mlabs-haskell/plutus-config.git"
-      },
-      "original": {
-        "rev": "599266c16d5575e640721c542b256902b2d11aae",
-        "type": "git",
-        "url": "ssh://git@github.com/mlabs-haskell/plutus-config.git"
-      }
-    },
     "purescript-bridge": {
       "flake": false,
       "locked": {
@@ -1043,7 +1027,6 @@
         "ouroboros-network": "ouroboros-network",
         "plutus": "plutus",
         "plutus-apps": "plutus-apps",
-        "plutus-config": "plutus-config",
         "purescript-bridge": "purescript-bridge",
         "servant-purescript": "servant-purescript"
       }
