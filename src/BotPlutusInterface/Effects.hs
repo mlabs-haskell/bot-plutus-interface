@@ -24,10 +24,14 @@ module BotPlutusInterface.Effects (
   callCommand,
   estimateBudget,
   saveBudget,
+  slotToPOSIXTime,
+  posixTimeToSlot,
+  posixTimeRangeToContainedSlotRange,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.ExBudget qualified as ExBudget
+import BotPlutusInterface.TimeSlot qualified as TimeSlot
 import BotPlutusInterface.Types (
   BudgetEstimationError,
   CLILocation (..),
@@ -107,6 +111,13 @@ data PABEffect (w :: Type) (r :: Type) where
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
   EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
   SaveBudget :: Ledger.TxId -> TxBudget -> PABEffect w ()
+  SlotToPOSIXTime ::
+    Ledger.Slot ->
+    PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.POSIXTime)
+  POSIXTimeToSlot :: Ledger.POSIXTime -> PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.Slot)
+  POSIXTimeRangeToSlotRange ::
+    Ledger.POSIXTimeRange ->
+    PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -160,6 +171,12 @@ handlePABEffect contractEnv =
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
+        SlotToPOSIXTime slot ->
+          TimeSlot.slotToPOSIXTimeIO contractEnv.cePABConfig slot
+        POSIXTimeToSlot pTime ->
+          TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
+        POSIXTimeRangeToSlotRange pTimeRange ->
+          TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
     )
 
 printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
@@ -360,3 +377,24 @@ saveBudget ::
   TxBudget ->
   Eff effs ()
 saveBudget txId budget = send @(PABEffect w) $ SaveBudget txId budget
+
+slotToPOSIXTime ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.Slot ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.POSIXTime)
+slotToPOSIXTime = send @(PABEffect w) . SlotToPOSIXTime
+
+posixTimeToSlot ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.POSIXTime ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.Slot)
+posixTimeToSlot = send @(PABEffect w) . POSIXTimeToSlot
+
+posixTimeRangeToContainedSlotRange ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.POSIXTimeRange ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
+posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange

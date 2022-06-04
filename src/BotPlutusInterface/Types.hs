@@ -46,7 +46,6 @@ import Ledger (
   TxId,
   TxOutRef,
  )
-import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -67,8 +66,6 @@ data PABConfig = PABConfig
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !ProtocolParameters
-  , -- | Slot configuration of the network, the default value can be used for the mainnet
-    pcSlotConfig :: !SlotConfig
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -225,7 +222,6 @@ instance Default PABConfig where
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = def
-      , pcSlotConfig = def
       , pcTipPollingInterval = 10_000_000
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"

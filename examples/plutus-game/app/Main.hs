@@ -22,7 +22,6 @@ import Cardano.PlutusExample.Game (
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.ByteString.Lazy qualified as LazyByteString
-import Data.Default (def)
 import Data.Maybe (fromMaybe)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
@@ -59,7 +58,6 @@ main = do
           , pcPort = 9080
           , pcProtocolParams = protocolParams
           , pcTipPollingInterval = 10_000_000
-          , pcSlotConfig = def
           , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
           , pcOwnStakePubKeyHash = Nothing
           , pcScriptFileDir = "./scripts"
