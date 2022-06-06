@@ -138,7 +138,7 @@ portSpec = fromEnum <$> customSpec "port" naturalSpec Right
  @caseAgnosticAtomSpec "Yes"@ will catch @yes@ and @YEs@.
 -}
 caseAgnosticAtomSpec :: Text -> ValueSpec ()
-caseAgnosticAtomSpec tag = customSpec "case insensitive atom" anyAtomSpec $
+caseAgnosticAtomSpec tag = customSpec ("case insensitive `" <> tag <> "`") anyAtomSpec $
   \t ->
     if Text.toLower t == Text.toLower tag
       then Right ()
