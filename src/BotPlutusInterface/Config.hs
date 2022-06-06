@@ -179,7 +179,7 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       "Directory name of the transaction files"
 
   pcMetadataDir <-
-    sectionWithDefault (pcMetadataDir def) "metadataDir" "Directory name of metadata files"
+    sectionWithDefault' (pcMetadataDir def) "metadataDir" pathSpec "Directory name of metadata files"
 
   pcProtocolParamsFile <-
     sectionWithDefault'

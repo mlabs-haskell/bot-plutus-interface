@@ -86,17 +86,15 @@ BotPlutusInterface> :m Prelude
 ...
 Prelude> :l BotPlutusInterface.Config
 ...
-Prelude BotPlutusInterface.Config> putStrLn docPABConfig 
+Prelude BotPlutusInterface.Config> putStrLn docPABConfig
 Top-level configuration file fields:
     cliLocation: `local` or destination text
         calling the cli through ssh when set to destination (default:
         local)
     chainIndexUrl: url text
          (default: "http://localhost:9083")
-    networkId: `mainnet` or 32-bit unsigned integral number
+    networkId: case insensitive `mainnet` atom or 32-bit unsigned integral number
          (default: 42)
-    slotConfig: SlotConfig configuration
-         (see default in example)
     scriptFileDir: path text
         Directory name of the script and data files (default:
         "./result-scripts")
@@ -104,6 +102,8 @@ Top-level configuration file fields:
         Directory name of the signing key files (default: "./signing-keys")
     txFileDir: path text
         Directory name of the transaction files (default: "./txs")
+    metadataDir: path text
+        Directory name of metadata files (default: "/metadata")
     protocolParamsFile: filepath text
         Protocol params file location relative to the cardano-cli working
         directory (needed for the cli) in JSON format.  (default:
@@ -115,30 +115,17 @@ Top-level configuration file fields:
          (default: info)
     ownPubKeyHash: PubKeyHash text
          (default: "")
-    ownStakePubKeyHash: `nothing` or StakePubKeyHash text
+    ownStakePubKeyHash: case insensitive `nothing` atom or StakePubKeyHash text
          (default: nothing)
     tipPollingInterval: non-negative integral number
          (default: 10000000)
-    forceBudget: `nothing` or ExecutionUnits configuration
-        Forced budget for scripts, as optional (CPU Steps, Memory Units)
-        (default: nothing)
     port: port non-negative integral number
          (default: 9080)
     enableTxEndpoint: `true` or `false`
          (default: false)
-
-ExecutionUnits configuration
-    steps: REQUIRED non-negative integral number
-        This corresponds roughly to the time to execute a script.
-    memory: REQUIRED non-negative integral number
-        This corresponds roughly to the peak memory used during script
-        execution.
-
-SlotConfig configuration
-    length: REQUIRED integral number
-        Length (number of milliseconds) of one slot
-    zeroTime: REQUIRED integral number
-        Beginning of slot 0 (in milliseconds)
+    collectStats: `true` or `false`
+        Save some stats during contract run (only transactions execution
+        budgets supported atm) (default: false)
 ```
 
 To run the fake PAB, you need to prepare a few more things:
