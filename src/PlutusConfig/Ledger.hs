@@ -1,5 +1,4 @@
 {-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS -fno-warn-orphans  #-}
 
