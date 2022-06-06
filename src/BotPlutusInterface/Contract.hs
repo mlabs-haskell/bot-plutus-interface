@@ -164,7 +164,9 @@ handlePABReq ::
   PABReq ->
   Eff effs PABResp
 handlePABReq contractEnv req = do
-  printBpiLog @w Debug $ pretty req
+  case req of
+    AwaitTxStatusChangeReq _ -> pure ()
+    _ -> printBpiLog @w Debug $ pretty req
   resp <- case req of
     ----------------------
     -- Handled requests --
@@ -200,7 +202,9 @@ handlePABReq contractEnv req = do
     -- YieldUnbalancedTxReq UnbalancedTx
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
-  printBpiLog @w Debug $ pretty resp
+  case resp of
+    AwaitTxStatusChangeResp _ _ -> pure ()
+    x -> printBpiLog @w Debug $ pretty x
   pure resp
 
 awaitTxStatusChange ::
