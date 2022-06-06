@@ -54,6 +54,8 @@ import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
 import Data.Kind (Type)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
@@ -67,6 +69,7 @@ import Prettyprinter qualified as PP
 import Prettyprinter.Render.String qualified as Render
 import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
+import System.IO (Handle, hPutStrLn, stdout)
 import System.Process (readProcess, readProcessWithExitCode)
 import Prelude hiding (readFile)
 
@@ -126,7 +129,9 @@ handlePABEffect contractEnv =
           case contractEnv.cePABConfig.pcCliLocation of
             Local -> Directory.createDirectoryIfMissing createParents filePath
             Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
-        PrintLog logCtx logLevel txt -> printLog' contractEnv.cePABConfig.pcLogLevel logCtx logLevel txt
+        PrintLog logCtx logLevel txt ->
+          printLog' contractEnv.cePABConfig.pcLogHandles
+            contractEnv.cePABConfig.pcLogLevel logCtx logLevel txt
         UpdateInstanceState s -> do
           atomically $
             modifyTVar contractEnv.ceContractState $
@@ -157,9 +162,10 @@ handlePABEffect contractEnv =
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
     )
 
-printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
-printLog' logLevelSetting msgCtx msgLogLvl msg =
-  when (logLevelSetting >= msgLogLvl) $ putStrLn target
+printLog' :: Map (LogContext, LogLevel) Handle -> LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
+printLog' handleMap logLevelSetting msgCtx msgLogLvl msg =
+  let fh = Map.findWithDefault stdout (msgCtx, msgLogLvl) handleMap
+   in when (logLevelSetting >= msgLogLvl) $ hPutStrLn fh target
   where
     target =
       Render.renderString . layoutPretty defaultLayoutOptions $
@@ -212,7 +218,7 @@ readProcessEither path args =
   mapToEither <$> readProcessWithExitCode path args ""
   where
     mapToEither :: (ExitCode, String, String) -> Either Text String
-    mapToEither (ExitSuccess, stdout, _) = Right stdout
+    mapToEither (ExitSuccess, stdoutContents, _) = Right stdoutContents
     mapToEither (ExitFailure exitCode, _, stderr) =
       Left $ "ExitCode " <> Text.pack (show exitCode) <> ": " <> Text.pack stderr
 

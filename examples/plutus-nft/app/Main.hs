@@ -48,7 +48,7 @@ main = do
     fromMaybe (error "protocol.json file not found") . JSON.decode
       <$> LazyByteString.readFile "protocol.json"
   let pabConf =
-        PABConfig
+        def
           { pcCliLocation = Local
           , pcNetwork = Testnet (NetworkMagic 1097911063)
           , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""

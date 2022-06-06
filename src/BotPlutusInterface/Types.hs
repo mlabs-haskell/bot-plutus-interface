@@ -56,6 +56,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
  )
 import Prettyprinter (Pretty (pretty))
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
+import System.IO
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -80,6 +81,7 @@ data PABConfig = PABConfig
   , -- | Dry run mode will build the tx, but skip the submit step
     pcDryRun :: !Bool
   , pcLogLevel :: !LogLevel
+  , pcLogHandles :: !(Map (LogContext, LogLevel) Handle)
   , pcOwnPubKeyHash :: !PubKeyHash
   , pcOwnStakePubKeyHash :: !(Maybe StakePubKeyHash)
   , pcTipPollingInterval :: !Natural
@@ -220,6 +222,7 @@ instance Default PABConfig where
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
       , pcLogLevel = Info
+      , pcLogHandles = mempty
       , pcOwnPubKeyHash = ""
       , pcOwnStakePubKeyHash = Nothing
       , pcPort = 9080
