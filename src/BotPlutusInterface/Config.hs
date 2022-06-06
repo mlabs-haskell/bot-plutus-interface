@@ -16,7 +16,7 @@ import BotPlutusInterface.Effects (
  )
 import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
 
-import Cardano.Api (ExecutionUnits (..), NetworkId (Mainnet, Testnet), unNetworkMagic)
+import Cardano.Api (NetworkId (Mainnet, Testnet), unNetworkMagic)
 import Config (Section (Section), Value (Atom, Sections, Text))
 import Config.Schema (
   HasSpec (anySpec),
@@ -73,20 +73,6 @@ logLevelSpec =
     <!> Notice <$ atomSpec "notice"
     <!> Info <$ atomSpec "info"
     <!> Debug <$ atomSpec "debug"
-
-instance ToValue (Integer, Integer) where
-  toValue = toValue . forceBudgetToExecutionUnits
-
-instance HasSpec (Maybe (Integer, Integer)) where
-  anySpec = maybeSpec (executionUnitsToForceBudget <$> anySpec)
-
-forceBudgetToExecutionUnits :: (Integer, Integer) -> ExecutionUnits
-forceBudgetToExecutionUnits (steps, memory) =
-  ExecutionUnits (fromInteger steps) (fromInteger memory)
-
-executionUnitsToForceBudget :: ExecutionUnits -> (Integer, Integer)
-executionUnitsToForceBudget (ExecutionUnits steps memory) =
-  (toInteger steps, toInteger memory)
 
 {- ORMOLU_DISABLE -}
 instance ToValue PABConfig where

@@ -5,19 +5,11 @@
 
 module PlutusConfig.Ledger () where
 
-import Config (Section (Section), Value (Sections, Text))
-import Config.Schema (
-  HasSpec (anySpec),
-  ValueSpec,
-  integerSpec,
-  reqSection',
-  sectionsSpec,
-  stringSpec,
- )
+import Config (Value (Text))
+import Config.Schema (HasSpec (anySpec), ValueSpec, stringSpec)
 import Data.String (fromString)
 import Data.Text (Text)
 import Ledger (POSIXTime (..), PubKeyHash, StakePubKeyHash (..))
-import Ledger.TimeSlot (SlotConfig (SlotConfig), scSlotLength, scSlotZeroTime)
 import PlutusConfig.Base ()
 import PlutusConfig.Types (ToValue (toValue), withNamePrefixSpec)
 import Prelude
@@ -39,28 +31,3 @@ instance HasSpec StakePubKeyHash where
 
 instance ToValue POSIXTime where
   toValue = toValue . getPOSIXTime
-
-instance ToValue SlotConfig where
-  toValue (SlotConfig scSlotLength scSlotZeroTime) =
-    Sections
-      ()
-      [ Section () "length" $ toValue scSlotLength
-      , Section () "zeroTime" $ toValue scSlotZeroTime
-      ]
-
-instance HasSpec SlotConfig where
-  anySpec = slotConfigSpec
-
-slotConfigSpec :: ValueSpec SlotConfig
-slotConfigSpec = sectionsSpec "SlotConfig configuration" $ do
-  scSlotLength <-
-    reqSection'
-      "length"
-      integerSpec
-      "Length (number of milliseconds) of one slot"
-  scSlotZeroTime <-
-    reqSection'
-      "zeroTime"
-      (POSIXTime <$> integerSpec)
-      "Beginning of slot 0 (in milliseconds)"
-  pure SlotConfig {..}
