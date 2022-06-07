@@ -283,7 +283,7 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
           , ceContractState = contractState
           , ceContractInstanceId = contractInstanceID
           , ceContractStats = contractStats
-          , ceContractLogs = contractLogs 
+          , ceContractLogs = contractLogs
           }
   void $
     forkIO $ do

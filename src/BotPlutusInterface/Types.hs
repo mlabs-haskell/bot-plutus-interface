@@ -84,8 +84,10 @@ data PABConfig = PABConfig
   , pcTipPollingInterval :: !Natural
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
-  , pcCollectStats :: !Bool
-  , pcCollectLogs :: !Bool  
+  , -- | Collect contract execution stats inside ContractEnvironment
+    pcCollectStats :: !Bool
+  , -- | Collect logs inside ContractEnvironment, doesn't depend on log level
+    pcCollectLogs :: !Bool
   }
   deriving stock (Show, Eq)
 
@@ -153,7 +155,7 @@ newtype LogsList = LogsList
   deriving stock (Show)
   deriving newtype (Semigroup, Monoid)
 
-instance Show (TVar LogsList) where 
+instance Show (TVar LogsList) where
   show _ = "<ContractLogs>"
 
 data ContractEnvironment w = ContractEnvironment
@@ -161,7 +163,7 @@ data ContractEnvironment w = ContractEnvironment
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
   , ceContractStats :: TVar ContractStats
-  , ceContractLogs  :: TVar LogsList
+  , ceContractLogs :: TVar LogsList
   }
   deriving stock (Show)
 

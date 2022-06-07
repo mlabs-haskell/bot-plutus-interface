@@ -100,6 +100,8 @@ main = do
           , pcEnableTxEndpoint = True
           -- Save some stats during contract run (only transactions execution budgets supported atm)
           , pcCollectStats = False
+          -- Save logs from contract execution: pab request logs and contract logs
+          , pcCollectLogs = False
           }
   BotPlutusInterface.runPAB @MyContracts pabConf
 ```
