@@ -143,7 +143,7 @@ handlePABEffect contractEnv =
            in do
                 printLog' contractEnv.cePABConfig.pcLogLevel logCtx logLevel logMsg
                 when contractEnv.cePABConfig.pcCollectLogs $
-                  collectLog contractEnv.ceContractLogs logLevel logMsg
+                  collectLog contractEnv.ceContractLogs logCtx logLevel logMsg
         UpdateInstanceState s -> do
           atomically $
             modifyTVar contractEnv.ceContractState $
@@ -191,11 +191,10 @@ printLog' logLevelSetting msgCtx msgLogLvl msg =
 prettyLog :: LogContext -> LogLevel -> PP.Doc () -> PP.Doc ()
 prettyLog msgCtx msgLogLvl msg = pretty msgCtx <+> pretty msgLogLvl <+> msg
 
-collectLog :: TVar LogsList -> LogLevel -> PP.Doc () -> IO ()
-collectLog logs msgLogLvl msg = atomically $ modifyTVar' logs (appendLog msgLogLvl msg)
+collectLog :: TVar LogsList -> LogContext -> LogLevel -> PP.Doc () -> IO ()
+collectLog logs logCtx logLvl msg = atomically $ modifyTVar' logs appendLog
   where
-    appendLog :: LogLevel -> PP.Doc () -> LogsList -> LogsList
-    appendLog logLvl str (LogsList ls) = LogsList $ (logLvl, str) : ls
+    appendLog (LogsList ls) = LogsList $ (logCtx, logLvl, msg) : ls
 
 -- | Reinterpret contract logs to be handled by PABEffect later down the line.
 handleContractLog :: forall w a effs. Member (PABEffect w) effs => Pretty a => Eff (LogMsg a ': effs) ~> Eff effs

@@ -150,7 +150,7 @@ instance Show (TVar ContractStats) where
 
 -- | List of string logs.
 newtype LogsList = LogsList
-  { getLogsList :: [(LogLevel, PP.Doc ())]
+  { getLogsList :: [(LogContext, LogLevel, PP.Doc ())]
   }
   deriving stock (Show)
   deriving newtype (Semigroup, Monoid)
