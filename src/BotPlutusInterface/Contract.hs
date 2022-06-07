@@ -166,7 +166,7 @@ handlePABReq ::
 handlePABReq contractEnv req = do
   case req of
     AwaitTxStatusChangeReq _ -> pure ()
-    _ -> printBpiLog @w Debug $ pretty req
+    x -> printBpiLog @w Debug $ pretty x
   resp <- case req of
     ----------------------
     -- Handled requests --
