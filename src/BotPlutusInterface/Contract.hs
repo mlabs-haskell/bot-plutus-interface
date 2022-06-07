@@ -204,6 +204,10 @@ handlePABReq contractEnv req = do
 
   case resp of
     AwaitTxStatusChangeResp _ _ -> pure ()
+    WriteBalancedTxResp (WriteBalancedTxFailed e) ->
+      printBpiLog @w Debug $ "WriteBalancedTxFailed:" <+> pretty e
+    WriteBalancedTxResp (WriteBalancedTxSuccess tx) ->
+      printBpiLog @w Debug $ "WriteBalancedTxSuccess:" <+> pretty (Tx.getCardanoTxId tx)
     x -> printBpiLog @w Debug $ pretty x
   pure resp
 
