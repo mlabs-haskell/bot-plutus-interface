@@ -22,6 +22,7 @@ module BotPlutusInterface.Effects (
   writeFileRaw,
   writeFileTextEnvelope,
   callCommand,
+  callLocalCommand,
   estimateBudget,
   saveBudget,
   slotToPOSIXTime,
