@@ -26,10 +26,10 @@ import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
 import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List (partition, (\\))
+import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -311,17 +311,17 @@ addTxCollaterals utxos tx =
 handleNonAdaChange :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
 handleNonAdaChange changeAddr utxos tx =
   let nonAdaChange = getNonAdaChange utxos tx
+      newOutput =
+        TxOut
+          { txOutAddress = changeAddr
+          , txOutValue = nonAdaChange
+          , txOutDatumHash = Nothing
+          }
       outputs =
-        case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
-          ([], txOuts) ->
-            TxOut
-              { txOutAddress = changeAddr
-              , txOutValue = nonAdaChange
-              , txOutDatumHash = Nothing
-              } :
-            txOuts
-          (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
-            txOut {txOutValue = v <> nonAdaChange} : (txOuts <> txOuts')
+        modifyFirst
+          ((==) changeAddr . Tx.txOutAddress)
+          (maybe newOutput $ addValueToTxOut nonAdaChange)
+          (txOutputs tx)
    in if isValueNat nonAdaChange
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
@@ -332,18 +332,29 @@ hasChangeUTxO changeAddr tx =
 
 -- | Adds ada change to a transaction, assuming there is already an output going to ownPkh. Otherwise, this is identity
 addAdaChange :: Address -> Integer -> Tx -> Tx
+addAdaChange _ 0 tx = tx
 addAdaChange changeAddr change tx =
   tx
     { txOutputs =
-        case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
-          (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
-            txOut {txOutValue = v <> Ada.lovelaceValueOf change} : (txOuts <> txOuts')
-          _ -> txOutputs tx
+        modifyFirst
+          ((==) changeAddr . Tx.txOutAddress)
+          (addValueToTxOut (Ada.lovelaceValueOf change) . fromJust)
+          (txOutputs tx)
     }
+
+{- | Modifies the first element matching a predicate, or, if none found, call the modifier with Nothing
+ Calling this function ensures the modifier will always be run once
+-}
+modifyFirst :: (a -> Bool) -> (Maybe a -> a) -> [a] -> [a]
+modifyFirst _ m [] = [m Nothing]
+modifyFirst p m (x : xs) = if p x then m (Just x) : xs else x : modifyFirst p m xs
+
+addValueToTxOut :: Value -> TxOut -> TxOut
+addValueToTxOut val txOut = txOut {txOutValue = txOutValue txOut <> val}
 
 -- | Adds a 1 lovelace output to a transaction
 addOutput :: Address -> Tx -> Tx
-addOutput changeAddr tx = tx {txOutputs = changeTxOut : txOutputs tx}
+addOutput changeAddr tx = tx {txOutputs = txOutputs tx ++ [changeTxOut]}
   where
     changeTxOut =
       TxOut
