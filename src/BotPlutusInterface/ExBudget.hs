@@ -46,10 +46,17 @@ estimateBudget pabConf txFile = do
   let txBudget = do
         body <- txBody
         budget <- budgetRes
-        (spendingBudgets, policyBudgets) <- mkBudgetMaps budget body
+        let scaledBudget = fmap (fmap $ scaleBudget pabConf.pcBudgetMultiplier) budget
+        (spendingBudgets, policyBudgets) <- mkBudgetMaps scaledBudget body
         Right $ TxBudget spendingBudgets policyBudgets
 
   return txBudget
+
+-- | Scale the budget by the multipliers in config
+scaleBudget :: Rational -> CAPI.ExecutionUnits -> CAPI.ExecutionUnits
+scaleBudget scaler (CAPI.ExecutionUnits steps mem) = CAPI.ExecutionUnits (scale steps) (scale mem)
+  where
+    scale x = round $ toRational x * scaler
 
 -- | Deserialize transaction body from ".signed" file
 deserialiseSigned :: FilePath -> IO (Either BudgetEstimationError (CAPI.Tx CAPI.AlonzoEra))

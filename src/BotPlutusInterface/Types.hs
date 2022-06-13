@@ -83,6 +83,7 @@ data PABConfig = PABConfig
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
   , pcCollectStats :: !Bool
+  , pcBudgetMultiplier :: !Rational
   }
   deriving stock (Show, Eq)
 
@@ -221,6 +222,7 @@ instance Default PABConfig where
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       , pcCollectStats = False
+      , pcBudgetMultiplier = 1
       }
 
 data RawTx = RawTx

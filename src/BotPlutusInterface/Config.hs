@@ -33,6 +33,7 @@ import Data.String.ToString (toString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import PlutusConfig.Base (
+  customRationalSpec,
   enumToAtom,
   filepathSpec,
   maybeSpec,
@@ -95,6 +96,7 @@ instance ToValue PABConfig where
         pcPort
         pcEnableTxEndpoint
         pcCollectStats
+        pcBudgetMultiplier
       ) =
       Sections
         ()
@@ -116,6 +118,7 @@ instance ToValue PABConfig where
         , Section () "port"               $ toValue pcPort
         , Section () "enableTxEndpoint"   $ toValue pcEnableTxEndpoint
         , Section () "collectStats"       $ toValue pcCollectStats
+        , Section () "budgetMultiplier"   $ toValue pcBudgetMultiplier
         ]
 {- ORMOLU_ENABLE -}
 
@@ -205,6 +208,13 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       "collectStats"
       trueOrFalseSpec
       "Save some stats during contract run (only transactions execution budgets supported atm)"
+
+  pcBudgetMultiplier <-
+    sectionWithDefault'
+      (pcBudgetMultiplier def)
+      "budgetMultiplier"
+      customRationalSpec
+      "Multiplier on the budgets automatically calculated"
 
   pure PABConfig {..}
 
