@@ -56,15 +56,18 @@ estimateBudget pabConf txFile = do
       pparams <- left toBudgetError pparamsRes
       maxUnits <- maybeToEither (BudgetEstimationError "Missing max units in parameters") $ protocolParamMaxTxExUnits pparams
 
-      let scaledBudget = getScaledBudget maxUnits pabConf.pcBudgetMultiplier budget
+      scaledBudget <- getScaledBudget maxUnits pabConf.pcBudgetMultiplier budget
 
       (spendingBudgets, policyBudgets) <- mkBudgetMaps scaledBudget body
 
       Right $ TxBudget spendingBudgets policyBudgets
 
 -- | Scale the budget clamping the total to the parameter limits
-getScaledBudget :: CAPI.ExecutionUnits -> Rational -> ExUnitsMap -> ExUnitsMap
-getScaledBudget maxUnits scaler budget = fmap (fmap $ scaleBudget scalers) budget
+getScaledBudget :: CAPI.ExecutionUnits -> Rational -> ExUnitsMap -> Either BudgetEstimationError ExUnitsMap
+getScaledBudget maxUnits scaler budget =
+  if fst scalers >= 1 && snd scalers >= 1
+    then Right $ fmap (fmap $ scaleBudget scalers) budget
+    else Left $ BudgetEstimationError "Exceeded global transaction budget"
   where
     budgetSum = foldr addBudgets (CAPI.ExecutionUnits 0 0) $ rights $ Map.elems budget
     scalers =
