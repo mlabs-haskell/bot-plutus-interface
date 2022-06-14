@@ -156,8 +156,8 @@ sendAda = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr1}+50
           --tx-out ${addr2}+1000
+          --tx-out ${addr1}+50
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -411,8 +411,8 @@ sendTokens = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId1}#0
-          --tx-out ${addr1}+50 + 95 abcd1234.74657374546F6B656E
           --tx-out ${addr2}+1000 + 5 abcd1234.74657374546F6B656E
+          --tx-out ${addr1}+50 + 95 abcd1234.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -453,8 +453,8 @@ sendTokensWithoutName = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId1}#0
-          --tx-out ${addr1}+50 + 95 abcd1234
           --tx-out ${addr2}+1000 + 5 abcd1234
+          --tx-out ${addr1}+50 + 95 abcd1234
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -520,8 +520,8 @@ mintTokens = do
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
-          --tx-out ${addr1}+496700
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
+          --tx-out ${addr1}+496700
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --mint-execution-units (500000,2000)
@@ -609,9 +609,9 @@ spendToValidator = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr1}+200
           --tx-out ${valAddr'}+500
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
+          --tx-out ${addr1}+200
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -707,8 +707,8 @@ redeemFromValidator = do
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${inTxId}#0
-          --tx-out ${addr1}+498350
           --tx-out ${addr2}+500
+          --tx-out ${addr1}+498350
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 502400
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
