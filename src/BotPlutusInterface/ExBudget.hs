@@ -3,7 +3,7 @@ module BotPlutusInterface.ExBudget (
   estimateBudget,
 ) where
 
-import BotPlutusInterface.QueryNode (NodeInfo (NodeInfo))
+import BotPlutusInterface.QueryNode (NodeInfo (NodeInfo), NodeQueryError)
 import BotPlutusInterface.QueryNode qualified as QueryNode
 import BotPlutusInterface.Types (
   BudgetEstimationError (..),
@@ -14,11 +14,15 @@ import BotPlutusInterface.Types (
   TxFile (..),
  )
 import Cardano.Api qualified as CAPI
+import Cardano.Api.Shelley (ProtocolParameters (protocolParamMaxTxExUnits))
+import Cardano.Prelude (maybeToEither)
 import Control.Arrow (left)
+import Data.Either (rights)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text qualified as Text
+import GHC.Natural (Natural)
 import Ledger (ExBudget (ExBudget), ExCPU (ExCPU), ExMemory (ExMemory), MintingPolicyHash, TxOutRef)
 import Ledger.Tx.CardanoAPI (fromCardanoPolicyId, fromCardanoTxIn)
 import System.Directory.Internal.Prelude (getEnv)
@@ -37,26 +41,49 @@ estimateBudget pabConf txFile = do
     Raw rp -> deserialiseRaw rp
     Signed sp -> fmap CAPI.getTxBody <$> deserialiseSigned sp
 
+  pparamsRes <- QueryNode.queryProtocolParams debugNodeInf
+
   budgetRes <-
     either
       (pure . Left)
-      (getExUnits debugNodeInf)
+      (getExUnits pparamsRes debugNodeInf)
       txBody
 
-  let txBudget = do
-        body <- txBody
-        budget <- budgetRes
-        let scaledBudget = fmap (fmap $ scaleBudget pabConf.pcBudgetMultiplier) budget
-        (spendingBudgets, policyBudgets) <- mkBudgetMaps scaledBudget body
-        Right $ TxBudget spendingBudgets policyBudgets
+  return $
+    do
+      body <- txBody
+      budget <- budgetRes
+      pparams <- left toBudgetError pparamsRes
+      maxUnits <- maybeToEither (BudgetEstimationError "Missing max units in parameters") $ protocolParamMaxTxExUnits pparams
 
-  return txBudget
+      let scaledBudget = getScaledBudget maxUnits pabConf.pcBudgetMultiplier budget
+
+      (spendingBudgets, policyBudgets) <- mkBudgetMaps scaledBudget body
+
+      Right $ TxBudget spendingBudgets policyBudgets
+
+-- | Scale the budget clamping the total to the parameter limits
+getScaledBudget :: CAPI.ExecutionUnits -> Rational -> ExUnitsMap -> ExUnitsMap
+getScaledBudget maxUnits scaler budget = fmap (fmap $ scaleBudget scalers) budget
+  where
+    budgetSum = foldr addBudgets (CAPI.ExecutionUnits 0 0) $ rights $ Map.elems budget
+    scalers =
+      ( clampedScaler (CAPI.executionSteps budgetSum) (CAPI.executionSteps maxUnits) scaler
+      , clampedScaler (CAPI.executionMemory budgetSum) (CAPI.executionMemory maxUnits) scaler
+      )
+
+clampedScaler :: Natural -> Natural -> Rational -> Rational
+clampedScaler 0 _ scaler = scaler
+clampedScaler val maxVal scaler = min scaler (toRational maxVal / toRational val)
 
 -- | Scale the budget by the multipliers in config
-scaleBudget :: Rational -> CAPI.ExecutionUnits -> CAPI.ExecutionUnits
-scaleBudget scaler (CAPI.ExecutionUnits steps mem) = CAPI.ExecutionUnits (scale steps) (scale mem)
+scaleBudget :: (Rational, Rational) -> CAPI.ExecutionUnits -> CAPI.ExecutionUnits
+scaleBudget (stepsScaler, memScaler) (CAPI.ExecutionUnits steps mem) = CAPI.ExecutionUnits (scale steps stepsScaler) (scale mem memScaler)
   where
-    scale x = round $ toRational x * scaler
+    scale x scaler = round $ toRational x * scaler
+
+addBudgets :: CAPI.ExecutionUnits -> CAPI.ExecutionUnits -> CAPI.ExecutionUnits
+addBudgets (CAPI.ExecutionUnits steps mem) (CAPI.ExecutionUnits steps' mem') = CAPI.ExecutionUnits (steps + steps') (mem + mem')
 
 -- | Deserialize transaction body from ".signed" file
 deserialiseSigned :: FilePath -> IO (Either BudgetEstimationError (CAPI.Tx CAPI.AlonzoEra))
@@ -92,13 +119,13 @@ type ExUnitsMap =
 
 -- | Calculate execution units using `Cardano.Api``
 getExUnits ::
+  Either NodeQueryError ProtocolParameters ->
   NodeInfo ->
   CAPI.TxBody CAPI.AlonzoEra ->
   IO (Either BudgetEstimationError ExUnitsMap)
-getExUnits nodeInf txBody = do
+getExUnits pparams nodeInf txBody = do
   sysStart <- QueryNode.querySystemStart nodeInf
   eraHist <- QueryNode.queryEraHistory nodeInf
-  pparams <- QueryNode.queryProtocolParams nodeInf
   utxo <- QueryNode.queryOutsByInputs nodeInf capiIns
   return $
     flattenEvalResult $
