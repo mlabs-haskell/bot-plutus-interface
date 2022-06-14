@@ -29,7 +29,7 @@ import Data.Kind (Type)
 import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -320,7 +320,7 @@ handleNonAdaChange changeAddr utxos tx =
       outputs =
         modifyFirst
           ((==) changeAddr . Tx.txOutAddress)
-          (maybe newOutput $ addValueToTxOut nonAdaChange)
+          (Just . maybe newOutput (addValueToTxOut nonAdaChange))
           (txOutputs tx)
    in if isValueNat nonAdaChange
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
@@ -338,16 +338,27 @@ addAdaChange changeAddr change tx =
     { txOutputs =
         modifyFirst
           ((==) changeAddr . Tx.txOutAddress)
-          (addValueToTxOut (Ada.lovelaceValueOf change) . fromJust)
+          (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
           (txOutputs tx)
     }
+
+consJust :: forall (a :: Type). Maybe a -> [a] -> [a]
+consJust (Just x) = (x :)
+consJust _ = id
 
 {- | Modifies the first element matching a predicate, or, if none found, call the modifier with Nothing
  Calling this function ensures the modifier will always be run once
 -}
-modifyFirst :: (a -> Bool) -> (Maybe a -> a) -> [a] -> [a]
-modifyFirst _ m [] = [m Nothing]
-modifyFirst p m (x : xs) = if p x then m (Just x) : xs else x : modifyFirst p m xs
+modifyFirst ::
+  forall (a :: Type).
+  -- | Predicate for value to update
+  (a -> Bool) ->
+  -- | Modifier, input Maybe representing existing value (or Nothing if missing), output value representing new value (or Nothing to remove)
+  (Maybe a -> Maybe a) ->
+  [a] ->
+  [a]
+modifyFirst _ m [] = m Nothing `consJust` []
+modifyFirst p m (x : xs) = if p x then m (Just x) `consJust` xs else x : modifyFirst p m xs
 
 addValueToTxOut :: Value -> TxOut -> TxOut
 addValueToTxOut val txOut = txOut {txOutValue = txOutValue txOut <> val}
