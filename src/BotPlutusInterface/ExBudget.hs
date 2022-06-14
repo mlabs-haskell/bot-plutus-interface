@@ -3,7 +3,7 @@ module BotPlutusInterface.ExBudget (
   estimateBudget,
 ) where
 
-import BotPlutusInterface.QueryNode (NodeInfo (NodeInfo), NodeQueryError)
+import BotPlutusInterface.QueryNode (NodeInfo (NodeInfo))
 import BotPlutusInterface.QueryNode qualified as QueryNode
 import BotPlutusInterface.Types (
   BudgetEstimationError (..),
@@ -41,20 +41,17 @@ estimateBudget pabConf txFile = do
     Raw rp -> deserialiseRaw rp
     Signed sp -> fmap CAPI.getTxBody <$> deserialiseSigned sp
 
-  pparamsRes <- QueryNode.queryProtocolParams debugNodeInf
-
   budgetRes <-
     either
       (pure . Left)
-      (getExUnits pparamsRes debugNodeInf)
+      (getExUnits debugNodeInf)
       txBody
 
   return $
     do
       body <- txBody
       budget <- budgetRes
-      pparams <- left toBudgetError pparamsRes
-      maxUnits <- maybeToEither (BudgetEstimationError "Missing max units in parameters") $ protocolParamMaxTxExUnits pparams
+      maxUnits <- maybeToEither (BudgetEstimationError "Missing max units in parameters") $ protocolParamMaxTxExUnits pabConf.pcProtocolParams
 
       scaledBudget <- getScaledBudget maxUnits pabConf.pcBudgetMultiplier budget
 
@@ -122,13 +119,13 @@ type ExUnitsMap =
 
 -- | Calculate execution units using `Cardano.Api``
 getExUnits ::
-  Either NodeQueryError ProtocolParameters ->
   NodeInfo ->
   CAPI.TxBody CAPI.AlonzoEra ->
   IO (Either BudgetEstimationError ExUnitsMap)
-getExUnits pparams nodeInf txBody = do
+getExUnits nodeInf txBody = do
   sysStart <- QueryNode.querySystemStart nodeInf
   eraHist <- QueryNode.queryEraHistory nodeInf
+  pparams <- QueryNode.queryProtocolParams nodeInf
   utxo <- QueryNode.queryOutsByInputs nodeInf capiIns
   return $
     flattenEvalResult $
