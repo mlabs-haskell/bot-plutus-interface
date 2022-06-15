@@ -126,6 +126,8 @@ Top-level configuration file fields:
     collectStats: `true` or `false`
         Save some stats during contract run (only transactions execution
         budgets supported atm) (default: false)
+    budgetMultiplier: rational multiplier in form `1` or `1 % 2`
+         (default: 1)
 ```
 
 To run the fake PAB, you need to prepare a few more things:
