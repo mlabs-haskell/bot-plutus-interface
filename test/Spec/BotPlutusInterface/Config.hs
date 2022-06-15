@@ -114,4 +114,5 @@ pabConfigExample =
     , pcEnableTxEndpoint = True
     , pcCollectStats = False
     , pcCollectLogs = False
+    , pcBudgetMultiplier = 1
     }

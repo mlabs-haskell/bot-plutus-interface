@@ -88,6 +88,7 @@ data PABConfig = PABConfig
     pcCollectStats :: !Bool
   , -- | Collect logs inside ContractEnvironment, doesn't depend on log level
     pcCollectLogs :: !Bool
+  , pcBudgetMultiplier :: !Rational
   }
   deriving stock (Show, Eq)
 
@@ -238,6 +239,7 @@ instance Default PABConfig where
       , pcEnableTxEndpoint = False
       , pcCollectStats = False
       , pcCollectLogs = False
+      , pcBudgetMultiplier = 1
       }
 
 data RawTx = RawTx

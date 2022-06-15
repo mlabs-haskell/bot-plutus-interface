@@ -129,6 +129,8 @@ Top-level configuration file fields:
     collectLogs: `true` or `false`
         Save logs from contract execution: pab request logs and contract
         logs (default: false)
+    budgetMultiplier: rational multiplier in form `1` or `1 % 2`
+         (default: 1)
 ```
 
 To run the fake PAB, you need to prepare a few more things:
