@@ -64,7 +64,11 @@ getScaledBudget :: CAPI.ExecutionUnits -> Rational -> ExUnitsMap -> Either Budge
 getScaledBudget maxUnits scaler budget =
   if fst scalers >= 1 && snd scalers >= 1
     then Right $ fmap (fmap $ scaleBudget scalers) budget
-    else Left $ BudgetEstimationError "Exceeded global transaction budget"
+    else
+      Left $
+        BudgetEstimationError $
+          Text.pack $
+            "Exceeded global transaction budget\nCalculated: " ++ show budgetSum ++ "\nLimit: " ++ show maxUnits
   where
     budgetSum = foldr addBudgets (CAPI.ExecutionUnits 0 0) $ rights $ Map.elems budget
     scalers =
