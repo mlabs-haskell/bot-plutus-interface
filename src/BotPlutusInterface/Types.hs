@@ -22,6 +22,7 @@ module BotPlutusInterface.Types (
   SpendBudgets,
   MintBudgets,
   ContractStats (..),
+  TxStatusPolling(..),
   addBudget,
 ) where
 
@@ -83,6 +84,13 @@ data PABConfig = PABConfig
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
   , pcCollectStats :: !Bool
+  , pcTxStausPolling :: !TxStatusPolling
+  }
+  deriving stock (Show, Eq)
+
+data TxStatusPolling = TxStatusPolling
+  { spInterval :: !Natural -- ^ mocroseconds
+  , spBlocksTimeOut :: !Natural -- ^ blocks until timeout, most likely `Unknown` state will be returned
   }
   deriving stock (Show, Eq)
 
@@ -221,6 +229,7 @@ instance Default PABConfig where
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       , pcCollectStats = False
+      , pcTxStausPolling = TxStatusPolling 1_000 8
       }
 
 data RawTx = RawTx

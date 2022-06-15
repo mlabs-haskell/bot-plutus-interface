@@ -330,8 +330,8 @@ runPABEffectPure initState req =
     incTip Tip {tipSlot, tipBlockId, tipBlockNo} =
       Tip
         { tipSlot = tipSlot + 1
-        , tipBlockId = tipBlockId
-        , tipBlockNo = tipBlockNo
+        , tipBlockId = tipBlockId -- FIXME: will need that for testing await status timeout probably
+        , tipBlockNo = tipBlockNo -- FIXME: will need that for testing await status timeout probably
         }
 
 mockCallCommand ::

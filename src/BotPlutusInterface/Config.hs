@@ -14,7 +14,7 @@ import BotPlutusInterface.Effects (
   ShellArgs (..),
   callLocalCommand,
  )
-import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
+import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..), TxStatusPolling)
 
 import Cardano.Api (NetworkId (Mainnet, Testnet), unNetworkMagic)
 import Config (Section (Section), Value (Atom, Sections, Text))
@@ -74,6 +74,13 @@ logLevelSpec =
     <!> Info <$ atomSpec "info"
     <!> Debug <$ atomSpec "debug"
 
+instance ToValue TxStatusPolling where
+  toValue = error "TODO: toValue TxStatusPolling"
+
+txStatusPollingSpec :: ValueSpec TxStatusPolling
+txStatusPollingSpec = error "TODO: txStatusPollingSpec"
+  
+
 {- ORMOLU_DISABLE -}
 instance ToValue PABConfig where
   toValue
@@ -95,6 +102,7 @@ instance ToValue PABConfig where
         pcPort
         pcEnableTxEndpoint
         pcCollectStats
+        pcTxStausPolling
       ) =
       Sections
         ()
@@ -116,6 +124,7 @@ instance ToValue PABConfig where
         , Section () "port"               $ toValue pcPort
         , Section () "enableTxEndpoint"   $ toValue pcEnableTxEndpoint
         , Section () "collectStats"       $ toValue pcCollectStats
+        , Section () "pcTxStausPolling"   $ toValue pcTxStausPolling
         ]
 {- ORMOLU_ENABLE -}
 
@@ -205,6 +214,13 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       "collectStats"
       trueOrFalseSpec
       "Save some stats during contract run (only transactions execution budgets supported atm)"
+
+  pcTxStausPolling <- 
+    sectionWithDefault'
+    (pcTxStausPolling def)
+    "pcTxStausPolling"
+    txStatusPollingSpec
+    (error "TODO: TxStatusPolling config help")
 
   pure PABConfig {..}
 
