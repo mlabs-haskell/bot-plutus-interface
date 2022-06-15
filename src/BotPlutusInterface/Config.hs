@@ -96,6 +96,7 @@ instance ToValue PABConfig where
         pcPort
         pcEnableTxEndpoint
         pcCollectStats
+        pcCollectLogs
         pcBudgetMultiplier
       ) =
       Sections
@@ -118,6 +119,7 @@ instance ToValue PABConfig where
         , Section () "port"               $ toValue pcPort
         , Section () "enableTxEndpoint"   $ toValue pcEnableTxEndpoint
         , Section () "collectStats"       $ toValue pcCollectStats
+        , Section () "collectLogs"        $ toValue pcCollectLogs
         , Section () "budgetMultiplier"   $ toValue pcBudgetMultiplier
         ]
 {- ORMOLU_ENABLE -}
@@ -208,6 +210,13 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       "collectStats"
       trueOrFalseSpec
       "Save some stats during contract run (only transactions execution budgets supported atm)"
+
+  pcCollectLogs <-
+    sectionWithDefault'
+      (pcCollectLogs def)
+      "collectLogs"
+      trueOrFalseSpec
+      "Save logs from contract execution: pab request logs and contract logs"
 
   pcBudgetMultiplier <-
     sectionWithDefault'

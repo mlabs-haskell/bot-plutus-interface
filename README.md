@@ -126,6 +126,9 @@ Top-level configuration file fields:
     collectStats: `true` or `false`
         Save some stats during contract run (only transactions execution
         budgets supported atm) (default: false)
+    collectLogs: `true` or `false`
+        Save logs from contract execution: pab request logs and contract
+        logs (default: false)
     budgetMultiplier: rational multiplier in form `1` or `1 % 2`
          (default: 1)
 ```
