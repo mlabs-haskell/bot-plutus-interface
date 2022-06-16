@@ -14,7 +14,12 @@ import BotPlutusInterface.Effects (
   ShellArgs (..),
   callLocalCommand,
  )
-import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..), TxStatusPolling)
+import BotPlutusInterface.Types (
+  CLILocation (..),
+  LogLevel (..),
+  PABConfig (..),
+  TxStatusPolling (TxStatusPolling, spBlocksTimeOut, spInterval),
+ )
 
 import Cardano.Api (NetworkId (Mainnet, Testnet), unNetworkMagic)
 import Config (Section (Section), Value (Atom, Sections, Text))
@@ -24,6 +29,7 @@ import Config.Schema (
   atomSpec,
   generateDocs,
   naturalSpec,
+  reqSection',
   sectionsSpec,
   trueOrFalseSpec,
   (<!>),
@@ -75,11 +81,27 @@ logLevelSpec =
     <!> Debug <$ atomSpec "debug"
 
 instance ToValue TxStatusPolling where
-  toValue = error "TODO: toValue TxStatusPolling"
+  toValue (TxStatusPolling interval timeout) =
+    Sections
+      ()
+      [ Section () "pollingInterval" $ toValue interval
+      , Section () "pollingTimeout" $ toValue timeout
+      ]
 
 txStatusPollingSpec :: ValueSpec TxStatusPolling
-txStatusPollingSpec = error "TODO: txStatusPollingSpec"
-  
+txStatusPollingSpec =
+  sectionsSpec "TxStatusPolling configuration" $ do
+    spInterval <-
+      reqSection'
+        "milliseconds"
+        naturalSpec
+        "Interval between chain-index queries for transacions status change detection"
+    spBlocksTimeOut <-
+      reqSection'
+        "blocks"
+        naturalSpec
+        "Timeout (in blocks) after which awating of transaction status change will be cancelled and current staus returned"
+    pure $ TxStatusPolling {..}
 
 {- ORMOLU_DISABLE -}
 instance ToValue PABConfig where
@@ -102,7 +124,7 @@ instance ToValue PABConfig where
         pcPort
         pcEnableTxEndpoint
         pcCollectStats
-        pcTxStausPolling
+        pcTxStatusPolling
       ) =
       Sections
         ()
@@ -124,7 +146,7 @@ instance ToValue PABConfig where
         , Section () "port"               $ toValue pcPort
         , Section () "enableTxEndpoint"   $ toValue pcEnableTxEndpoint
         , Section () "collectStats"       $ toValue pcCollectStats
-        , Section () "pcTxStausPolling"   $ toValue pcTxStausPolling
+        , Section () "pcTxStatusPolling"  $ toValue pcTxStatusPolling
         ]
 {- ORMOLU_ENABLE -}
 
@@ -215,13 +237,12 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       trueOrFalseSpec
       "Save some stats during contract run (only transactions execution budgets supported atm)"
 
-  pcTxStausPolling <- 
+  pcTxStatusPolling <-
     sectionWithDefault'
-    (pcTxStausPolling def)
-    "pcTxStausPolling"
-    txStatusPollingSpec
-    (error "TODO: TxStatusPolling config help")
-
+      (pcTxStatusPolling def)
+      "pcTxStatusPolling"
+      txStatusPollingSpec
+      "TODO: TxStatusPolling config help" -- FIXME
   pure PABConfig {..}
 
 docPABConfig :: String

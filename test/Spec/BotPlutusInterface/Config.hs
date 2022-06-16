@@ -113,5 +113,5 @@ pabConfigExample =
     , pcPort = 1021
     , pcEnableTxEndpoint = True
     , pcCollectStats = False
-    , pcTxStausPolling = TxStatusPolling 1_000 8
+    , pcTxStatusPolling = TxStatusPolling 1_000 8
     }
