@@ -17,7 +17,7 @@
     # all inputs below here are for pinning with haskell.nix
     cardano-addresses = {
       url =
-        "github:input-output-hk/cardano-addresses/71006f9eb956b0004022e80aadd4ad50d837b621";
+        "github:input-output-hk/cardano-addresses/8bf98905b903455196495e231b23613ad2264cb0";
       flake = false;
     };
     cardano-base = {
@@ -27,7 +27,7 @@
     };
     cardano-config = {
       url =
-        "github:input-output-hk/cardano-config/e9de7a2cf70796f6ff26eac9f9540184ded0e4e6";
+        "github:input-output-hk/cardano-config/1646e9167fab36c0bff82317743b96efa2d3adaa";
       flake = false;
     };
     cardano-crypto = {
@@ -42,8 +42,8 @@
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/814df2c146f5d56f8c35a681fe75e85b905aed5d";
-      # flake = false; -- we need it to be available in shell
+        "github:input-output-hk/cardano-node/73f9a746362695dc2cb63ba757fbcabb81733d23";
+      flake = false;
     };
     cardano-prelude = {
       url =
@@ -52,13 +52,18 @@
     };
     cardano-wallet = {
       url =
-        "github:input-output-hk/cardano-wallet/a5085acbd2670c24251cf8d76a4e83c77a2679ba";
+        "github:input-output-hk/cardano-wallet/769d3f8e5543f784222c6b5d0ba3ea6c3ccdd7b0";
       flake = false;
     };
     # We don't actually need this. Removing this might make caching worse?
     flat = {
       url =
         "github:input-output-hk/flat/ee59880f47ab835dbd73bea0847dab7869fc20d8";
+      flake = false;
+    };
+    ekg-forward = {
+      url =
+        "github:input-output-hk/ekg-forward/297cd9db5074339a2fb2e5ae7d0780debb670c63";
       flake = false;
     };
     goblins = {
@@ -68,7 +73,7 @@
     };
     iohk-monitoring-framework = {
       url =
-        "github:input-output-hk/iohk-monitoring-framework/46f994e216a1f8b36fe4669b47b2a7011b0e153c";
+        "github:input-output-hk/iohk-monitoring-framework/808724ff8a19a33d0ed06f9ef59fbd900b08553c";
       flake = false;
     };
     optparse-applicative = {
@@ -78,7 +83,7 @@
     };
     ouroboros-network = {
       url =
-        "github:input-output-hk/ouroboros-network/d2d219a86cda42787325bb8c20539a75c2667132";
+        "github:input-output-hk/ouroboros-network/4fac197b6f0d2ff60dc3486c593b68dc00969fbf";
       flake = false;
     };
     # Patched plutus for metadata support. We need this until `plutus-apps` will update `plutus`,
@@ -127,6 +132,8 @@
 
       cabalProjectLocal = ''
         allow-newer: size-based:template-haskell
+
+        constraints: hedgehog >= 1.0.4, hedgehog < 1.1
       '';
 
       haskellModules = [
@@ -200,7 +207,15 @@
         }
         {
           src = inputs.cardano-node;
-          subdirs = [ "cardano-api" "cardano-node" "cardano-cli" ];
+          subdirs = [
+            "cardano-api"
+            "cardano-node"
+            "cardano-cli"
+            "cardano-git-rev"
+            "trace-resources"
+            "trace-forward"
+            "trace-dispatcher"
+          ];
         }
         {
           src = inputs.cardano-config;
@@ -224,6 +239,10 @@
             "lib/test-utils"
             "lib/text-class"
           ];
+        }
+        {
+          src = inputs.ekg-forward;
+          subdirs = [ "." ];
         }
         {
           src = inputs.flat;
@@ -255,6 +274,7 @@
           subdirs = [
             "io-classes"
             "io-sim"
+            "strict-stm"
             "monoidal-synchronisation"
             "network-mux"
             "ntp-client"
@@ -266,7 +286,6 @@
             "ouroboros-network"
             "ouroboros-network-framework"
             "ouroboros-network-testing"
-            "strict-stm"
             "typed-protocols"
             "typed-protocols-cborg"
             "typed-protocols-examples"
