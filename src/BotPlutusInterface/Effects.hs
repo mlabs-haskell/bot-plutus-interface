@@ -22,12 +22,17 @@ module BotPlutusInterface.Effects (
   writeFileRaw,
   writeFileTextEnvelope,
   callCommand,
+  callLocalCommand,
   estimateBudget,
   saveBudget,
+  slotToPOSIXTime,
+  posixTimeToSlot,
+  posixTimeRangeToContainedSlotRange,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.ExBudget qualified as ExBudget
+import BotPlutusInterface.TimeSlot qualified as TimeSlot
 import BotPlutusInterface.Types (
   BudgetEstimationError,
   CLILocation (..),
@@ -35,6 +40,7 @@ import BotPlutusInterface.Types (
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
+  LogsList (LogsList),
   TxBudget,
   TxFile,
   addBudget,
@@ -42,7 +48,7 @@ import BotPlutusInterface.Types (
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
-import Control.Concurrent.STM (atomically, modifyTVar, modifyTVar')
+import Control.Concurrent.STM (TVar, atomically, modifyTVar, modifyTVar')
 import Control.Lens ((^.))
 import Control.Monad (void, when)
 import Control.Monad.Freer (Eff, LastMember, Member, interpretM, reinterpret, send, subsume, type (~>))
@@ -106,6 +112,13 @@ data PABEffect (w :: Type) (r :: Type) where
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
   EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
   SaveBudget :: Ledger.TxId -> TxBudget -> PABEffect w ()
+  SlotToPOSIXTime ::
+    Ledger.Slot ->
+    PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.POSIXTime)
+  POSIXTimeToSlot :: Ledger.POSIXTime -> PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.Slot)
+  POSIXTimeRangeToSlotRange ::
+    Ledger.POSIXTimeRange ->
+    PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -126,7 +139,12 @@ handlePABEffect contractEnv =
           case contractEnv.cePABConfig.pcCliLocation of
             Local -> Directory.createDirectoryIfMissing createParents filePath
             Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
-        PrintLog logCtx logLevel txt -> printLog' contractEnv.cePABConfig.pcLogLevel logCtx logLevel txt
+        PrintLog logCtx logLevel txt ->
+          let logMsg = prettyLog logCtx logLevel txt
+           in do
+                printLog' contractEnv.cePABConfig.pcLogLevel logCtx logLevel logMsg
+                when contractEnv.cePABConfig.pcCollectLogs $
+                  collectLog contractEnv.ceContractLogs logCtx logLevel logMsg
         UpdateInstanceState s -> do
           atomically $
             modifyTVar contractEnv.ceContractState $
@@ -155,6 +173,12 @@ handlePABEffect contractEnv =
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
+        SlotToPOSIXTime slot ->
+          TimeSlot.slotToPOSIXTimeIO contractEnv.cePABConfig slot
+        POSIXTimeToSlot pTime ->
+          TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
+        POSIXTimeRangeToSlotRange pTimeRange ->
+          TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
     )
 
 printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
@@ -163,7 +187,15 @@ printLog' logLevelSetting msgCtx msgLogLvl msg =
   where
     target =
       Render.renderString . layoutPretty defaultLayoutOptions $
-        pretty msgCtx <+> pretty msgLogLvl <+> msg
+        prettyLog msgCtx msgLogLvl msg
+
+prettyLog :: LogContext -> LogLevel -> PP.Doc () -> PP.Doc ()
+prettyLog msgCtx msgLogLvl msg = pretty msgCtx <+> pretty msgLogLvl <+> msg
+
+collectLog :: TVar LogsList -> LogContext -> LogLevel -> PP.Doc () -> IO ()
+collectLog logs logCtx logLvl msg = atomically $ modifyTVar' logs appendLog
+  where
+    appendLog (LogsList ls) = LogsList $ (logCtx, logLvl, msg) : ls
 
 -- | Reinterpret contract logs to be handled by PABEffect later down the line.
 handleContractLog :: forall w a effs. Member (PABEffect w) effs => Pretty a => Eff (LogMsg a ': effs) ~> Eff effs
@@ -345,3 +377,24 @@ saveBudget ::
   TxBudget ->
   Eff effs ()
 saveBudget txId budget = send @(PABEffect w) $ SaveBudget txId budget
+
+slotToPOSIXTime ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.Slot ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.POSIXTime)
+slotToPOSIXTime = send @(PABEffect w) . SlotToPOSIXTime
+
+posixTimeToSlot ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.POSIXTime ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.Slot)
+posixTimeToSlot = send @(PABEffect w) . POSIXTimeToSlot
+
+posixTimeRangeToContainedSlotRange ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.POSIXTimeRange ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
+posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange

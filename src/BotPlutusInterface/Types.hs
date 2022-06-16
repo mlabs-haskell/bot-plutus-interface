@@ -22,6 +22,7 @@ module BotPlutusInterface.Types (
   SpendBudgets,
   MintBudgets,
   ContractStats (..),
+  LogsList (..),
   addBudget,
 ) where
 
@@ -45,7 +46,6 @@ import Ledger (
   TxId,
   TxOutRef,
  )
-import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -55,6 +55,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
   endpointsToSchemas,
  )
 import Prettyprinter (Pretty (pretty))
+import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -65,8 +66,6 @@ data PABConfig = PABConfig
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !ProtocolParameters
-  , -- | Slot configuration of the network, the default value can be used for the mainnet
-    pcSlotConfig :: !SlotConfig
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -85,7 +84,11 @@ data PABConfig = PABConfig
   , pcTipPollingInterval :: !Natural
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
-  , pcCollectStats :: !Bool
+  , -- | Collect contract execution stats inside ContractEnvironment
+    pcCollectStats :: !Bool
+  , -- | Collect logs inside ContractEnvironment, doesn't depend on log level
+    pcCollectLogs :: !Bool
+  , pcBudgetMultiplier :: !Rational
   }
   deriving stock (Show, Eq)
 
@@ -146,11 +149,22 @@ newtype ContractStats = ContractStats
 instance Show (TVar ContractStats) where
   show _ = "<ContractStats>"
 
+-- | List of string logs.
+newtype LogsList = LogsList
+  { getLogsList :: [(LogContext, LogLevel, PP.Doc ())]
+  }
+  deriving stock (Show)
+  deriving newtype (Semigroup, Monoid)
+
+instance Show (TVar LogsList) where
+  show _ = "<ContractLogs>"
+
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
   , ceContractStats :: TVar ContractStats
+  , ceContractLogs :: TVar LogsList
   }
   deriving stock (Show)
 
@@ -211,7 +225,6 @@ instance Default PABConfig where
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = def
-      , pcSlotConfig = def
       , pcTipPollingInterval = 10_000_000
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"
@@ -225,6 +238,8 @@ instance Default PABConfig where
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       , pcCollectStats = False
+      , pcCollectLogs = False
+      , pcBudgetMultiplier = 1
       }
 
 data RawTx = RawTx

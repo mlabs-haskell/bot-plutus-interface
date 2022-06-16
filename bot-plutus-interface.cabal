@@ -80,6 +80,7 @@ library
     BotPlutusInterface.BodyBuilder
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
+    BotPlutusInterface.Config
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
     BotPlutusInterface.ExBudget
@@ -87,8 +88,15 @@ library
     BotPlutusInterface.Helpers
     BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
+    BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
+    PlutusConfig.Base
+    PlutusConfig.Cardano.Api
+    PlutusConfig.Cardano.Api.Shelley
+    PlutusConfig.Ledger
+    PlutusConfig.Misc
+    PlutusConfig.Types
 
   build-depends:
     , aeson                      ^>=1.5.0.0
@@ -97,8 +105,11 @@ library
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-ledger-core
     , cardano-prelude
     , cardano-slotting
+    , config-schema
+    , config-value
     , containers
     , data-default
     , data-default-class
@@ -113,6 +124,7 @@ library
     , lens
     , memory
     , mtl
+    , ouroboros-consensus
     , playground-common
     , plutus-chain-index
     , plutus-chain-index-core
@@ -124,18 +136,24 @@ library
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
+    , pretty
     , prettyprinter
     , process
     , QuickCheck
+    , regex-compat
     , row-types
     , serialise
     , servant
     , servant-client
+    , servant-client-core
     , servant-server
     , servant-websockets
     , split
     , stm
+    , temporary
     , text                       ^>=1.2.4.0
+    , time
+    , tostring
     , transformers
     , transformers-either
     , transformers-except
@@ -155,6 +173,7 @@ test-suite bot-plutus-interface-test
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
     Spec.BotPlutusInterface.Balance
+    Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.ContractStats
     Spec.BotPlutusInterface.Server

@@ -14,11 +14,15 @@ import BotPlutusInterface.Types (
   TxFile (..),
  )
 import Cardano.Api qualified as CAPI
+import Cardano.Api.Shelley (ProtocolParameters (protocolParamMaxTxExUnits))
+import Cardano.Prelude (maybeToEither)
 import Control.Arrow (left)
+import Data.Either (rights)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text qualified as Text
+import GHC.Natural (Natural)
 import Ledger (ExBudget (ExBudget), ExCPU (ExCPU), ExMemory (ExMemory), MintingPolicyHash, TxOutRef)
 import Ledger.Tx.CardanoAPI (fromCardanoPolicyId, fromCardanoTxIn)
 import System.Directory.Internal.Prelude (getEnv)
@@ -30,9 +34,9 @@ import Prelude
  minting to `MintingPolicyHash`'es
 -}
 estimateBudget :: PABConfig -> TxFile -> IO (Either BudgetEstimationError TxBudget)
-estimateBudget bapConf txFile = do
+estimateBudget pabConf txFile = do
   sock <- getEnv "CARDANO_NODE_SOCKET_PATH"
-  let debugNodeInf = NodeInfo (pcNetwork bapConf) sock
+  let debugNodeInf = NodeInfo (pcNetwork pabConf) sock
   txBody <- case txFile of
     Raw rp -> deserialiseRaw rp
     Signed sp -> fmap CAPI.getTxBody <$> deserialiseSigned sp
@@ -43,13 +47,47 @@ estimateBudget bapConf txFile = do
       (getExUnits debugNodeInf)
       txBody
 
-  let txBudget = do
-        body <- txBody
-        budget <- budgetRes
-        (spendingBudgets, policyBudgets) <- mkBudgetMaps budget body
-        Right $ TxBudget spendingBudgets policyBudgets
+  return $
+    do
+      body <- txBody
+      budget <- budgetRes
+      maxUnits <- maybeToEither (BudgetEstimationError "Missing max units in parameters") $ protocolParamMaxTxExUnits pabConf.pcProtocolParams
 
-  return txBudget
+      scaledBudget <- getScaledBudget maxUnits pabConf.pcBudgetMultiplier budget
+
+      (spendingBudgets, policyBudgets) <- mkBudgetMaps scaledBudget body
+
+      Right $ TxBudget spendingBudgets policyBudgets
+
+-- | Scale the budget clamping the total to the parameter limits
+getScaledBudget :: CAPI.ExecutionUnits -> Rational -> ExUnitsMap -> Either BudgetEstimationError ExUnitsMap
+getScaledBudget maxUnits scaler budget =
+  if fst scalers >= 1 && snd scalers >= 1
+    then Right $ fmap (fmap $ scaleBudget scalers) budget
+    else
+      Left $
+        BudgetEstimationError $
+          Text.pack $
+            "Exceeded global transaction budget\nCalculated: " ++ show budgetSum ++ "\nLimit: " ++ show maxUnits
+  where
+    budgetSum = foldr addBudgets (CAPI.ExecutionUnits 0 0) $ rights $ Map.elems budget
+    scalers =
+      ( clampedScaler (CAPI.executionSteps budgetSum) (CAPI.executionSteps maxUnits) scaler
+      , clampedScaler (CAPI.executionMemory budgetSum) (CAPI.executionMemory maxUnits) scaler
+      )
+
+clampedScaler :: Natural -> Natural -> Rational -> Rational
+clampedScaler 0 _ scaler = scaler
+clampedScaler val maxVal scaler = min scaler (toRational maxVal / toRational val)
+
+-- | Scale the budget by the multipliers in config
+scaleBudget :: (Rational, Rational) -> CAPI.ExecutionUnits -> CAPI.ExecutionUnits
+scaleBudget (stepsScaler, memScaler) (CAPI.ExecutionUnits steps mem) = CAPI.ExecutionUnits (scale steps stepsScaler) (scale mem memScaler)
+  where
+    scale x scaler = round $ toRational x * scaler
+
+addBudgets :: CAPI.ExecutionUnits -> CAPI.ExecutionUnits -> CAPI.ExecutionUnits
+addBudgets (CAPI.ExecutionUnits steps mem) (CAPI.ExecutionUnits steps' mem') = CAPI.ExecutionUnits (steps + steps') (mem + mem')
 
 -- | Deserialize transaction body from ".signed" file
 deserialiseSigned :: FilePath -> IO (Either BudgetEstimationError (CAPI.Tx CAPI.AlonzoEra))
@@ -151,7 +189,7 @@ mkBudgetMaps exUnitsMap txBody = do
         CAPI.TxMintValue _ value _ ->
           {- The minting policies are indexed in policy id order in the value
              reference:
-             https://github.com/input-output-hk/cardano-node/blob/e31455eaeca98530ce561b79687a8e465ebb3fdd/cardano-api/src/Cardano/Api/TxBody.hs#L2851
+             https://github.com/input-output-hk/cardano-node/blob/e31455eaeca98530ce561b79687a8e465ebb3fdd/cardano-api/src/Cardano/Api/TxBody.hs#L2881
           -}
           let CAPI.ValueNestedRep bundle = CAPI.valueToNestedRep value
            in Map.fromList

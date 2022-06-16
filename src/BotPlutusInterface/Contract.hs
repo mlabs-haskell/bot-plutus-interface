@@ -16,10 +16,13 @@ import BotPlutusInterface.Effects (
   handleContractLog,
   handlePABEffect,
   logToContract,
+  posixTimeRangeToContainedSlotRange,
+  posixTimeToSlot,
   printBpiLog,
   queryChainIndex,
   readFileTextEnvelope,
   saveBudget,
+  slotToPOSIXTime,
   threadDelay,
   uploadDir,
  )
@@ -55,7 +58,6 @@ import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
-import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx)
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
@@ -184,10 +186,8 @@ handlePABReq contractEnv req = do
     CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
-      pure $
-        PosixTimeRangeToContainedSlotRangeResp $
-          Right $
-            posixTimeRangeToContainedSlotRange contractEnv.cePABConfig.pcSlotConfig posixTimeRange
+      either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
+        <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     ------------------------
     -- Unhandled requests --
@@ -384,10 +384,12 @@ awaitTime ::
   ContractEnvironment w ->
   POSIXTime ->
   Eff effs POSIXTime
-awaitTime ce = fmap fromSlot . awaitSlot ce . toSlot
+awaitTime ce pTime = do
+  slotFromTime <- rightOrErr <$> posixTimeToSlot @w pTime
+  slot' <- awaitSlot ce slotFromTime
+  rightOrErr <$> slotToPOSIXTime @w slot'
   where
-    toSlot = posixTimeToEnclosingSlot ce.cePABConfig.pcSlotConfig
-    fromSlot = slotToEndPOSIXTime ce.cePABConfig.pcSlotConfig
+    rightOrErr = either (error . show) id
 
 currentSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -411,4 +413,6 @@ currentTime ::
   ContractEnvironment w ->
   Eff effs POSIXTime
 currentTime contractEnv =
-  slotToEndPOSIXTime contractEnv.cePABConfig.pcSlotConfig <$> currentSlot @w contractEnv
+  currentSlot @w contractEnv
+    >>= slotToPOSIXTime @w
+    >>= either (error . show) return
