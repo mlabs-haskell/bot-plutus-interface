@@ -2,10 +2,10 @@ module Spec.BotPlutusInterface.TxStatusChange (tests) where
 
 import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
-  PABConfig (pcOwnPubKeyHash),
+  PABConfig (pcOwnPubKeyHash, pcTxStatusPolling),
+  TxStatusPolling (spBlocksTimeOut),
  )
-import Control.Lens ((&), (.~))
-import Control.Monad (void)
+import Control.Lens ((&), (.~), (^.))
 import Data.Default (def)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -13,12 +13,15 @@ import Ledger (PaymentPubKeyHash (unPaymentPubKeyHash), getCardanoTxId)
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef))
-import Plutus.ChainIndex (RollbackState (Unknown), TxStatus)
+import Plutus.ChainIndex (RollbackState (Unknown), Tip (TipAtGenesis), TxStatus)
+import Plutus.ChainIndex.Types (Tip (Tip))
 import Plutus.Contract (
   Contract (..),
   Endpoint,
   awaitTxStatusChange,
+  getTip,
   submitTx,
+  throwError,
  )
 import Spec.MockContract (
   contractEnv,
@@ -27,10 +30,11 @@ import Spec.MockContract (
   paymentPkh2,
   pkhAddr1,
   runContractPure,
+  tip,
   utxos,
  )
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
+import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
 import Prelude
 
 tests :: TestTree
@@ -51,15 +55,16 @@ testTxFoundAndConfirmed = do
       pabConf = def {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1}
       contractEnv' = def {cePABConfig = pabConf}
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text ()
+      contract :: Contract () (Endpoint "SendAda" ()) Text TxStatus
       contract = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         tx <- submitTx constraints
-        void $ awaitTxStatusChange $ getCardanoTxId tx
+        awaitTxStatusChange $ getCardanoTxId tx
 
   case runContractPure contract initState of
     (Left err, _) -> assertFailure $ Text.unpack err
+    (Right Unknown, _) -> assertFailure "State should not be Unknown"
     (Right _, _) -> pure ()
 
 testStopWaitingByTimeout :: Assertion
@@ -67,12 +72,28 @@ testStopWaitingByTimeout = do
   let initState =
         def & contractEnv .~ contractEnv'
       pabConf = def {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1}
+      timeoutBlocks = fromIntegral . spBlocksTimeOut . pcTxStatusPolling $ pabConf
       contractEnv' = def {cePABConfig = pabConf}
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text TxStatus
-      contract =
-        awaitTxStatusChange nonExistingTxId
+      contract :: Contract () (Endpoint "SendAda" ()) Text (Tip, TxStatus)
+      contract = do
+        awaitStartBlock <- getTip
+        case awaitStartBlock of
+          TipAtGenesis -> throwError "Should not happen: TipAtGenesis"
+          tip' -> do
+            txStatus <- awaitTxStatusChange nonExistingTxId
+            return (tip', txStatus)
 
   case runContractPure contract initState of
     (Left err, _) -> assertFailure $ Text.unpack err
-    (Right txStatus, _) -> txStatus @?= Unknown
+    (Right (startTip, txStatus), state) -> do
+      startAwaitingBlockNo <- getBlock startTip
+      endAwaitingBlockNo <- getBlock $ state ^. tip
+      assertBool
+        "Current block should be GT than start + timeout"
+        (endAwaitingBlockNo > startAwaitingBlockNo + timeoutBlocks)
+      txStatus @?= Unknown
+  where
+    getBlock = \case
+      TipAtGenesis -> assertFailure "Should not happen: TipAtGenesis"
+      Tip _ _ blockNo -> pure blockNo

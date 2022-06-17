@@ -47,6 +47,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
+import Data.Function (fix)
 import Data.HashMap.Strict qualified as HM
 import Data.Kind (Type)
 import Data.Map qualified as Map
@@ -54,7 +55,6 @@ import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Vector qualified as V
-import Debug.Trace (traceM)
 import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
@@ -205,6 +205,14 @@ handlePABReq contractEnv req = do
   printBpiLog @w Debug $ pretty resp
   pure resp
 
+{- | Await till transaction status change to something from `Unknown`.
+ Uses `chain-index` to query transaction by id.
+ Important notes:
+ * if transaction is not found in `chain-index` status considered to be `Unknown`
+ * if transaction is found but `transactionStatus` failed to make status - status considered to be `Unknown`
+ * uses `TxStatusPolling` to set `chain-index` polling interval and number of blocks to wait until timeout,
+   if timeout is reached, returns whatever status it was able to get during last check
+-}
 awaitTxStatusChange ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -212,42 +220,34 @@ awaitTxStatusChange ::
   Ledger.TxId ->
   Eff effs TxStatus
 awaitTxStatusChange contractEnv txId = do
-  traceM "@@ await stats change"
   checkStartedBlock <- currentBlock contractEnv
   printBpiLog @w Debug $ pretty $ "Awaiting status change for " ++ show txId
-  txStausCheckLoop txId contractEnv checkStartedBlock
 
-txStausCheckLoop ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  Ledger.TxId ->
-  ContractEnvironment w ->
-  Integer ->
-  Eff effs TxStatus
-txStausCheckLoop txId contractEnv checkStartedBlock = do
   let txStatusPolling = contractEnv.cePABConfig.pcTxStatusPolling
       pollInterval = fromIntegral $ txStatusPolling.spInterval
       pollTimeout = txStatusPolling.spBlocksTimeOut
       cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
-  currBlock <- currentBlock contractEnv
-  txStatus <- getStatus
-  case (txStatus, currBlock > cutOffBlock) of
-    (status, True) -> do
-      logDebug . mconcat $
-        [ "Timeout period for waiting `TxId "
-        , show txId
-        , "` status cahnge is over"
-        , " - waited "
-        , show pollTimeout
-        , " blocks."
-        , " Current status: "
-        , show status
-        ]
-      return status
-    (Unknown, _) -> do
-      threadDelay @w pollInterval
-      retry
-    (status, _) -> return status
+
+  fix $ \loop -> do
+    currBlock <- currentBlock contractEnv
+    txStatus <- getStatus
+    case (txStatus, currBlock > cutOffBlock) of
+      (status, True) -> do
+        logDebug . mconcat $
+          [ "Timeout for waiting `TxId "
+          , show txId
+          , "` status cahnge reached"
+          , " - waited "
+          , show pollTimeout
+          , " blocks."
+          , " Current status: "
+          , show status
+          ]
+        return status
+      (Unknown, _) -> do
+        threadDelay @w pollInterval
+        loop
+      (status, _) -> return status
   where
     getStatus = do
       mTx <- queryChainIndexForTxState
@@ -260,7 +260,7 @@ txStausCheckLoop txId contractEnv checkStartedBlock = do
           blk <- fromInteger <$> currentBlock contractEnv
           case transactionStatus blk txState txId of
             Left e -> do
-              logDebug $ "Staus check for TxId " ++ show txId ++ " failed with " ++ show e
+              logDebug $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
               return Unknown
             Right st -> do
               logDebug $ "Status for TxId " ++ show txId ++ " is " ++ show st
@@ -276,9 +276,6 @@ txStausCheckLoop txId contractEnv checkStartedBlock = do
         Nothing -> pure Nothing
 
     logDebug = printBpiLog @w Debug . pretty
-    -- logDebug = traceM . show . pretty
-
-    retry = txStausCheckLoop txId contractEnv checkStartedBlock
 
 -- | This will FULLY balance a transaction
 balanceTx ::

@@ -566,26 +566,25 @@ mockQueryChainIndex = \case
   TxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
     pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
-  TxFromTxId txId -> case txId == nonExistingTxId of
-    True -> pure $ TxIdResponse Nothing
-    False -> do
-      -- TODO: Track some kind of state here, add tests to ensure this works correctly
-      -- For now, empty txs
-      state <- get @(MockContractState w)
-      let knownUtxos = state ^. utxos
-      pure $
-        TxIdResponse $
-          Just $
-            ChainIndexTx
-              { _citxTxId = txId
-              , _citxInputs = mempty
-              , _citxOutputs = buildOutputsFromKnownUTxOs knownUtxos txId
-              , _citxValidRange = Ledger.always
-              , _citxData = mempty
-              , _citxRedeemers = mempty
-              , _citxScripts = mempty
-              , _citxCardanoTx = Nothing
-              }
+  TxFromTxId txId ->
+    if txId == nonExistingTxId
+      then pure $ TxIdResponse Nothing
+      else do
+        -- TODO: Track some kind of state here, add tests to ensure this works correctly
+        -- For now, empty txs
+        state <- get @(MockContractState w)
+        let knownUtxos = state ^. utxos
+        pure . TxIdResponse . Just $
+          ChainIndexTx
+            { _citxTxId = txId
+            , _citxInputs = mempty
+            , _citxOutputs = buildOutputsFromKnownUTxOs knownUtxos txId
+            , _citxValidRange = Ledger.always
+            , _citxData = mempty
+            , _citxRedeemers = mempty
+            , _citxScripts = mempty
+            , _citxCardanoTx = Nothing
+            }
   UtxoSetMembership _ ->
     throwError @Text "UtxoSetMembership is unimplemented"
   UtxoSetAtAddress pageQuery _ -> do

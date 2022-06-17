@@ -95,12 +95,12 @@ txStatusPollingSpec =
       reqSection'
         "milliseconds"
         naturalSpec
-        "Interval between chain-index queries for transacions status change detection"
+        "Interval between chain-index queries for transactions status change detection"
     spBlocksTimeOut <-
       reqSection'
         "blocks"
         naturalSpec
-        "Timeout (in blocks) after which awating of transaction status change will be cancelled and current staus returned"
+        "Timeout (in blocks) after which awaiting of transaction status change will be cancelled and current Status returned"
     pure $ TxStatusPolling {..}
 
 {- ORMOLU_DISABLE -}
@@ -242,7 +242,7 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       (pcTxStatusPolling def)
       "pcTxStatusPolling"
       txStatusPollingSpec
-      "TODO: TxStatusPolling config help" -- FIXME
+      "Set interval between `chain-index` queries and number of blocks to wait until timeout while await Transaction status to change"
   pure PABConfig {..}
 
 docPABConfig :: String

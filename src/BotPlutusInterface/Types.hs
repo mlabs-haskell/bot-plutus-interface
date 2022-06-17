@@ -88,10 +88,16 @@ data PABConfig = PABConfig
   }
   deriving stock (Show, Eq)
 
+{- | Settings for `Contract.awaitTxStatusChange` implementation.
+ See also `BotPlutusInterface.Contract.awaitTxStatusChange`
+-}
 data TxStatusPolling = TxStatusPolling
-  { -- | mocroseconds
+  { -- | Interval between `chain-index` queries, microseconds
     spInterval :: !Natural
-  , -- | blocks until timeout, most likely `Unknown` state will be returned
+  , -- | Number of blocks to wait until timeout.
+    --   Timeout is required because transaction can be silently discarded from node mempool
+    --   and never appear in `chain-index` even if it was submitted successfully to the node
+    --   (chain-sync protocol won't help here also)
     spBlocksTimeOut :: !Natural
   }
   deriving stock (Show, Eq)
