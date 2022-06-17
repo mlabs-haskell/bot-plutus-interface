@@ -39,6 +39,7 @@ import Data.String.ToString (toString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import PlutusConfig.Base (
+  customRationalSpec,
   enumToAtom,
   filepathSpec,
   maybeSpec,
@@ -124,6 +125,8 @@ instance ToValue PABConfig where
         pcPort
         pcEnableTxEndpoint
         pcCollectStats
+        pcCollectLogs
+        pcBudgetMultiplier
         pcTxStatusPolling
       ) =
       Sections
@@ -146,6 +149,8 @@ instance ToValue PABConfig where
         , Section () "port"               $ toValue pcPort
         , Section () "enableTxEndpoint"   $ toValue pcEnableTxEndpoint
         , Section () "collectStats"       $ toValue pcCollectStats
+        , Section () "collectLogs"        $ toValue pcCollectLogs
+        , Section () "budgetMultiplier"   $ toValue pcBudgetMultiplier
         , Section () "pcTxStatusPolling"  $ toValue pcTxStatusPolling
         ]
 {- ORMOLU_ENABLE -}
@@ -237,12 +242,27 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       trueOrFalseSpec
       "Save some stats during contract run (only transactions execution budgets supported atm)"
 
+  pcCollectLogs <-
+    sectionWithDefault'
+      (pcCollectLogs def)
+      "collectLogs"
+      trueOrFalseSpec
+      "Save logs from contract execution: pab request logs and contract logs"
+
+  pcBudgetMultiplier <-
+    sectionWithDefault'
+      (pcBudgetMultiplier def)
+      "budgetMultiplier"
+      customRationalSpec
+      "Multiplier on the budgets automatically calculated"
+
   pcTxStatusPolling <-
     sectionWithDefault'
       (pcTxStatusPolling def)
       "pcTxStatusPolling"
       txStatusPollingSpec
       "Set interval between `chain-index` queries and number of blocks to wait until timeout while await Transaction status to change"
+
   pure PABConfig {..}
 
 docPABConfig :: String

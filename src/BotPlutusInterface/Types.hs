@@ -23,6 +23,7 @@ module BotPlutusInterface.Types (
   MintBudgets,
   ContractStats (..),
   TxStatusPolling (..),
+  LogsList (..),
   addBudget,
 ) where
 
@@ -55,6 +56,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
   endpointsToSchemas,
  )
 import Prettyprinter (Pretty (pretty))
+import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -83,7 +85,11 @@ data PABConfig = PABConfig
   , pcTipPollingInterval :: !Natural
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
-  , pcCollectStats :: !Bool
+  , -- | Collect contract execution stats inside ContractEnvironment
+    pcCollectStats :: !Bool
+  , -- | Collect logs inside ContractEnvironment, doesn't depend on log level
+    pcCollectLogs :: !Bool
+  , pcBudgetMultiplier :: !Rational
   , pcTxStatusPolling :: !TxStatusPolling
   }
   deriving stock (Show, Eq)
@@ -159,11 +165,22 @@ newtype ContractStats = ContractStats
 instance Show (TVar ContractStats) where
   show _ = "<ContractStats>"
 
+-- | List of string logs.
+newtype LogsList = LogsList
+  { getLogsList :: [(LogContext, LogLevel, PP.Doc ())]
+  }
+  deriving stock (Show)
+  deriving newtype (Semigroup, Monoid)
+
+instance Show (TVar LogsList) where
+  show _ = "<ContractLogs>"
+
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
   , ceContractStats :: TVar ContractStats
+  , ceContractLogs :: TVar LogsList
   }
   deriving stock (Show)
 
@@ -237,7 +254,9 @@ instance Default PABConfig where
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       , pcCollectStats = False
-      , pcTxStatusPolling = TxStatusPolling 1_000 8
+      , pcCollectLogs = False
+      , pcBudgetMultiplier = 1
+      , pcTxStatusPolling = TxStatusPolling 1_000_000 8
       }
 
 data RawTx = RawTx

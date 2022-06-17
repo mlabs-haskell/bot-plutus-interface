@@ -3,6 +3,7 @@
 -- | Several query functions to query local node
 module BotPlutusInterface.QueryNode (
   NodeInfo (..),
+  NodeQueryError (..),
   queryProtocolParams,
   querySystemStart,
   queryEraHistory,

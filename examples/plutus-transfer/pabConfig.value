@@ -29,3 +29,6 @@ enableTxEndpoint:   true
 
 -- Save some stats during contract run (only transactions execution budgets supported atm)
 collectStats: false
+
+-- Save logs from contract execution: pab request logs and contract logs
+collectLogs: false

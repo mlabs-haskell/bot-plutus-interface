@@ -261,6 +261,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
+      , ceContractLogs = unsafePerformIO $ newTVarIO mempty
       }
 
 instance Monoid w => Default (ContractState w) where
