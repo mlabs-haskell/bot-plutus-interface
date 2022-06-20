@@ -94,7 +94,7 @@ txStatusPollingSpec =
   sectionsSpec "TxStatusPolling configuration" $ do
     spInterval <-
       reqSection'
-        "milliseconds"
+        "microseconds"
         naturalSpec
         "Interval between chain-index queries for transactions status change detection"
     spBlocksTimeOut <-

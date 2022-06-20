@@ -64,7 +64,7 @@ testTxFoundAndConfirmed = do
 
   case runContractPure contract initState of
     (Left err, _) -> assertFailure $ Text.unpack err
-    (Right Unknown, _) -> assertFailure "State should not be Unknown"
+    (Right Unknown, _) -> assertFailure "Tx status should not be Unknown but it is"
     (Right _, _) -> pure ()
 
 testStopWaitingByTimeout :: Assertion

@@ -33,8 +33,6 @@ import BotPlutusInterface.Types (
   LogLevel (Debug, Warn),
   Tip (block, slot),
   TxFile (Signed),
-  -- spBlocksTimeOut,
-  -- spInterval,
  )
 import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
 import Control.Lens (preview, (^.))
@@ -233,15 +231,10 @@ awaitTxStatusChange contractEnv txId = do
     txStatus <- getStatus
     case (txStatus, currBlock > cutOffBlock) of
       (status, True) -> do
-        logDebug . mconcat $
-          [ "Timeout for waiting `TxId "
-          , show txId
-          , "` status cahnge reached"
-          , " - waited "
-          , show pollTimeout
-          , " blocks."
-          , " Current status: "
-          , show status
+        logDebug . mconcat . fmap mconcat $
+          [ ["Timeout for waiting `TxId ", show txId, "` status change reached"]
+          , [" - waited ", show pollTimeout, " blocks."]
+          , [" Current status: ", show status]
           ]
         return status
       (Unknown, _) -> do
