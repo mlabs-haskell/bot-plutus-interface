@@ -115,5 +115,5 @@ pabConfigExample =
     , pcCollectStats = False
     , pcCollectLogs = False
     , pcBudgetMultiplier = 1
-    , pcTxStatusPolling = TxStatusPolling 1_000 8
+    , pcTxStatusPolling = TxStatusPolling 1_000_000 8
     }
