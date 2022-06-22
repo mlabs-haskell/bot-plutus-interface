@@ -22,6 +22,7 @@ module BotPlutusInterface.Types (
   SpendBudgets,
   MintBudgets,
   ContractStats (..),
+  TxStatusPolling (..),
   LogsList (..),
   addBudget,
 ) where
@@ -89,6 +90,21 @@ data PABConfig = PABConfig
   , -- | Collect logs inside ContractEnvironment, doesn't depend on log level
     pcCollectLogs :: !Bool
   , pcBudgetMultiplier :: !Rational
+  , pcTxStatusPolling :: !TxStatusPolling
+  }
+  deriving stock (Show, Eq)
+
+{- | Settings for `Contract.awaitTxStatusChange` implementation.
+ See also `BotPlutusInterface.Contract.awaitTxStatusChange`
+-}
+data TxStatusPolling = TxStatusPolling
+  { -- | Interval between `chain-index` queries, microseconds
+    spInterval :: !Natural
+  , -- | Number of blocks to wait until timeout.
+    --   Timeout is required because transaction can be silently discarded from node mempool
+    --   and never appear in `chain-index` even if it was submitted successfully to the node
+    --   (chain-sync protocol won't help here also)
+    spBlocksTimeOut :: !Natural
   }
   deriving stock (Show, Eq)
 
@@ -240,6 +256,7 @@ instance Default PABConfig where
       , pcCollectStats = False
       , pcCollectLogs = False
       , pcBudgetMultiplier = 1
+      , pcTxStatusPolling = TxStatusPolling 1_000_000 8
       }
 
 data RawTx = RawTx

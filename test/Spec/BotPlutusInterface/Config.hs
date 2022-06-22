@@ -3,7 +3,7 @@
 module Spec.BotPlutusInterface.Config (tests) where
 
 import BotPlutusInterface.Config (loadPABConfig, savePABConfig)
-import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
+import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..), TxStatusPolling (TxStatusPolling))
 import Cardano.Api (
   AnyPlutusScriptVersion (..),
   CostModel (..),
@@ -115,4 +115,5 @@ pabConfigExample =
     , pcCollectStats = False
     , pcCollectLogs = False
     , pcBudgetMultiplier = 1
+    , pcTxStatusPolling = TxStatusPolling 1_000_000 8
     }

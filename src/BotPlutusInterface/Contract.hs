@@ -45,7 +45,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
-import Data.Either (fromRight)
+import Data.Function (fix)
 import Data.HashMap.Strict qualified as HM
 import Data.Kind (Type)
 import Data.Map qualified as Map
@@ -203,6 +203,14 @@ handlePABReq contractEnv req = do
   printBpiLog @w Debug $ pretty resp
   pure resp
 
+{- | Await till transaction status change to something from `Unknown`.
+ Uses `chain-index` to query transaction by id.
+ Important notes:
+ * if transaction is not found in `chain-index` status considered to be `Unknown`
+ * if transaction is found but `transactionStatus` failed to make status - status considered to be `Unknown`
+ * uses `TxStatusPolling` to set `chain-index` polling interval and number of blocks to wait until timeout,
+   if timeout is reached, returns whatever status it was able to get during last check
+-}
 awaitTxStatusChange ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -210,27 +218,47 @@ awaitTxStatusChange ::
   Ledger.TxId ->
   Eff effs TxStatus
 awaitTxStatusChange contractEnv txId = do
-  -- The depth (in blocks) after which a transaction cannot be rolled back anymore (from Plutus.ChainIndex.TxIdState)
-  let chainConstant = 8
+  checkStartedBlock <- currentBlock contractEnv
+  printBpiLog @w Debug $ pretty $ "Awaiting status change for " ++ show txId
 
-  mTx <- queryChainIndexForTxState
-  case mTx of
-    Nothing -> pure Unknown
-    Just txState -> do
-      printBpiLog @w Debug $ "Found transaction in node, waiting" <+> pretty chainConstant <+> " blocks for it to settle."
-      awaitNBlocks @w contractEnv (chainConstant + 1)
-      -- Check if the tx is still present in chain-index, in case of a rollback
-      -- we might not find it anymore.
-      ciTxState' <- queryChainIndexForTxState
-      case ciTxState' of
-        Nothing -> pure Unknown
-        Just _ -> do
-          blk <- fromInteger <$> currentBlock contractEnv
-          -- This will set the validity correctly based on the txState.
-          -- The tx will always be committed, as we wait for chainConstant + 1 blocks
-          let status = transactionStatus blk txState txId
-          pure $ fromRight Unknown status
+  let txStatusPolling = contractEnv.cePABConfig.pcTxStatusPolling
+      pollInterval = fromIntegral $ txStatusPolling.spInterval
+      pollTimeout = txStatusPolling.spBlocksTimeOut
+      cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
+
+  fix $ \loop -> do
+    currBlock <- currentBlock contractEnv
+    txStatus <- getStatus
+    case (txStatus, currBlock > cutOffBlock) of
+      (status, True) -> do
+        logDebug . mconcat . fmap mconcat $
+          [ ["Timeout for waiting `TxId ", show txId, "` status change reached"]
+          , [" - waited ", show pollTimeout, " blocks."]
+          , [" Current status: ", show status]
+          ]
+        return status
+      (Unknown, _) -> do
+        threadDelay @w pollInterval
+        loop
+      (status, _) -> return status
   where
+    getStatus = do
+      mTx <- queryChainIndexForTxState
+      case mTx of
+        Nothing -> do
+          logDebug $ "TxId " ++ show txId ++ " not found in index"
+          return Unknown
+        Just txState -> do
+          logDebug $ "TxId " ++ show txId ++ " found in index, checking status"
+          blk <- fromInteger <$> currentBlock contractEnv
+          case transactionStatus blk txState txId of
+            Left e -> do
+              logDebug $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
+              return Unknown
+            Right st -> do
+              logDebug $ "Status for TxId " ++ show txId ++ " is " ++ show st
+              return st
+
     queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
     queryChainIndexForTxState = do
       mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
@@ -239,6 +267,8 @@ awaitTxStatusChange contractEnv txId = do
           blk <- fromInteger <$> currentBlock contractEnv
           pure . Just $ fromTx blk tx
         Nothing -> pure Nothing
+
+    logDebug = printBpiLog @w Debug . pretty
 
 -- | This will FULLY balance a transaction
 balanceTx ::
@@ -355,25 +385,25 @@ awaitSlot contractEnv s@(Slot n) = do
       | n < tip'.slot -> pure $ Slot tip'.slot
     _ -> awaitSlot contractEnv s
 
--- | Wait for n Blocks.
-awaitNBlocks ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  ContractEnvironment w ->
-  Integer ->
-  Eff effs ()
-awaitNBlocks contractEnv n = do
-  current <- currentBlock contractEnv
-  go current
-  where
-    go :: Integer -> Eff effs ()
-    go start = do
-      threadDelay @w (fromIntegral contractEnv.cePABConfig.pcTipPollingInterval)
-      tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
-      case tip of
-        Right tip'
-          | start + n <= tip'.block -> pure ()
-        _ -> go start
+-- -- | Wait for n Blocks.
+-- awaitNBlocks ::
+--   forall (w :: Type) (effs :: [Type -> Type]).
+--   Member (PABEffect w) effs =>
+--   ContractEnvironment w ->
+--   Integer ->
+--   Eff effs ()
+-- awaitNBlocks contractEnv n = do
+--   current <- currentBlock contractEnv
+--   go current
+--   where
+--     go :: Integer -> Eff effs ()
+--     go start = do
+--       threadDelay @w (fromIntegral contractEnv.cePABConfig.pcTipPollingInterval)
+--       tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
+--       case tip of
+--         Right tip'
+--           | start + n <= tip'.block -> pure ()
+--         _ -> go start
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
  are applying here as well.
