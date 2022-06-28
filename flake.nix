@@ -15,23 +15,19 @@
     };
 
     # all inputs below here are for pinning with haskell.nix
-    blockfrost-haskell = {
-      url = "github:blockfrost/blockfrost-haskell/edfd43a95a21356b0cc540002bd1583a35883f85";
-      flake = false;
-    };
     cardano-addresses = {
       url =
-        "github:input-output-hk/cardano-addresses/56746f558d57a6b1d66d20eaac8a83dc4455cb4f";
+        "github:input-output-hk/cardano-addresses/b9f424cc64459a95a2f190a1839ec9bc94cc778c";
       flake = false;
     };
     cardano-base = {
       url =
-        "github:input-output-hk/cardano-base/394c4637c24d82325bd04ceb99c8e8df5617e663";
+        "github:input-output-hk/cardano-base/631cb6cf1fa01ab346233b610a38b3b4cba6e6ab";
       flake = false;
     };
     cardano-config = {
       url =
-        "github:input-output-hk/cardano-config/e9de7a2cf70796f6ff26eac9f9540184ded0e4e6";
+        "github:input-output-hk/cardano-config/1646e9167fab36c0bff82317743b96efa2d3adaa";
       flake = false;
     };
     cardano-crypto = {
@@ -41,12 +37,12 @@
     };
     cardano-ledger = {
       url =
-        "github:input-output-hk/cardano-ledger/1db68a3ec0a2dcb5751004beb22b906162474f23";
+        "github:input-output-hk/cardano-ledger/e290bf8d0ea272a51e9acd10adc96b4e12e00d37";
       flake = false;
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/65422ff373f2f88a563afa746a9a16d211ffdc7c";
+        "github:input-output-hk/cardano-node/95c3692cfbd4cdb82071495d771b23e51840fb0e";
       flake = false; # we need it to be available in shell
     };
     cardano-prelude = {
@@ -55,7 +51,7 @@
       flake = false;
     };
     cardano-wallet = {
-      url = "github:ak3n/cw/538375cb3efa0c66604ff0b13b6ecc0c4a694d64";
+      url = "github:input-output-hk/cardano-wallet/0cdd1b72a16b2f287b5f1bf137b5eba15bc7f300";
       flake = false;
     };
     ekg-json = {
@@ -81,18 +77,22 @@
       url = "github:input-output-hk/hedgehog-extras/967d79533c21e33387d0227a5f6cc185203fe658";
       flake = false;
     };
+    hysterical-screams = {
+      url = "github:raduom/hysterical-screams/f3bbd38a19f99de5c8ddc650c94330b2d09a865b";
+      flake = false;
+    };
     hw-aeson = {
       url = "github:haskell-works/hw-aeson/d99d2f3e39a287607418ae605b132a3deb2b753f";
       flake = false;
     };
     iohk-monitoring-framework = {
       url =
-        "github:input-output-hk/iohk-monitoring-framework/eb7854d1337637b8672af1227b276aa33a658f47";
+        "github:input-output-hk/iohk-monitoring-framework/066f7002aac5a0efc20e49643fea45454f226caa";
       flake = false;
     };
     io-sim = {
       url =
-        "github:input-output-hk/io-sim/606de33fa2f467d108fb1efb86daeb3348bf34e3";
+        "github:input-output-hk/io-sim/57e888b1894829056cb00b7b5785fdf6a74c3271";
       flake = false;
     };
     optparse-applicative = {
@@ -102,17 +102,17 @@
     };
     ouroboros-network = {
       url =
-        "github:input-output-hk/ouroboros-network/ad47441e9e399495579d7dd05ccaf96b46a487b2";
+        "github:input-output-hk/ouroboros-network/04245dbd69387da98d3a37de9f400965e922bb0e";
       flake = false;
     };
     plutus = {
       url =
-        "github:input-output-hk/plutus/5cc518f1202930ad52b8ba838af32af084c0e754";
+        "github:input-output-hk/plutus/d24a7540e4659b57ce2ab25dadb968991e232191";
       flake = false;
     };
     plutus-apps = {
       url =
-        "github:input-output-hk/plutus-apps/5fb99da7bb5a3e5d6ca02527802856c51835f6e0";
+        "github:input-output-hk/plutus-apps/c2b310968d0915e2af0ea4680186b41ad88ffbe9";
       flake = false;
     };
     purescript-bridge = {
@@ -127,7 +127,7 @@
     };
     typed-protocols = {
       url =
-        "github:input-output-hk/typed-protocols/91c3fba44d68439df207796171cd6f867354b76b";
+        "github:input-output-hk/typed-protocols/181601bc3d9e9d21a671ce01e0b481348b3ca104";
       flake = false;
     };
     Win32-network = {
@@ -178,15 +178,6 @@
       ];
 
       extraSources = [
-        # {
-        #   src = inputs.blockfrost-haskell;
-        #   subdirs = [
-        #     "blockfrost-api"
-        #     "blockfrost-client-core"
-        #     "blockfrost-client"
-        #     "blockfrost-pretty"
-        #   ];
-        # }
         {
           src = inputs.cardano-addresses;
           subdirs = [ "core" "command-line" ];
@@ -199,6 +190,7 @@
             "binary/test"
             "cardano-crypto-class"
             "cardano-crypto-praos"
+            "cardano-crypto-tests"
             "measures"
             "orphans-deriving-via"
             "slotting"
@@ -227,7 +219,7 @@
             "libs/cardano-ledger-core"
             "libs/cardano-ledger-pretty"
             "libs/cardano-protocol-tpraos"
-            "libs/compact-map"
+            "libs/vector-map"
             "libs/non-integral"
             "libs/set-algebra"
             "libs/small-steps"
@@ -292,6 +284,10 @@
           subdirs = [ "." ];
         }
         {
+          src = inputs.hysterical-screams;
+          subdirs = [ "." ];
+        }
+        {
           src = inputs.hw-aeson;
           subdirs = [ "." ];
         }
@@ -307,14 +303,14 @@
             "plugins/backend-trace-forwarder"
           ];
         }
-        # {
-        #   src = inputs.io-sim;
-        #   subdirs = [
-        #     "io-classes"
-        #     "io-sim"
-        #     "strict-stm"
-        #   ];
-        # }
+        {
+          src = inputs.io-sim;
+          subdirs = [
+            "io-classes"
+            "io-sim"
+            "strict-stm"
+          ];
+        }
         {
           src = inputs.optparse-applicative;
           subdirs = [ "." ];
@@ -322,8 +318,6 @@
         {
           src = inputs.ouroboros-network;
           subdirs = [
-            "io-classes"
-            "io-sim"
             "monoidal-synchronisation"
             "network-mux"
             "ntp-client"
@@ -335,10 +329,6 @@
             "ouroboros-network"
             "ouroboros-network-framework"
             "ouroboros-network-testing"
-            "strict-stm"
-            "typed-protocols"
-            "typed-protocols-cborg"
-            "typed-protocols-examples"
           ];
         }
         {
@@ -381,14 +371,14 @@
           src = inputs.servant-purescript;
           subdirs = [ "." ];
         }
-        # {
-        #   src = inputs.typed-protocols;
-        #   subdirs = [
-        #     "typed-protocols"
-        #     "typed-protocols-cborg"
-        #     "typed-protocols-examples"
-        #   ];
-        # }
+        {
+          src = inputs.typed-protocols;
+          subdirs = [
+            "typed-protocols"
+            "typed-protocols-cborg"
+            "typed-protocols-examples"
+          ];
+        }
         {
           src = inputs.Win32-network;
           subdirs = [ "." ];
