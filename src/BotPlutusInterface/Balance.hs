@@ -88,7 +88,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
         as there are utxoAt queries coming.
         Maybe something like:
 
-        addTxCollaterals <- 
+        addTxCollaterals <-
           if not (usesScripts tx)
             then pure id
             else do
@@ -98,7 +98,6 @@ balanceTxIO pabConf ownPkh unbalancedTx =
         then use `addTxCollaterals` lower
       -}
       collateral <- newEitherT $ CollateralEff.getCollateralEff @w pabConf
-      
 
       utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf

@@ -174,7 +174,7 @@ handlePABEffect contractEnv =
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
-          handleChainIndexReq contractEnv.cePABConfig query
+          handleChainIndexReq contractEnv query
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
@@ -406,7 +406,7 @@ posixTimeRangeToContainedSlotRange ::
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
 posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange
 
- -- FIXME:issue#89: better naming, probably
+-- FIXME:issue#89: better naming, probably
 getInMemCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>

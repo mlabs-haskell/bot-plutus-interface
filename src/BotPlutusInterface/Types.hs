@@ -26,11 +26,12 @@ module BotPlutusInterface.Types (
   LogsList (..),
   Collateral (..),
   addBudget,
+  readCollateralUtxo,
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
-import Control.Concurrent.STM (TVar)
+import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
@@ -193,6 +194,9 @@ newtype Collateral = Collateral
   }
 instance Show Collateral where
   show _ = "<Collateral TxOutRef>"
+
+readCollateralUtxo :: forall (w :: Type). ContractEnvironment w -> IO (Maybe TxOutRef)
+readCollateralUtxo = readTVarIO . unCollateral . ceCollateral
 
 data Tip = Tip
   { epoch :: Integer
