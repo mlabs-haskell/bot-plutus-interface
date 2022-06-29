@@ -262,6 +262,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
       , ceContractLogs = unsafePerformIO $ newTVarIO mempty
+      , ceCollateral = undefined -- FIXME:issue#89
       }
 
 instance Monoid w => Default (ContractState w) where
@@ -329,6 +330,8 @@ runPABEffectPure initState req =
     go (SlotToPOSIXTime _) = pure $ Right 1506203091
     go (POSIXTimeToSlot _) = pure $ Right 1
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
+    go GetInMemCollateral = pure . Just $ TxOutRef (TxId "ff") 0 -- FIXME:issue#89:adjust correctly for tests
+    go (SetInMemCollateral _) = pure () -- FIXME:issue#89:adjust correctly for tests
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)

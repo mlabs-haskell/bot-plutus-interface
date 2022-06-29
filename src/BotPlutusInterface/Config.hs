@@ -128,6 +128,7 @@ instance ToValue PABConfig where
         pcCollectLogs
         pcBudgetMultiplier
         pcTxStatusPolling
+        pcCollateralSize
       ) =
       Sections
         ()
@@ -152,6 +153,7 @@ instance ToValue PABConfig where
         , Section () "collectLogs"        $ toValue pcCollectLogs
         , Section () "budgetMultiplier"   $ toValue pcBudgetMultiplier
         , Section () "pcTxStatusPolling"  $ toValue pcTxStatusPolling
+        , Section () "pcCollateralSize"   $ toValue pcCollateralSize
         ]
 {- ORMOLU_ENABLE -}
 
@@ -262,6 +264,13 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       "pcTxStatusPolling"
       txStatusPollingSpec
       "Set interval between `chain-index` queries and number of blocks to wait until timeout while await Transaction status to change"
+
+  pcCollateralSize <-
+    sectionWithDefault'
+      (pcCollateralSize def)
+      "pcCollateralSize"
+      naturalSpec
+      "User defined Lovelace amount of collateral UTxO"
 
   pure PABConfig {..}
 

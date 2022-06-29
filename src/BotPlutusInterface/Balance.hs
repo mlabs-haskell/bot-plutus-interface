@@ -65,6 +65,7 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
+import BotPlutusInterface.CollateralEff qualified as CollateralEff
 import Data.Bifunctor (bimap)
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
@@ -82,6 +83,23 @@ balanceTxIO ::
 balanceTxIO pabConf ownPkh unbalancedTx =
   runEitherT $
     do
+      -- FIXME:issue#89
+      {-here we have to be sure already that collateral is set
+        as there are utxoAt queries coming.
+        Maybe something like:
+
+        addTxCollaterals <- 
+          if not (usesScripts tx)
+            then pure id
+            else do
+              collateral <- newEitherT $ CollateralEff.getCollateralEff @w pabConf
+              pure $ reallyAddCollateral collateral
+
+        then use `addTxCollaterals` lower
+      -}
+      collateral <- newEitherT $ CollateralEff.getCollateralEff @w pabConf
+      
+
       utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
@@ -99,7 +117,8 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack pabConf.pcTxFileDir)
 
       -- Adds required collaterals, only needs to happen once
-      -- Also adds signatures for fee calculation
+      -- Also adds signatures for fee calculationteral is set
+      -- FIXME:issue#89: need to add collateral here
       preBalancedTx <- hoistEither $ addTxCollaterals utxoIndex tx >>= addSignatories ownPkh privKeys requiredSigs
 
       -- Balance the tx

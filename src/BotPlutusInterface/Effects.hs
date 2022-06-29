@@ -28,9 +28,12 @@ module BotPlutusInterface.Effects (
   slotToPOSIXTime,
   posixTimeToSlot,
   posixTimeRangeToContainedSlotRange,
+  getInMemCollateral,
+  setInMemCollateral,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
+import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.ExBudget qualified as ExBudget
 import BotPlutusInterface.TimeSlot qualified as TimeSlot
 import BotPlutusInterface.Types (
@@ -119,6 +122,8 @@ data PABEffect (w :: Type) (r :: Type) where
   POSIXTimeRangeToSlotRange ::
     Ledger.POSIXTimeRange ->
     PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
+  GetInMemCollateral :: PABEffect w (Maybe Ledger.TxOutRef)
+  SetInMemCollateral :: Ledger.TxOutRef -> PABEffect w ()
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -179,6 +184,8 @@ handlePABEffect contractEnv =
           TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
         POSIXTimeRangeToSlotRange pTimeRange ->
           TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
+        GetInMemCollateral -> Collateral.getInMemCollateral contractEnv
+        SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
     )
 
 printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
@@ -398,3 +405,17 @@ posixTimeRangeToContainedSlotRange ::
   Ledger.POSIXTimeRange ->
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
 posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange
+
+ -- FIXME:issue#89: better naming, probably
+getInMemCollateral ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Eff effs (Maybe Ledger.TxOutRef)
+getInMemCollateral = send @(PABEffect w) GetInMemCollateral
+
+setInMemCollateral ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.TxOutRef ->
+  Eff effs ()
+setInMemCollateral = send @(PABEffect w) . SetInMemCollateral

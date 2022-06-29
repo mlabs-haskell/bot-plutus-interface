@@ -24,6 +24,7 @@ module BotPlutusInterface.Types (
   ContractStats (..),
   TxStatusPolling (..),
   LogsList (..),
+  Collateral (..),
   addBudget,
 ) where
 
@@ -91,6 +92,8 @@ data PABConfig = PABConfig
     pcCollectLogs :: !Bool
   , pcBudgetMultiplier :: !Rational
   , pcTxStatusPolling :: !TxStatusPolling
+  , -- | User defined size of collateral, in Lovelaces
+    pcCollateralSize :: !Natural
   }
   deriving stock (Show, Eq)
 
@@ -181,8 +184,15 @@ data ContractEnvironment w = ContractEnvironment
   , ceContractState :: TVar (ContractState w)
   , ceContractStats :: TVar ContractStats
   , ceContractLogs :: TVar LogsList
+  , ceCollateral :: Collateral
   }
   deriving stock (Show)
+
+newtype Collateral = Collateral
+  { unCollateral :: TVar (Maybe TxOutRef)
+  }
+instance Show Collateral where
+  show _ = "<Collateral TxOutRef>"
 
 data Tip = Tip
   { epoch :: Integer
@@ -257,6 +267,7 @@ instance Default PABConfig where
       , pcCollectLogs = False
       , pcBudgetMultiplier = 1
       , pcTxStatusPolling = TxStatusPolling 1_000_000 8
+      , pcCollateralSize = 10_000_000
       }
 
 data RawTx = RawTx
