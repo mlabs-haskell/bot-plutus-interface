@@ -74,7 +74,7 @@ library
   import:          common-lang
   exposed-modules: Cardano.PlutusExample.Transfer
   build-depends:
-    , aeson                      ^>=1.5.0.0
+    , aeson
     , attoparsec                 >=0.13.2.2
     , bytestring                 ^>=0.10.12.0
     , cardano-api
@@ -125,7 +125,7 @@ library
 executable plutus-transfer-pab
   import:         common-lang
   build-depends:
-    , aeson                 ^>=1.5.0.0
+    , aeson
     , bot-plutus-interface
     , bytestring
     , cardano-api

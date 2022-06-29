@@ -3,15 +3,12 @@
 module Main (main) where
 
 import BotPlutusInterface qualified
+import BotPlutusInterface.Config qualified as BotPlutusInterface
 import BotPlutusInterface.Types (
-  CLILocation (Local),
   HasDefinitions (..),
-  LogLevel (Debug),
-  PABConfig (..),
   SomeBuiltin (..),
   endpointsToSchemas,
  )
-import Cardano.Api (NetworkId (Testnet), NetworkMagic (..))
 import Cardano.PlutusExample.Game (
   GameSchema,
   GuessParams,
@@ -19,14 +16,9 @@ import Cardano.PlutusExample.Game (
   guess,
   lock,
  )
-import Data.Aeson qualified as JSON
 import Data.Aeson.TH (defaultOptions, deriveJSON)
-import Data.ByteString.Lazy qualified as LazyByteString
-import Data.Default (def)
-import Data.Maybe (fromMaybe)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
-import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Http))
 import Prelude
 
 instance HasDefinitions GameContracts where
@@ -48,28 +40,7 @@ $(deriveJSON defaultOptions ''GameContracts)
 
 main :: IO ()
 main = do
-  protocolParams <-
-    fromMaybe (error "protocol.json file not found") . JSON.decode
-      <$> LazyByteString.readFile "protocol.json"
-  let pabConf =
-        PABConfig
-          { pcCliLocation = Local
-          , pcNetwork = Testnet (NetworkMagic 9)
-          , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
-          , pcPort = 9080
-          , pcProtocolParams = protocolParams
-          , pcTipPollingInterval = 10_000_000
-          , pcSlotConfig = def
-          , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
-          , pcOwnStakePubKeyHash = Nothing
-          , pcScriptFileDir = "./scripts"
-          , pcSigningKeyFileDir = "./signing-keys"
-          , pcTxFileDir = "./txs"
-          , pcDryRun = True
-          , pcLogLevel = Debug
-          , pcProtocolParamsFile = "./protocol.json"
-          , pcEnableTxEndpoint = True
-          , pcMetadataDir = "./metadata"
-          , pcCollectStats = False
-          }
+  pabConf <-
+    either error id
+      <$> BotPlutusInterface.loadPABConfig "./pabConfig.value"
   BotPlutusInterface.runPAB @GameContracts pabConf

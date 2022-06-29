@@ -11,11 +11,3 @@ write-ghc-environment-files: never
 -- Always build tests and benchmarks.
 tests: true
 benchmarks: true
-
-allow-newer:
-    *:aeson
-  , size-based:template-haskell
-
-constraints:
-    aeson >= 2
-  , hedgehog >= 1.1

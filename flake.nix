@@ -54,12 +54,12 @@
       url = "github:input-output-hk/cardano-wallet/0cdd1b72a16b2f287b5f1bf137b5eba15bc7f300";
       flake = false;
     };
-    ekg-json = {
-      url = "github:vshabanov/ekg-json/00ebe7211c981686e65730b7144fbf5350462608";
-      flake = false;
-    };
     ekg-forward = {
       url = "github:input-output-hk/ekg-forward/297cd9db5074339a2fb2e5ae7d0780debb670c63";
+      flake = false;
+    };
+    ekg-json = {
+      url = "github:vshabanov/ekg-json/00ebe7211c981686e65730b7144fbf5350462608";
       flake = false;
     };
     # We don't actually need this. Removing this might make caching worse?
@@ -152,7 +152,8 @@
       nixpkgsFor' = system: import nixpkgs { inherit system; };
 
       cabalProjectLocal = ''
-        allow-newer: size-based:template-haskell
+        allow-newer: *:aeson, size-based:template-haskell
+        constraints: aeson >= 2, hedgehog >= 1.1
       '';
 
       haskellModules = [
@@ -264,11 +265,11 @@
           ];
         }
         {
-          src = inputs.ekg-json;
+          src = inputs.ekg-forward;
           subdirs = [ "." ];
         }
         {
-          src = inputs.ekg-forward;
+          src = inputs.ekg-json;
           subdirs = [ "." ];
         }
         {

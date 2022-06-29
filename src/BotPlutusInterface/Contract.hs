@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
@@ -12,12 +13,16 @@ import BotPlutusInterface.Effects (
   callCommand,
   createDirectoryIfMissing,
   estimateBudget,
+  handleContractLog,
   handlePABEffect,
   logToContract,
-  printLog,
+  posixTimeRangeToContainedSlotRange,
+  posixTimeToSlot,
+  printBpiLog,
   queryChainIndex,
   readFileTextEnvelope,
   saveBudget,
+  slotToPOSIXTime,
   threadDelay,
   uploadDir,
  )
@@ -34,25 +39,25 @@ import Control.Lens (preview, (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
-import Control.Monad.Freer.Extras.Log (handleLogIgnore)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
-import Data.Aeson (ToJSON, Value)
+import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
-import Data.Either (fromRight)
+import Data.Aeson.KeyMap qualified as KeyMap
+import Data.Function (fix)
 import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Vector qualified as V
 import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Slot (Slot (Slot))
-import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange, posixTimeToEnclosingSlot, slotToEndPOSIXTime)
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx))
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
@@ -69,6 +74,8 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
+import Prettyprinter (Pretty (pretty), (<+>))
+import Prettyprinter qualified as PP
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
 
@@ -92,9 +99,28 @@ handleContract contractEnv =
     . handleResumable contractEnv
     . handleCheckpointIgnore
     . handleWriter
-    . handleLogIgnore @Value
+    . handleContractLog @w
     . runError
     . raiseEnd
+
+instance Pretty Value where
+  pretty (String s) = pretty s
+  pretty (Number n) = pretty $ show n
+  pretty (Bool b) = pretty b
+  pretty (Array arr) = PP.list $ pretty <$> V.toList arr
+  pretty (Object obj) =
+    PP.group
+      . PP.encloseSep (PP.flatAlt "{ " "{") (PP.flatAlt " }" "}") ", "
+      . map
+        ( \(k, v) ->
+            PP.hang 2 $
+              PP.sep
+                [ pretty (show k) <+> ": "
+                , pretty v
+                ]
+        )
+      $ KeyMap.toList obj
+  pretty Null = "null"
 
 handleWriter ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -140,7 +166,7 @@ handlePABReq ::
   PABReq ->
   Eff effs PABResp
 handlePABReq contractEnv req = do
-  printLog @w Debug $ show req
+  printBpiLog @w Debug $ pretty req
   resp <- case req of
     ----------------------
     -- Handled requests --
@@ -160,10 +186,8 @@ handlePABReq contractEnv req = do
     CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
-      pure $
-        PosixTimeRangeToContainedSlotRangeResp $
-          Right $
-            posixTimeRangeToContainedSlotRange contractEnv.cePABConfig.pcSlotConfig posixTimeRange
+      either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
+        <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     ------------------------
     -- Unhandled requests --
@@ -176,9 +200,17 @@ handlePABReq contractEnv req = do
     -- YieldUnbalancedTxReq UnbalancedTx
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
-  printLog @w Debug $ show resp
+  printBpiLog @w Debug $ pretty resp
   pure resp
 
+{- | Await till transaction status change to something from `Unknown`.
+ Uses `chain-index` to query transaction by id.
+ Important notes:
+ * if transaction is not found in `chain-index` status considered to be `Unknown`
+ * if transaction is found but `transactionStatus` failed to make status - status considered to be `Unknown`
+ * uses `TxStatusPolling` to set `chain-index` polling interval and number of blocks to wait until timeout,
+   if timeout is reached, returns whatever status it was able to get during last check
+-}
 awaitTxStatusChange ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -186,27 +218,47 @@ awaitTxStatusChange ::
   Ledger.TxId ->
   Eff effs TxStatus
 awaitTxStatusChange contractEnv txId = do
-  -- The depth (in blocks) after which a transaction cannot be rolled back anymore (from Plutus.ChainIndex.TxIdState)
-  let chainConstant = 8
+  checkStartedBlock <- currentBlock contractEnv
+  printBpiLog @w Debug $ pretty $ "Awaiting status change for " ++ show txId
 
-  mTx <- queryChainIndexForTxState
-  case mTx of
-    Nothing -> pure Unknown
-    Just txState -> do
-      printLog @w Debug $ "Found transaction in node, waiting " ++ show chainConstant ++ " blocks for it to settle."
-      awaitNBlocks @w contractEnv (chainConstant + 1)
-      -- Check if the tx is still present in chain-index, in case of a rollback
-      -- we might not find it anymore.
-      ciTxState' <- queryChainIndexForTxState
-      case ciTxState' of
-        Nothing -> pure Unknown
-        Just _ -> do
-          blk <- fromInteger <$> currentBlock contractEnv
-          -- This will set the validity correctly based on the txState.
-          -- The tx will always be committed, as we wait for chainConstant + 1 blocks
-          let status = transactionStatus blk txState txId
-          pure $ fromRight Unknown status
+  let txStatusPolling = contractEnv.cePABConfig.pcTxStatusPolling
+      pollInterval = fromIntegral $ txStatusPolling.spInterval
+      pollTimeout = txStatusPolling.spBlocksTimeOut
+      cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
+
+  fix $ \loop -> do
+    currBlock <- currentBlock contractEnv
+    txStatus <- getStatus
+    case (txStatus, currBlock > cutOffBlock) of
+      (status, True) -> do
+        logDebug . mconcat . fmap mconcat $
+          [ ["Timeout for waiting `TxId ", show txId, "` status change reached"]
+          , [" - waited ", show pollTimeout, " blocks."]
+          , [" Current status: ", show status]
+          ]
+        return status
+      (Unknown, _) -> do
+        threadDelay @w pollInterval
+        loop
+      (status, _) -> return status
   where
+    getStatus = do
+      mTx <- queryChainIndexForTxState
+      case mTx of
+        Nothing -> do
+          logDebug $ "TxId " ++ show txId ++ " not found in index"
+          return Unknown
+        Just txState -> do
+          logDebug $ "TxId " ++ show txId ++ " found in index, checking status"
+          blk <- fromInteger <$> currentBlock contractEnv
+          case transactionStatus blk txState txId of
+            Left e -> do
+              logDebug $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
+              return Unknown
+            Right st -> do
+              logDebug $ "Status for TxId " ++ show txId ++ " is " ++ show st
+              return st
+
     queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
     queryChainIndexForTxState = do
       mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
@@ -215,6 +267,8 @@ awaitTxStatusChange contractEnv txId = do
           blk <- fromInteger <$> currentBlock contractEnv
           pure . Just $ fromTx blk tx
         Nothing -> pure Nothing
+
+    logDebug = printBpiLog @w Debug . pretty
 
 -- | This will FULLY balance a transaction
 balanceTx ::
@@ -273,11 +327,14 @@ writeBalancedTx contractEnv cardanoTx = do
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
       else
-        lift . printLog @w Warn . Text.unpack . Text.unlines $
+        lift . printBpiLog @w Warn . PP.vsep $
           [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-          , "Tx file: " <> Files.txFilePath pabConf "raw" (Tx.txId tx)
-          , "Signatories (pkh): " <> Text.unwords (map pkhToText requiredSigners)
+          , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx))
+          , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
           ]
+
+    when (pabConf.pcCollectStats && signable) $
+      collectBudgetStats (Tx.txId tx) pabConf
 
     when (not pabConf.pcDryRun && signable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx
@@ -288,9 +345,6 @@ writeBalancedTx contractEnv cardanoTx = do
         signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
     mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" cardanoTxId)
     when signable $ mvFiles signedSrcPath signedDstPath
-
-    when contractEnv.cePABConfig.pcCollectStats $
-      collectBudgetStats cardanoTxId signedDstPath
 
     pure cardanoApiTx
   where
@@ -304,10 +358,17 @@ writeBalancedTx contractEnv cardanoTx = do
             , cmdOutParser = const ()
             }
 
-    collectBudgetStats txId txPath = do
-      let path = Text.unpack txPath
-      b <- firstEitherT (Text.pack . show) $ newEitherT $ estimateBudget @w (Signed path)
-      void $ newEitherT (Right <$> saveBudget @w txId b)
+    collectBudgetStats txId pabConf = do
+      let path = Text.unpack (Files.txFilePath pabConf "signed" txId)
+      txBudget <-
+        firstEitherT toBudgetSaveError $
+          newEitherT $ estimateBudget @w (Signed path)
+      void $ newEitherT (Right <$> saveBudget @w txId txBudget)
+
+    toBudgetSaveError =
+      Text.pack
+        . ("Failed to save Tx budgets statistics: " ++)
+        . show
 
 pkhToText :: Ledger.PubKey -> Text
 pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
@@ -329,25 +390,25 @@ awaitSlot contractEnv s@(Slot n) = do
       | n < tip'.slot -> pure $ Slot tip'.slot
     _ -> awaitSlot contractEnv s
 
--- | Wait for n Blocks.
-awaitNBlocks ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  ContractEnvironment w ->
-  Integer ->
-  Eff effs ()
-awaitNBlocks contractEnv n = do
-  current <- currentBlock contractEnv
-  go current
-  where
-    go :: Integer -> Eff effs ()
-    go start = do
-      threadDelay @w (fromIntegral contractEnv.cePABConfig.pcTipPollingInterval)
-      tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
-      case tip of
-        Right tip'
-          | start + n <= tip'.block -> pure ()
-        _ -> go start
+-- -- | Wait for n Blocks.
+-- awaitNBlocks ::
+--   forall (w :: Type) (effs :: [Type -> Type]).
+--   Member (PABEffect w) effs =>
+--   ContractEnvironment w ->
+--   Integer ->
+--   Eff effs ()
+-- awaitNBlocks contractEnv n = do
+--   current <- currentBlock contractEnv
+--   go current
+--   where
+--     go :: Integer -> Eff effs ()
+--     go start = do
+--       threadDelay @w (fromIntegral contractEnv.cePABConfig.pcTipPollingInterval)
+--       tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
+--       case tip of
+--         Right tip'
+--           | start + n <= tip'.block -> pure ()
+--         _ -> go start
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
  are applying here as well.
@@ -358,10 +419,12 @@ awaitTime ::
   ContractEnvironment w ->
   POSIXTime ->
   Eff effs POSIXTime
-awaitTime ce = fmap fromSlot . awaitSlot ce . toSlot
+awaitTime ce pTime = do
+  slotFromTime <- rightOrErr <$> posixTimeToSlot @w pTime
+  slot' <- awaitSlot ce slotFromTime
+  rightOrErr <$> slotToPOSIXTime @w slot'
   where
-    toSlot = posixTimeToEnclosingSlot ce.cePABConfig.pcSlotConfig
-    fromSlot = slotToEndPOSIXTime ce.cePABConfig.pcSlotConfig
+    rightOrErr = either (error . show) id
 
 currentSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -385,4 +448,6 @@ currentTime ::
   ContractEnvironment w ->
   Eff effs POSIXTime
 currentTime contractEnv =
-  slotToEndPOSIXTime contractEnv.cePABConfig.pcSlotConfig <$> currentSlot @w contractEnv
+  currentSlot @w contractEnv
+    >>= slotToPOSIXTime @w
+    >>= either (error . show) return

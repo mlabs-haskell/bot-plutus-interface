@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Balance (
   balanceTxStep,
@@ -7,7 +8,12 @@ module BotPlutusInterface.Balance (
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (PABEffect, createDirectoryIfMissingCLI, printLog)
+import BotPlutusInterface.Effects (
+  PABEffect,
+  createDirectoryIfMissingCLI,
+  posixTimeRangeToContainedSlotRange,
+  printBpiLog,
+ )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
@@ -20,7 +26,7 @@ import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
 import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List (partition, (\\))
+import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -42,7 +48,6 @@ import Ledger.Interval (
  )
 import Ledger.Scripts (Datum, DatumHash)
 import Ledger.Time (POSIXTimeRange)
-import Ledger.TimeSlot (posixTimeRangeToContainedSlotRange)
 import Ledger.Tx (
   Tx (..),
   TxIn (..),
@@ -60,6 +65,8 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
+import Data.Bifunctor (bimap)
+import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
@@ -79,14 +86,14 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Set.toList (unBalancedTxRequiredSignatories unbalancedTx)
+
       tx <-
-        hoistEither $
-          addValidRange
-            pabConf
+        newEitherT $
+          addValidRange @w
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
-      lift $ printLog @w Debug $ show utxoIndex
+      lift $ printBpiLog @w Debug $ viaShow utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack pabConf.pcTxFileDir)
@@ -130,7 +137,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
-      lift $ printLog @w Debug $ "Min utxos: " ++ show minUtxos
+      lift $ printBpiLog @w Debug $ "Min utxos:" <+> pretty minUtxos
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
@@ -142,7 +149,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
-      lift $ printLog @w Debug $ "Fees: " ++ show fees
+      lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
       balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
@@ -152,9 +159,9 @@ balanceTxIO pabConf ownPkh unbalancedTx =
         else loop utxoIndex privKeys minUtxos balancedTx
 
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
-getExecutionUnitPrices pabConf = fromMaybe (ExecutionUnitPrices 0 0) $ do
-  pparams <- pabConf.pcProtocolParams
-  protocolParamPrices pparams
+getExecutionUnitPrices pabConf =
+  fromMaybe (ExecutionUnitPrices 0 0) $
+    pabConf.pcProtocolParams >>= protocolParamPrices
 
 getBudgetPrice :: ExecutionUnitPrices -> Ledger.ExBudget -> Integer
 getBudgetPrice (ExecutionUnitPrices cpuPrice memPrice) (Ledger.ExBudget cpuUsed memUsed) =
@@ -282,10 +289,13 @@ balanceTxIns utxos tx = do
  (suboptimally we just pick a random utxo from the tx inputs)
 -}
 addTxCollaterals :: Map TxOutRef TxOut -> Tx -> Either Text Tx
-addTxCollaterals utxos tx = do
-  let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
-  txIn <- findPubKeyTxIn txIns
-  pure $ tx {txCollateral = Set.singleton txIn}
+addTxCollaterals utxos tx =
+  if not $ usesScripts tx
+    then Right tx
+    else do
+      let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
+      txIn <- findPubKeyTxIn txIns
+      pure $ tx {txCollateral = Set.singleton txIn}
   where
     findPubKeyTxIn = \case
       x@(TxIn _ (Just ConsumePublicKeyAddress)) : _ -> Right x
@@ -293,22 +303,27 @@ addTxCollaterals utxos tx = do
       _ : xs -> findPubKeyTxIn xs
       _ -> Left "There are no utxos to be used as collateral"
     filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
+    usesScripts Tx {txInputs, txMintScripts} =
+      not (null txMintScripts)
+        || any
+          (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
+          (Set.toList txInputs)
 
 -- | Ensures all non ada change goes back to user
 handleNonAdaChange :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
 handleNonAdaChange changeAddr utxos tx =
   let nonAdaChange = getNonAdaChange utxos tx
+      newOutput =
+        TxOut
+          { txOutAddress = changeAddr
+          , txOutValue = nonAdaChange
+          , txOutDatumHash = Nothing
+          }
       outputs =
-        case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
-          ([], txOuts) ->
-            TxOut
-              { txOutAddress = changeAddr
-              , txOutValue = nonAdaChange
-              , txOutDatumHash = Nothing
-              } :
-            txOuts
-          (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
-            txOut {txOutValue = v <> nonAdaChange} : (txOuts <> txOuts')
+        modifyFirst
+          ((==) changeAddr . Tx.txOutAddress)
+          (Just . maybe newOutput (addValueToTxOut nonAdaChange))
+          (txOutputs tx)
    in if isValueNat nonAdaChange
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
@@ -319,18 +334,40 @@ hasChangeUTxO changeAddr tx =
 
 -- | Adds ada change to a transaction, assuming there is already an output going to ownPkh. Otherwise, this is identity
 addAdaChange :: Address -> Integer -> Tx -> Tx
+addAdaChange _ 0 tx = tx
 addAdaChange changeAddr change tx =
   tx
     { txOutputs =
-        case partition ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx of
-          (txOut@TxOut {txOutValue = v} : txOuts, txOuts') ->
-            txOut {txOutValue = v <> Ada.lovelaceValueOf change} : (txOuts <> txOuts')
-          _ -> txOutputs tx
+        modifyFirst
+          ((==) changeAddr . Tx.txOutAddress)
+          (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
+          (txOutputs tx)
     }
+
+consJust :: forall (a :: Type). Maybe a -> [a] -> [a]
+consJust (Just x) = (x :)
+consJust _ = id
+
+{- | Modifies the first element matching a predicate, or, if none found, call the modifier with Nothing
+ Calling this function ensures the modifier will always be run once
+-}
+modifyFirst ::
+  forall (a :: Type).
+  -- | Predicate for value to update
+  (a -> Bool) ->
+  -- | Modifier, input Maybe representing existing value (or Nothing if missing), output value representing new value (or Nothing to remove)
+  (Maybe a -> Maybe a) ->
+  [a] ->
+  [a]
+modifyFirst _ m [] = m Nothing `consJust` []
+modifyFirst p m (x : xs) = if p x then m (Just x) `consJust` xs else x : modifyFirst p m xs
+
+addValueToTxOut :: Value -> TxOut -> TxOut
+addValueToTxOut val txOut = txOut {txOutValue = txOutValue txOut <> val}
 
 -- | Adds a 1 lovelace output to a transaction
 addOutput :: Address -> Tx -> Tx
-addOutput changeAddr tx = tx {txOutputs = changeTxOut : txOutputs tx}
+addOutput changeAddr tx = tx {txOutputs = txOutputs tx ++ [changeTxOut]}
   where
     changeTxOut =
       TxOut
@@ -353,11 +390,20 @@ addSignatories ownPkh privKeys pkhs tx =
     tx
     (ownPkh : pkhs)
 
-addValidRange :: PABConfig -> POSIXTimeRange -> Tx -> Either Text Tx
-addValidRange pabConf timeRange tx =
+addValidRange ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  POSIXTimeRange ->
+  Tx ->
+  Eff effs (Either Text Tx)
+addValidRange timeRange tx =
   if validateRange timeRange
-    then Right $ tx {txValidRange = posixTimeRangeToContainedSlotRange pabConf.pcSlotConfig timeRange}
-    else Left "Invalid validity interval."
+    then
+      bimap (Text.pack . show) (setRange tx)
+        <$> posixTimeRangeToContainedSlotRange @w timeRange
+    else pure $ Left "Invalid validity interval."
+  where
+    setRange tx' range = tx' {txValidRange = range}
 
 validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
 validateRange (Interval (LowerBound PosInf _) _) = False

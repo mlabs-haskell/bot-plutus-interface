@@ -7,6 +7,7 @@ module BotPlutusInterface.Types (
   CLILocation (..),
   AppState (AppState),
   LogLevel (..),
+  LogContext (..),
   ContractEnvironment (..),
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
@@ -21,6 +22,8 @@ module BotPlutusInterface.Types (
   SpendBudgets,
   MintBudgets,
   ContractStats (..),
+  TxStatusPolling (..),
+  LogsList (..),
   addBudget,
 ) where
 
@@ -38,13 +41,12 @@ import Data.Text (Text)
 import GHC.Generics (Generic)
 import Ledger (
   ExBudget,
+  MintingPolicyHash,
   PubKeyHash,
   StakePubKeyHash,
   TxId,
   TxOutRef,
  )
-import Ledger.Scripts (MintingPolicyHash)
-import Ledger.TimeSlot (SlotConfig)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -53,6 +55,8 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
+import Prettyprinter (Pretty (pretty))
+import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
@@ -63,8 +67,6 @@ data PABConfig = PABConfig
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
   , pcProtocolParams :: !(Maybe ProtocolParameters)
-  , -- | Slot configuration of the network, the default value can be used for the mainnet
-    pcSlotConfig :: !SlotConfig
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -83,7 +85,26 @@ data PABConfig = PABConfig
   , pcTipPollingInterval :: !Natural
   , pcPort :: !Port
   , pcEnableTxEndpoint :: !Bool
-  , pcCollectStats :: !Bool
+  , -- | Collect contract execution stats inside ContractEnvironment
+    pcCollectStats :: !Bool
+  , -- | Collect logs inside ContractEnvironment, doesn't depend on log level
+    pcCollectLogs :: !Bool
+  , pcBudgetMultiplier :: !Rational
+  , pcTxStatusPolling :: !TxStatusPolling
+  }
+  deriving stock (Show, Eq)
+
+{- | Settings for `Contract.awaitTxStatusChange` implementation.
+ See also `BotPlutusInterface.Contract.awaitTxStatusChange`
+-}
+data TxStatusPolling = TxStatusPolling
+  { -- | Interval between `chain-index` queries, microseconds
+    spInterval :: !Natural
+  , -- | Number of blocks to wait until timeout.
+    --   Timeout is required because transaction can be silently discarded from node mempool
+    --   and never appear in `chain-index` even if it was submitted successfully to the node
+    --   (chain-sync protocol won't help here also)
+    spBlocksTimeOut :: !Natural
   }
   deriving stock (Show, Eq)
 
@@ -144,11 +165,22 @@ newtype ContractStats = ContractStats
 instance Show (TVar ContractStats) where
   show _ = "<ContractStats>"
 
+-- | List of string logs.
+newtype LogsList = LogsList
+  { getLogsList :: [(LogContext, LogLevel, PP.Doc ())]
+  }
+  deriving stock (Show)
+  deriving newtype (Semigroup, Monoid)
+
+instance Show (TVar LogsList) where
+  show _ = "<ContractLogs>"
+
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
   , ceContractStats :: TVar ContractStats
+  , ceContractLogs :: TVar LogsList
   }
   deriving stock (Show)
 
@@ -184,7 +216,23 @@ data CLILocation = Local | Remote Text
   deriving stock (Show, Eq)
 
 data LogLevel = Error | Warn | Notice | Info | Debug
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Bounded, Enum, Eq, Ord, Show)
+
+instance Pretty LogLevel where
+  pretty = \case
+    Debug -> "[DEBUG]"
+    Info -> "[INFO]"
+    Notice -> "[NOTICE]"
+    Warn -> "[WARNING]"
+    Error -> "[ERROR]"
+
+data LogContext = BpiLog | ContractLog
+  deriving stock (Bounded, Enum, Eq, Ord, Show)
+
+instance Pretty LogContext where
+  pretty = \case
+    BpiLog -> "[BPI]"
+    ContractLog -> "[CONTRACT]"
 
 instance Default PABConfig where
   def =
@@ -193,7 +241,6 @@ instance Default PABConfig where
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
       , pcProtocolParams = Nothing
-      , pcSlotConfig = def
       , pcTipPollingInterval = 10_000_000
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"
@@ -207,6 +254,9 @@ instance Default PABConfig where
       , pcPort = 9080
       , pcEnableTxEndpoint = False
       , pcCollectStats = False
+      , pcCollectLogs = False
+      , pcBudgetMultiplier = 1
+      , pcTxStatusPolling = TxStatusPolling 1_000_000 8
       }
 
 data RawTx = RawTx
