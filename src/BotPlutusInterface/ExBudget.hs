@@ -53,7 +53,7 @@ estimateBudget bapConf txFile = do
   return txBudget
 
 -- | Deserialize transaction body from ".signed" file
-deserialiseSigned :: FilePath -> IO (Either BudgetEstimationError (CAPI.Tx CAPI.AlonzoEra))
+deserialiseSigned :: FilePath -> IO (Either BudgetEstimationError (CAPI.Tx CAPI.BabbageEra))
 deserialiseSigned txFile = do
   envlp <- readEnvelope
   return $ envlp >>= parseTx
@@ -64,10 +64,10 @@ deserialiseSigned txFile = do
 
     parseTx =
       left toBudgetError
-        . CAPI.deserialiseFromTextEnvelope CAPI.AsAlonzoTx
+        . CAPI.deserialiseFromTextEnvelope (CAPI.AsTx CAPI.AsBabbageEra)
 
 -- | Deserialize transaction body from ".raw" file
-deserialiseRaw :: FilePath -> IO (Either BudgetEstimationError (CAPI.TxBody CAPI.AlonzoEra))
+deserialiseRaw :: FilePath -> IO (Either BudgetEstimationError (CAPI.TxBody CAPI.BabbageEra))
 deserialiseRaw txFile = do
   envlp <- readEnvelope
   return $ envlp >>= parseTx
@@ -78,7 +78,7 @@ deserialiseRaw txFile = do
 
     parseTx =
       left toBudgetError
-        . CAPI.deserialiseFromTextEnvelope (CAPI.AsTxBody CAPI.AsAlonzoEra)
+        . CAPI.deserialiseFromTextEnvelope (CAPI.AsTxBody CAPI.AsBabbageEra)
 
 -- | Shorthand alias
 type ExUnitsMap =
@@ -87,7 +87,7 @@ type ExUnitsMap =
 -- | Calculate execution units using `Cardano.Api``
 getExUnits ::
   NodeInfo ->
-  CAPI.TxBody CAPI.AlonzoEra ->
+  CAPI.TxBody CAPI.BabbageEra ->
   IO (Either BudgetEstimationError ExUnitsMap)
 getExUnits nodeInf txBody = do
   sysStart <- QueryNode.querySystemStart nodeInf
@@ -96,7 +96,7 @@ getExUnits nodeInf txBody = do
   utxo <- QueryNode.queryOutsByInputs nodeInf capiIns
   return $
     flattenEvalResult $
-      CAPI.evaluateTransactionExecutionUnits CAPI.AlonzoEraInCardanoMode
+      CAPI.evaluateTransactionExecutionUnits CAPI.BabbageEraInCardanoMode
         <$> sysStart
         <*> eraHist
         <*> pparams
@@ -117,7 +117,7 @@ getExUnits nodeInf txBody = do
 -}
 mkBudgetMaps ::
   ExUnitsMap ->
-  CAPI.TxBody CAPI.AlonzoEra ->
+  CAPI.TxBody CAPI.BabbageEra ->
   Either BudgetEstimationError (SpendBudgets, MintBudgets)
 mkBudgetMaps exUnitsMap txBody = do
   let (CAPI.TxBody txbc) = txBody

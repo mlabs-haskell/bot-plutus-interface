@@ -50,7 +50,7 @@ main = do
   let pabConf =
         PABConfig
           { pcCliLocation = Local
-          , pcNetwork = Testnet (NetworkMagic 1097911063)
+          , pcNetwork = Testnet (NetworkMagic 9)
           , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
           , pcPort = 9080
           , pcProtocolParams = protocolParams

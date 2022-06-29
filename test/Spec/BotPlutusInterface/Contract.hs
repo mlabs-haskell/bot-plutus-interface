@@ -124,7 +124,7 @@ sendAda = do
       ,
         ( 1
         , [text|
-          cardano-cli transaction calculate-min-required-utxo --alonzo-era
+          cardano-cli transaction calculate-min-required-utxo --babbage-era
           --tx-out ${addr2}+1000
           --protocol-params-file ./protocol.json
           |]
@@ -132,7 +132,7 @@ sendAda = do
       ,
         ( 2
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
@@ -157,7 +157,7 @@ sendAda = do
 
         ( 17
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+50
@@ -197,7 +197,7 @@ sendAdaNoChange = do
       [
         ( 8
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
@@ -238,7 +238,7 @@ sendAdaStaking = do
       ,
         ( 1
         , [text|
-          cardano-cli transaction calculate-min-required-utxo --alonzo-era
+          cardano-cli transaction calculate-min-required-utxo --babbage-era
           --tx-out ${addr2Staking}+1000
           --protocol-params-file ./protocol.json
           |]
@@ -246,7 +246,7 @@ sendAdaStaking = do
       ,
         ( 2
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2Staking}+1000
@@ -270,7 +270,7 @@ sendAdaStaking = do
       ,
         ( 9
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2Staking}+1000
@@ -323,7 +323,7 @@ multisigSupport = do
       ,
         ( 9
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
@@ -374,7 +374,7 @@ withoutSigning = do
       [
         ( 9
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
@@ -419,7 +419,7 @@ sendTokens = do
       [
         ( 13
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId1}#0
           --tx-in-collateral ${inTxId2}#1
           --tx-out ${addr1}+50 + 95 abcd1234.74657374546F6B656E
@@ -463,7 +463,7 @@ sendTokensWithoutName = do
       [
         ( 13
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId1}#0
           --tx-in-collateral ${inTxId2}#1
           --tx-out ${addr1}+50 + 95 abcd1234
@@ -514,7 +514,7 @@ mintTokens = do
       [
         ( 3
         , [text| 
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
@@ -530,7 +530,7 @@ mintTokens = do
       ,
         ( 17
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+998700
@@ -608,7 +608,7 @@ spendToValidator = do
       [
         ( 2
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${valAddr'}+500
@@ -621,7 +621,7 @@ spendToValidator = do
       ,
         ( 17
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr1}+200
@@ -699,7 +699,7 @@ redeemFromValidator = do
       [
         ( 3
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
@@ -714,7 +714,7 @@ redeemFromValidator = do
       ,
         ( 17
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
@@ -789,7 +789,7 @@ withValidRange = do
       [
         ( 2
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000
@@ -803,7 +803,7 @@ withValidRange = do
       ,
         ( 9
         , [text|
-          cardano-cli transaction build-raw --alonzo-era
+          cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${inTxId}#0
           --tx-out ${addr2}+1000

@@ -138,7 +138,7 @@ calculateMinUtxo pabConf datums txOut =
         { cmdName = "cardano-cli"
         , cmdArgs =
             mconcat
-              [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
+              [ ["transaction", "calculate-min-required-utxo", "--babbage-era"]
               , txOutOpts pabConf datums [txOut]
               , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
               ]
@@ -199,7 +199,7 @@ buildTx pabConf privKeys txBudget tx = do
         (Map.keys (Ledger.txSignatures tx))
     opts ins mints =
       mconcat
-        [ ["transaction", "build-raw", "--alonzo-era"]
+        [ ["transaction", "build-raw", "--babbage-era"]
         , ins
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)

@@ -267,8 +267,8 @@ writeBalancedTx contractEnv cardanoTx = do
     -- TODO: This whole part is hacky and we should remove it.
     let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx)
     -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
-    alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsAlonzoEra) path
-    let cardanoApiTx = Tx.SomeTx (Tx alonzoBody []) AlonzoEraInCardanoMode
+    alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsBabbageEra) path
+    let cardanoApiTx = Tx.SomeTx (Tx alonzoBody []) BabbageEraInCardanoMode
 
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners

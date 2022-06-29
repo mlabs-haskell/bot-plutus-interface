@@ -6,7 +6,7 @@ module BotPlutusInterface.UtxoParser (
   tokenNameParser,
 ) where
 
-import Control.Applicative (many, optional)
+import Control.Applicative (many, optional, (<|>))
 import Control.Monad (mzero, void)
 import Data.Aeson.Extras (tryDecode)
 import Data.Attoparsec.ByteString.Char8 (isSpace)
@@ -114,7 +114,7 @@ datumHashParser :: Parser DatumHash
 datumHashParser = do
   void "TxOutDatumHash"
   skipSpace
-  void "ScriptDataInAlonzoEra"
+  void $ "ScriptDataInAlonzoEra" <|> "ScriptDataInBabbageEra"
   skipSpace
   char '\"' *> (DatumHash <$> decodeHash (takeWhile (/= '\"'))) <* char '\"'
 
