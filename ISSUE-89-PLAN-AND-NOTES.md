@@ -13,7 +13,7 @@ Places that seems like will need to filter collateral out:
   - [ ] [ChainIndex.hs - 3](./src/BotPlutusInterface/ChainIndex.hs#L47)
   - [ ] [ChainIndex.hs - 4](./src/BotPlutusInterface/ChainIndex.hs#L52)
   - [ ] [ChainIndex.hs - 5](./src/BotPlutusInterface/ChainIndex.hs#L60)
-  - [ ] [CardanoCLI.hs](./src/BotPlutusInterface/CardanoCLI.hs#L121)
+  - [ ] [CardanoCLI.hs](./src/BotPlutusInterface/CardanoCLI.hs#L121) - note from @mikekeke: iirc this call is used to get utxos for balancing and according to `Initial plan`, we still can use collateral for balancing if there is no choice left and try to create new collateral utxo after, so additional logic will be needed to handle that if still think this logic is feasible
 * test
   - [ ] [MockContract.hs](./test/Spec/MockContract.hs#L567)
 
