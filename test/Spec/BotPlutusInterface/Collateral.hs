@@ -31,7 +31,6 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase)
 import Prelude
 import qualified Data.Set as Set
-import Data.Bool (bool)
 import Cardano.Api (TxBodyContent(txIns))
 import qualified Ledger.Tx.CardanoAPI as C
 import qualified Cardano.Api as C
@@ -49,12 +48,11 @@ testTxUsesCollateralCorrectly :: Assertion
 testTxUsesCollateralCorrectly = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing
-      collateralOutRef = theCollateralUtxo
       collateralTxOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing
 
       -- lets test both orders, strzeżonego pan Bóg strzeże
-      utxos1 = [(collateralOutRef, collateralTxOut), (txOutRef, txOut)]
-      utxos2 = [(txOutRef, txOut), (collateralOutRef, collateralTxOut)]
+      utxos1 = [(theCollateralUtxo, collateralTxOut), (txOutRef, txOut)]
+      utxos2 = [(txOutRef, txOut), (theCollateralUtxo, collateralTxOut)]
       initState _utxos =
         def & utxos .~ _utxos
           & contractEnv .~ contractEnv'
@@ -67,8 +65,8 @@ testTxUsesCollateralCorrectly = do
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         tx <- submitTx constraints
 
-        let collateralInInputs = Set.member collateralOutRef $ getCardanoTxInputs tx
-            expectedCollaterals = Just (Set.fromList [collateralOutRef])
+        let collateralInInputs = Set.member theCollateralUtxo $ getCardanoTxInputs tx
+            expectedCollaterals = Just (Set.fromList [theCollateralUtxo])
             collateralsAreUnexpected = expectedCollaterals /= getCardanoTxCollateralInputs tx
 
         -- check that tx doesn't use the collateral in inputs and does in collaterals

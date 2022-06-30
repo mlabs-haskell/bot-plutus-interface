@@ -56,6 +56,7 @@ import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
   BudgetEstimationError,
+  Collateral (Collateral),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   LogContext,
@@ -268,7 +269,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
       , ceContractLogs = unsafePerformIO $ newTVarIO mempty
-      , ceCollateral = undefined -- FIXME:issue#89
+      , ceCollateral = Collateral $ unsafePerformIO $ newTVarIO (Just theCollateralUtxo)
       }
 
 instance Monoid w => Default (ContractState w) where
