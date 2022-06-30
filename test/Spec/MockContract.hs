@@ -46,6 +46,7 @@ module Spec.MockContract (
   utxos,
   mockBudget,
   nonExistingTxId,
+  theCollateralUtxo,
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
@@ -189,6 +190,9 @@ addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Not
 nonExistingTxId :: TxId
 nonExistingTxId = TxId "ff"
 
+theCollateralUtxo :: TxOutRef
+theCollateralUtxo = TxOutRef "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" 0
+
 skeyToPubKey :: SigningKey PaymentKey -> PubKey
 skeyToPubKey =
   Ledger.toPublicKey
@@ -231,6 +235,7 @@ data MockContractState w = MockContractState
   , _contractEnv :: ContractEnvironment w
   , _utxos :: [(TxOutRef, TxOut)]
   , _tip :: Tip
+  , _collateralUtxo :: TxOutRef
   }
   deriving stock (Show)
 
@@ -252,6 +257,7 @@ instance Monoid w => Default (MockContractState w) where
       , _contractEnv = def
       , _utxos = []
       , _tip = Tip 1000 (BlockId "ab12") 4
+      , _collateralUtxo = theCollateralUtxo
       }
 
 instance Monoid w => Default (ContractEnvironment w) where

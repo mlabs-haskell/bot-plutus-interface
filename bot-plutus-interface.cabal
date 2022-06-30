@@ -179,6 +179,7 @@ test-suite bot-plutus-interface-test
     Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.ContractStats
+    Spec.BotPlutusInterface.Collateral
     Spec.BotPlutusInterface.Server
     Spec.BotPlutusInterface.TxStatusChange
     Spec.BotPlutusInterface.UtxoParser
