@@ -1,0 +1,29 @@
+GET http://localhost:9083/tip
+
+###
+
+POST http://localhost:9083/utxo-at-address HTTP/1.1
+content-type: application/json
+
+{
+    "credential": {
+        "tag": "PubKeyCredential",
+        "contents": {
+            "getPubKeyHash": "f433ae2392c0491a9b49acd9ca94033dafba13f8bcd3df5aa840b738"
+        }
+    }
+}
+
+###
+
+POST http://localhost:9083/utxo-at-address HTTP/1.1
+content-type: application/json
+
+{
+    "credential": {
+        "tag": "PubKeyCredential",
+        "contents": {
+            "getPubKeyHash": "12f2ef362309bd82ab1c51eb3aee1a844f61e5b0b1698cf272c3c761"
+        }
+    }
+}
