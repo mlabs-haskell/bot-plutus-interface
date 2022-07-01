@@ -1,18 +1,22 @@
-
 module Spec.BotPlutusInterface.Collateral where
 
 import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
   PABConfig (pcOwnPubKeyHash),
  )
+import Cardano.Api (TxBodyContent (txIns))
+import Cardano.Api qualified as C
 import Control.Lens ((&), (.~))
+import Control.Monad (when)
 import Data.Default (def)
+import Data.Set qualified as Set
 import Data.Text (Text, pack)
 import Data.Text qualified as Text
-import Ledger (PaymentPubKeyHash (unPaymentPubKeyHash), Tx (txInputs, txCollateral), txInRef)
+import Ledger (PaymentPubKeyHash (unPaymentPubKeyHash), Tx (txCollateral, txInputs), txInRef)
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
-import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef), CardanoTx)
+import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
+import Ledger.Tx.CardanoAPI qualified as C
 import Plutus.Contract (
   Contract (..),
   Endpoint,
@@ -25,16 +29,12 @@ import Spec.MockContract (
   paymentPkh2,
   pkhAddr1,
   runContractPure,
-  utxos, theCollateralUtxo
+  theCollateralUtxo,
+  utxos,
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase)
 import Prelude
-import qualified Data.Set as Set
-import Cardano.Api (TxBodyContent(txIns))
-import qualified Ledger.Tx.CardanoAPI as C
-import qualified Cardano.Api as C
-import Control.Monad (when)
 
 tests :: TestTree
 tests =
@@ -71,30 +71,32 @@ testTxUsesCollateralCorrectly = do
 
         -- check that tx doesn't use the collateral in inputs and does in collaterals
         when collateralInInputs $ throwError "Tx spends utxo chosen for collateral."
-        when collateralsAreUnexpected $ throwError @Text (
-            "Unexpected collaterals. Expected: " <> pack (show expectedCollaterals) 
-            <> ". Actual: " <> pack (show (getCardanoTxCollateralInputs tx))
-          )
+        when collateralsAreUnexpected $
+          throwError @Text
+            ( "Unexpected collaterals. Expected: " <> pack (show expectedCollaterals)
+                <> ". Actual: "
+                <> pack (show (getCardanoTxCollateralInputs tx))
+            )
 
   -- run the same contract with two orders of starting utxos
   let (res1, _) = runContractPure contract (initState utxos1)
       (res2, _) = runContractPure contract (initState utxos2)
-    
+
   -- if both fail show only one error message
   case res1 >> res2 of
     Left err -> assertFailure $ Text.unpack err
     Right _ -> pure ()
 
 getCardanoTxInputs :: CardanoTx -> Set.Set TxOutRef
-getCardanoTxInputs = \case 
-  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txIns=txIns}) _) _)) ->
+getCardanoTxInputs = \case
+  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txIns = txIns}) _) _)) ->
     Set.fromList $ fmap (C.fromCardanoTxIn . fst) txIns
   (Right tx) -> Set.map txInRef $ txInputs tx
 
 getCardanoTxCollateralInputs :: CardanoTx -> Maybe (Set.Set TxOutRef)
 getCardanoTxCollateralInputs = \case
-  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txInsCollateral=C.TxInsCollateral _ txIns}) _) _)) ->
+  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txInsCollateral = C.TxInsCollateral _ txIns}) _) _)) ->
     Just $ Set.fromList $ fmap C.fromCardanoTxIn txIns
-  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txInsCollateral=C.TxInsCollateralNone}) _) _)) ->
+  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txInsCollateral = C.TxInsCollateralNone}) _) _)) ->
     Nothing
   (Right tx) -> Just $ Set.map txInRef $ txCollateral tx
