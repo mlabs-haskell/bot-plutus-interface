@@ -23,15 +23,12 @@ source-repository head
 common common-lang
   ghc-options:
     -Wall -Wcompat -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wredundant-constraints 
-    -- -Werror
-    -fobject-code -fno-ignore-interface-pragmas
-    -fno-omit-interface-pragmas -Wunused-packages
-    -fplugin-opt PlutusTx.Plugin:defer-errors
-
-  build-depends:
-    , base                     ^>=4.14
-
+    -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
+    -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+    -Wunused-packages -fplugin-opt PlutusTx.Plugin:defer-errors
+  -- -Werror
+  
+  build-depends:      base ^>=4.14
   default-extensions:
     NoImplicitPrelude
     BangPatterns
@@ -59,13 +56,13 @@ common common-lang
     OverloadedStrings
     ScopedTypeVariables
     StandaloneDeriving
+    TemplateHaskell
     TupleSections
     TypeApplications
+    TypeFamilies
     TypeOperators
     TypeSynonymInstances
     UndecidableInstances
-    TemplateHaskell
-    TypeFamilies
 
   default-language:   Haskell2010
 
@@ -74,45 +71,38 @@ common common-lang
 
 library
   import:          common-lang
-  exposed-modules: 
+  exposed-modules:
     SomeDebugContract
-    TimeDebugContract
     TestRun
+    TimeDebugContract
     Tools
 
   build-depends:
-      plutus-ledger
+    , aeson
+    , bot-plutus-interface
+    , cardano-api
     , containers
+    , data-default
+    , directory
+    , filepath
     , plutus-contract
+    , plutus-ledger
     , plutus-ledger-api
     , plutus-ledger-constraints
     , plutus-pab
     , plutus-tx
-    , text
     , plutus-tx-plugin
-    , aeson
-    , bot-plutus-interface
-    , cardano-api
-    , data-default
-    , servant-client
-    , filepath
-    , text
-    , directory
-    , plutus-ledger
-    , uuid
-    , stm
-    , plutus-pab
-    , plutus-contract
-    , random
     , pretty-show
+    , random
+    , servant-client
+    , stm
+    , text
+    , uuid
 
   hs-source-dirs:  src
 
 executable debug-run
   import:         common-lang
-  build-depends:
-    debug
-
-
+  build-depends:  debug
   main-is:        Main.hs
   hs-source-dirs: app

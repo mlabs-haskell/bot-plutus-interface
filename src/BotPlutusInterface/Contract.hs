@@ -287,9 +287,9 @@ balanceTx contractEnv unbalancedTx = do
   let pabConf = contractEnv.cePABConfig
 
   {- FIXME:issue#89: not really good design probably:
-    `balanceTxIO` used for both: balancing collateral UTxO transactions 
+    `balanceTxIO` used for both: balancing collateral UTxO transactions
     and balancing user's transactions. This leads to some not to elegant logic
-    in `balanceTxIO` where we have to detect what exactly we balancing 
+    in `balanceTxIO` where we have to detect what exactly we balancing
     and alternate behavior based on that.
     Maybe it could be done better, maybe with separate balancing functions
     for collateral and user's transactions.
@@ -483,8 +483,9 @@ handleCollateral cEnv = do
               printBpiLog @w Notice $ "Collateral UTxO created and set to contract env: " <> pretty c
               pure $ Right ()
 
--- | Create collateral UTxO by submitting Tx. 
---  Then try to find created UTxO at own PKH address.
+{- | Create collateral UTxO by submitting Tx.
+  Then try to find created UTxO at own PKH address.
+-}
 makeCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>

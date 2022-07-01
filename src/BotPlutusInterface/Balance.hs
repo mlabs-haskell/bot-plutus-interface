@@ -112,7 +112,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       collateralOut <- lift $ getProtectedCollateralOut pabConf unbalancedTx
 
-      {- FIXME:issue#89: I wish we don't need to do it at all. 
+      {- FIXME:issue#89: I wish we don't need to do it at all.
       See fixme-comment for `balanceTx`
       Sanity check.
       They can't be both Just or nothing.
