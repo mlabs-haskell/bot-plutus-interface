@@ -1,0 +1,7 @@
+cradle:
+  cabal:
+    - path: "./src"
+      component: "lib:debug"
+
+    - path: "./app"
+      component: "exe:debug-run"

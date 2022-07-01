@@ -1,0 +1,118 @@
+cabal-version:      3.0
+name:               debug
+version:            0.1.0.0
+synopsis:           NFT example
+description:        NFT example running on the fake pab
+homepage:           https://github.com/mlabs-haskell/bot-plutus-interface
+bug-reports:        https://github.com/mlabs-haskell/bot-plutus-interface
+license:
+license-file:
+author:             MLabs
+maintainer:         gergely@mlabs.city
+copyright:          TODO
+build-type:         Simple
+tested-with:        GHC ==8.10.4
+extra-source-files: README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/mlabs-haskell/bot-plutus-interface
+
+-- Common sections
+
+common common-lang
+  ghc-options:
+    -Wall -Wcompat -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wredundant-constraints 
+    -- -Werror
+    -fobject-code -fno-ignore-interface-pragmas
+    -fno-omit-interface-pragmas -Wunused-packages
+    -fplugin-opt PlutusTx.Plugin:defer-errors
+
+  build-depends:
+    , base                     ^>=4.14
+
+  default-extensions:
+    NoImplicitPrelude
+    BangPatterns
+    BinaryLiterals
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DuplicateRecordFields
+    EmptyCase
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    HexFloatLiterals
+    ImportQualifiedPost
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    NumericUnderscores
+    OverloadedStrings
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
+    TemplateHaskell
+    TypeFamilies
+
+  default-language:   Haskell2010
+
+-- Libraries
+
+
+library
+  import:          common-lang
+  exposed-modules: 
+    SomeDebugContract
+    TimeDebugContract
+    TestRun
+    Tools
+
+  build-depends:
+      plutus-ledger
+    , containers
+    , plutus-contract
+    , plutus-ledger-api
+    , plutus-ledger-constraints
+    , plutus-pab
+    , plutus-tx
+    , text
+    , plutus-tx-plugin
+    , aeson
+    , bot-plutus-interface
+    , cardano-api
+    , data-default
+    , servant-client
+    , filepath
+    , text
+    , directory
+    , plutus-ledger
+    , uuid
+    , stm
+    , plutus-pab
+    , plutus-contract
+    , random
+    , pretty-show
+
+  hs-source-dirs:  src
+
+executable debug-run
+  import:         common-lang
+  build-depends:
+    debug
+
+
+  main-is:        Main.hs
+  hs-source-dirs: app

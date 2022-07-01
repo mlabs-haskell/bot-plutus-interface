@@ -27,6 +27,7 @@ module BotPlutusInterface.Types (
   Collateral (..),
   addBudget,
   readCollateralUtxo,
+  collateralValue,
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
@@ -49,6 +50,7 @@ import Ledger (
   TxId,
   TxOutRef,
  )
+import Ledger qualified
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -57,6 +59,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
+import Plutus.V1.Ledger.Ada qualified as Ada
 import Prettyprinter (Pretty (pretty))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
@@ -97,6 +100,9 @@ data PABConfig = PABConfig
     pcCollateralSize :: !Natural
   }
   deriving stock (Show, Eq)
+
+collateralValue :: PABConfig -> Ledger.Value
+collateralValue = Ada.lovelaceValueOf . toInteger . pcCollateralSize
 
 {- | Settings for `Contract.awaitTxStatusChange` implementation.
  See also `BotPlutusInterface.Contract.awaitTxStatusChange`
