@@ -115,7 +115,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       {- FIXME:issue#89: I wish we don't need to do it at all.
       See fixme-comment for `balanceTx`
       Sanity check.
-      They can't be both Just or nothing.
+      They can't be both Just or Nothing.
       Either we balancing collateral Tx, and in this case collateralOut is Just and inMemCollateral is Nothing,
       or we balancing user's Tx, and then collateralOut is Nothing and inMemCollateral is Just
       -}

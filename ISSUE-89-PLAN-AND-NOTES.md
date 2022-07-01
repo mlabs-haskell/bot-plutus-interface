@@ -20,3 +20,4 @@ Places that seems like will need to filter collateral out:
 ## Considerations
 
 * tests - mocking need to be enhanced to support tests for collateral filtering
+* originally during balancing Tx for creating collateral UTxO collateral and change output were merged in single one, to prevent this additional check in filtering was added in [addAdaChange](./src/BotPlutusInterface/Balance.hs#L392) and [hasChangeUTxO](./src/BotPlutusInterface/Balance.hs#L376)
