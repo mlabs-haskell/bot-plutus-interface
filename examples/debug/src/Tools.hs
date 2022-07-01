@@ -3,12 +3,12 @@ module Tools where
 import Cardano.Api qualified as CAPI
 import Data.Aeson ((.=))
 import Data.Aeson qualified as JSON
+import Data.Text (Text)
 import GHC.Natural (Natural)
 import Ledger (Address (Address), PubKeyHash)
+import Ledger.Tx.CardanoAPI (toCardanoAddress)
 import Plutus.V1.Ledger.Api (Credential (PubKeyCredential))
 import Prelude
-import Ledger.Tx.CardanoAPI (toCardanoAddress)
-import Data.Text (Text)
 
 pkhFromHash :: String -> PubKeyHash
 pkhFromHash key =
@@ -24,10 +24,9 @@ addrToCapiAddr :: Natural -> Address -> Text
 addrToCapiAddr nId addr =
   let networkId = getNetId nId
       capiAddr = toCardanoAddress networkId addr
-  in 
-    CAPI.serialiseAddress
-    . either (error . show) id
-    $ capiAddr
+   in CAPI.serialiseAddress
+        . either (error . show) id
+        $ capiAddr
 
 getNetId :: Natural -> CAPI.NetworkId
 getNetId = \case

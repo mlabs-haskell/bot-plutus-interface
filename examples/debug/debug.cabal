@@ -104,6 +104,7 @@ library
     , plutus-pab
     , plutus-contract
     , random
+    , pretty-show
 
   hs-source-dirs:  src
 

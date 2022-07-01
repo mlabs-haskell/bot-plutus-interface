@@ -83,7 +83,6 @@ library
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.Collateral
-    BotPlutusInterface.CollateralEff
     BotPlutusInterface.Config
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects

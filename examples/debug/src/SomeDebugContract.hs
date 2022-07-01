@@ -1,51 +1,57 @@
-module SomeDebugContract
-where
+module SomeDebugContract where
 
-import Control.Monad (void)
-import Data.Map qualified as Map
 import Data.Text (Text)
-import Data.Text qualified as Text
-import Ledger
-  ( Address (Address),
-    Extended (Finite),
-    Interval (Interval),
-    LowerBound (LowerBound),
-    POSIXTime (POSIXTime),
-    POSIXTimeRange,
-    Redeemer (Redeemer),
-    ScriptContext (scriptContextTxInfo),
-    TxInfo (txInfoValidRange),
-    UpperBound (UpperBound),
-    Validator,
-    always,
-    lowerBound,
-    scriptAddress,
-    strictUpperBound,
-    unitDatum,
-    validatorHash,
-    getCardanoTxId
-  )
+
+import Data.Map (size)
+import Data.Map qualified as M
+import Debug.Trace (traceM)
+import Ledger (Address (Address), PaymentPubKeyHash (PaymentPubKeyHash), getCardanoTxId)
 import Ledger.Constraints qualified as Constraints
-import Ledger.Typed.Scripts.Validators qualified as Validators
-import Plutus.Contract (Contract, submitTx, submitTxConstraintsWith, waitNSlots)
+import Plutus.Contract (Contract, submitTx)
 import Plutus.Contract qualified as Contract
 import Plutus.PAB.Effects.Contract.Builtin (EmptySchema)
 import Plutus.V1.Ledger.Ada (adaValueOf)
-import Plutus.V1.Ledger.Ada qualified as Value
-import Plutus.V1.Ledger.Interval (member)
-import PlutusTx qualified
+import Plutus.V1.Ledger.Api (Credential (PubKeyCredential))
 import PlutusTx.Prelude
-import Prelude qualified as Hask
+import Text.Show.Pretty (ppShow)
 import Tools
-import Plutus.V1.Ledger.Api (Credential(PubKeyCredential))
-import Debug.Trace (traceM)
-import Data.Map qualified as M
-
+import Prelude qualified as Hask
 
 utxosAtDebug :: Contract () EmptySchema Text ()
 utxosAtDebug = do
   let pkh = pkhFromHash "f433ae2392c0491a9b49acd9ca94033dafba13f8bcd3df5aa840b738"
       addr = Address (PubKeyCredential pkh) Nothing
   utxos <- Contract.utxosAt addr
-  traceM $ "UTXOs len: " ++ Hask.show (length $ M.toList utxos ) 
+  traceM $ "UTXOs len: " ++ Hask.show (length $ M.toList utxos)
   Hask.undefined
+
+payToHardcodedPKH :: Contract () EmptySchema Text ()
+payToHardcodedPKH = do
+  res <- Contract.runError contract
+  traceM $ "Contract res: " <> Hask.show res
+  pure ()
+  where
+    contract :: Contract () EmptySchema Text ()
+    contract = do
+      ownPPkh <- Contract.ownPaymentPubKeyHash
+      let (PaymentPubKeyHash ownPkh) = ownPPkh
+      let payToPkh = PaymentPubKeyHash $ pkhFromHash "f433ae2392c0491a9b49acd9ca94033dafba13f8bcd3df5aa840b738"
+          ownAddr = Address (PubKeyCredential ownPkh) Nothing
+
+      let txc =
+            -- Constraints.mustPayToPubKey ownPPkh (adaValueOf 22)
+            Constraints.mustPayToPubKey payToPkh (adaValueOf 44)
+              <> Constraints.mustPayToPubKey ownPPkh (adaValueOf 21)
+              <> Constraints.mustPayToPubKey ownPPkh (adaValueOf 33)
+
+      utxosBefore <- Contract.utxosAt ownAddr
+      traceM $ "UTxOs BEFORE: " <> ppShow utxosBefore
+
+      tx <- submitTx txc
+      Contract.awaitTxConfirmed (getCardanoTxId tx)
+
+      utxosAfter <- Contract.utxosAt ownAddr
+      traceM $ "UTxOs Size AFTER: " <> Hask.show (size utxosAfter)
+      traceM $ "UTxOs AFTER: " <> ppShow utxosAfter
+
+      pure ()

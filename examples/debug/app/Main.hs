@@ -1,6 +1,6 @@
 module Main (main) where
 
-import TestRun qualified as TestRun
+import TestRun qualified
 import Prelude
 
 {- | For running fast live tests using Plutip's local cluster,

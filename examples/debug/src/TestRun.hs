@@ -16,6 +16,7 @@ import GHC.IO.Encoding
 import Ledger (PubKeyHash)
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
+import SomeDebugContract qualified
 import System.Directory (listDirectory)
 import System.Environment (getArgs, getEnv, setEnv)
 import System.FilePath ((</>))
@@ -38,9 +39,11 @@ testnetRun = do
 
   putStrLn "Running contract"
 
-  stats <- readTVarIO (ceContractStats cEnv)
-  putStrLn $ "=== Stats ===\n" ++ show stats
+  -- putStrLn $ "=== Stats ===\n" ++ show stats
   void $ runMyContract cEnv operation
+  collateral <- readTVarIO . unCollateral . ceCollateral $ cEnv
+  -- stats <- readTVarIO (ceContractStats cEnv)
+  putStrLn $ "Collateral env: " <> show collateral
   where
     runMyContract cEnv operation = do
       res <- case operation of
@@ -63,16 +66,18 @@ testnetRun = do
           putStrLn "Debug range validation and mempool. Specify interval:"
           int <- read <$> getLine
           BPI.runContract cEnv (TimeDebugContract.timeDebugViaPay int)
+        "collateral" -> do
+          putStrLn "payToHardcodedPKH"
+          BPI.runContract cEnv SomeDebugContract.payToHardcodedPKH >> pure (Right "Done")
         other -> error $ "Unsupported operation: " ++ other
 
       case res of
         -- Right r -> "=== OK ===\n" ++ show r >> runMyContract
         Right r -> do
           putStrLn ("=== OK ===\n" ++ show r)
-          randomDelay
-          runMyContract cEnv operation
-        Left e -> putStrLn ("=== FAILED ===\n" ++ show e) >> return (show e)
-
+        -- randomDelay
+        -- runMyContract cEnv operation
+        Left e -> putStrLn ("=== FAILED ===\n" ++ show e) -- >> return (show e)
     randomDelay :: IO ()
     randomDelay = do
       g <- newStdGen
@@ -90,6 +95,7 @@ mkContractEnv netMagic bpiDir = do
   contractState <- newTVarIO (ContractState Active mempty)
   contractStats <- newTVarIO (ContractStats mempty)
   contractLogs <- newTVarIO (LogsList mempty)
+  collateral <- Collateral <$> newTVarIO Nothing
   pkhs <- getPkhs bpiDir
   return $
     ContractEnvironment
@@ -98,6 +104,7 @@ mkContractEnv netMagic bpiDir = do
       , ceContractInstanceId = contractInstanceID
       , ceContractStats = contractStats
       , ceContractLogs = contractLogs
+      , ceCollateral = collateral
       }
 
 mkPabConf :: NetMagic -> ProtocolParameters -> Text -> FilePath -> PubKeyHash -> PABConfig
@@ -123,6 +130,7 @@ mkPabConf netMagic pparams pparamsFile bpiDir ownPkh =
     , pcBudgetMultiplier = 1
     , pcMetadataDir = Text.pack $ bpiDir </> "metadata"
     , pcTxStatusPolling = TxStatusPolling 500_000 5
+    , pcCollateralSize = 10_248_256
     }
   where
     netId = case netMagic of

@@ -1,40 +1,39 @@
-module TimeDebugContract
-  ( unlockWithTimeCheck,
-    timeDebugLight,
-    splitUtxo,
-    lockAtScript,
-    timeDebugViaPay,
-    lockUnlock,
-  )
-where
+module TimeDebugContract (
+  unlockWithTimeCheck,
+  timeDebugLight,
+  splitUtxo,
+  lockAtScript,
+  timeDebugViaPay,
+  lockUnlock,
+) where
 
 import Control.Monad (void)
 import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger
-  ( Address,
-    Extended (Finite),
-    Interval (Interval),
-    LowerBound (LowerBound),
-    POSIXTime (POSIXTime),
-    POSIXTimeRange,
-    Redeemer (Redeemer),
-    ScriptContext (scriptContextTxInfo),
-    TxInfo (txInfoValidRange),
-    UpperBound (UpperBound),
-    Validator,
-    always,
-    lowerBound,
-    scriptAddress,
-    strictUpperBound,
-    unitDatum,
-    validatorHash,
-    getCardanoTxId
-  )
+import Ledger (
+  Address,
+  Extended (Finite),
+  Interval (Interval),
+  LowerBound (LowerBound),
+  POSIXTime (POSIXTime),
+  POSIXTimeRange,
+  Redeemer (Redeemer),
+  ScriptContext (scriptContextTxInfo),
+  TxInfo (txInfoValidRange),
+  UpperBound (UpperBound),
+  Validator,
+  always,
+  getCardanoTxId,
+  lowerBound,
+  scriptAddress,
+  strictUpperBound,
+  unitDatum,
+  validatorHash,
+ )
 import Ledger.Constraints qualified as Constraints
 import Ledger.Typed.Scripts.Validators qualified as Validators
-import Plutus.Contract (Contract, submitTx, submitTxConstraintsWith, waitNSlots)
+import Plutus.Contract (Contract, submitTx, submitTxConstraintsWith)
 import Plutus.Contract qualified as Contract
 import Plutus.PAB.Effects.Contract.Builtin (EmptySchema)
 import Plutus.V1.Ledger.Ada (adaValueOf)
@@ -47,9 +46,9 @@ import Prelude qualified as Hask
 data TestTime
 
 data TimeRedeemer = TimeRedeemer
-  { start :: POSIXTime,
-    end :: POSIXTime,
-    range :: POSIXTimeRange
+  { start :: POSIXTime
+  , end :: POSIXTime
+  , range :: POSIXTimeRange
   }
 
 PlutusTx.unstableMakeIsData ''TimeRedeemer
@@ -57,7 +56,7 @@ PlutusTx.makeLift ''TimeRedeemer
 
 {-# INLINEABLE mkValidator #-}
 mkValidator :: () -> TimeRedeemer -> ScriptContext -> Bool
-mkValidator _ !timeRmr !ctx =
+mkValidator _ timeRmr ctx =
   rangeIsBound
     && startInRange
     && endInNotRange
@@ -65,10 +64,11 @@ mkValidator _ !timeRmr !ctx =
     && upperBoundsSame
     && rangesAreSame
     && boundsTimesCheck
+  where
     -- && ctxUpperIsBigger
     -- && ctxUpperIsSmaller
     -- && ctxUpperIsEqual
-  where
+
     info = scriptContextTxInfo ctx
     vRange = txInfoValidRange info
     (TimeRedeemer rmrStart rmrEnd rmrRange) = timeRmr
@@ -98,21 +98,20 @@ mkValidator _ !timeRmr !ctx =
       traceIfFalse "Ranges not equal" $
         vRange == rmrRange
 
-    -- ctxUpperIsBigger = 
-    --   traceIfTrue 
+    -- ctxUpperIsBigger =
+    --   traceIfTrue
     --   "Ctx upper is bigger"
     --   (ctxUb > rmrUb)
 
-    -- ctxUpperIsSmaller = 
-    --   traceIfTrue 
+    -- ctxUpperIsSmaller =
+    --   traceIfTrue
     --   "Ctx upper is smaller"
     --   (ctxUb < rmrUb)
 
-    -- ctxUpperIsEqual = 
-    --   traceIfTrue 
+    -- ctxUpperIsEqual =
+    --   traceIfTrue
     --   "Ctx upper is equal"
     --   (ctxUb == rmrUb)
-
 
     boundsTimesCheck =
       -- True
@@ -144,7 +143,7 @@ timeDebugViaPay :: Hask.Integer -> Contract () EmptySchema Text Hask.String
 timeDebugViaPay vInterval = do
   ownPkh <- Contract.ownPaymentPubKeyHash
   startTime <- Contract.currentTime
-  let endTime = startTime + (POSIXTime vInterval)
+  let endTime = startTime + POSIXTime vInterval
       validInterval = Interval (lowerBound startTime) (strictUpperBound endTime)
   let constr =
         Constraints.mustPayToPubKey ownPkh (Value.adaValueOf 4)
@@ -153,7 +152,6 @@ timeDebugViaPay vInterval = do
   -- Contract.awaitTxConfirmed $ getCardanoTxId tx
   _ <- Contract.awaitTxStatusChange $ getCardanoTxId tx
   pure "Time debug done"
-
 
 timeDebugLight :: Contract () EmptySchema Text Hask.String
 timeDebugLight = do
@@ -170,7 +168,7 @@ timeDebugLight = do
           <> Constraints.mustValidateIn validInterval
 
   void $ Contract.awaitTime (endTime + POSIXTime 4_000)
-  !tx <- submitTx constr
+  void $ submitTx constr
   -- awaitTxConfirmed $ getCardanoTxId tx
   pure "Light debug done"
 
@@ -180,8 +178,7 @@ splitUtxo = do
   let txc =
         Hask.mconcat $
           Hask.replicate 5 (Constraints.mustPayToPubKey ownPkh (adaValueOf 10))
-  !tx <- submitTx txc
-  pure ()
+  void $ submitTx txc
 
 unlockWithTimeCheck :: Contract () EmptySchema Text Hask.String
 unlockWithTimeCheck = do
@@ -202,22 +199,20 @@ unlockWithTimeCheck = do
 
       let txc =
             Hask.mconcat
-              [ Constraints.mustSpendScriptOutput oref rmr,
-                Constraints.mustValidateIn rmrInterval
+              [ Constraints.mustSpendScriptOutput oref rmr
+              , Constraints.mustValidateIn rmrInterval
               ]
 
           lkps =
             Hask.mconcat
-              [ Constraints.otherScript validator,
-                Constraints.unspentOutputs (Map.fromList utxos)
+              [ Constraints.otherScript validator
+              , Constraints.unspentOutputs (Map.fromList utxos)
               ]
-      !tx <- submitTxConstraintsWith @TestTime lkps txc
+      tx <- submitTxConstraintsWith @TestTime lkps txc
       Contract.awaitTxConfirmed (getCardanoTxId tx)
       utxosAfterSpent <- Map.toList <$> Contract.utxosAt validatorAddr
       pure (Hask.show utxosAfterSpent)
     rest -> Contract.throwError $ "Unlocking error: Unwanted set of utxos: " Hask.<> Text.pack (Hask.show rest)
-  where
-    -- wait = void . Contract.waitNSlots
 
 lockAtScript :: Contract () EmptySchema Text Hask.String
 lockAtScript = do
@@ -226,12 +221,12 @@ lockAtScript = do
           (validatorHash validator)
           unitDatum
           (Value.adaValueOf 10)
-  !tx <- submitTx constr
+  tx <- submitTx constr
   Contract.awaitTxConfirmed $ getCardanoTxId tx
   pure "Lock done"
 
 lockUnlock :: Contract () EmptySchema Text Hask.String
-lockUnlock = 
-  lockAtScript 
-  -- >> waitNSlots 1
-  >> unlockWithTimeCheck
+lockUnlock =
+  lockAtScript
+    -- >> waitNSlots 1
+    >> unlockWithTimeCheck

@@ -7,12 +7,14 @@ module BotPlutusInterface.Contract (runContract, handleContract) where
 import BotPlutusInterface.Balance qualified as PreBalance
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.Effects (
   PABEffect,
   ShellArgs (..),
   callCommand,
   createDirectoryIfMissing,
   estimateBudget,
+  getInMemCollateral,
   handleContractLog,
   handlePABEffect,
   logToContract,
@@ -22,6 +24,7 @@ import BotPlutusInterface.Effects (
   queryChainIndex,
   readFileTextEnvelope,
   saveBudget,
+  setInMemCollateral,
   slotToPOSIXTime,
   threadDelay,
   uploadDir,
@@ -30,9 +33,10 @@ import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (
   ContractEnvironment (..),
-  LogLevel (Debug, Warn),
+  LogLevel (Debug, Notice, Warn),
   Tip (block, slot),
   TxFile (Signed),
+  collateralValue,
  )
 import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
 import Control.Lens (preview, (^.))
@@ -42,7 +46,8 @@ import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
+import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Except (throwE)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Function (fix)
@@ -51,9 +56,10 @@ import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Vector qualified as V
-import Ledger (POSIXTime)
+import Ledger (POSIXTime, getCardanoTxId)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
@@ -279,14 +285,28 @@ balanceTx ::
   Eff effs BalanceTxResponse
 balanceTx contractEnv unbalancedTx = do
   let pabConf = contractEnv.cePABConfig
-  uploadDir @w pabConf.pcSigningKeyFileDir
-  eitherPreBalancedTx <-
-    PreBalance.balanceTxIO @w
-      pabConf
-      pabConf.pcOwnPubKeyHash
-      unbalancedTx
 
-  pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
+  {- FIXME:issue#89: not really good design probably:
+    `balanceTxIO` used for both: balancing collateral UTxO transactions 
+    and balancing user's transactions. This leads to some not to elegant logic
+    in `balanceTxIO` where we have to detect what exactly we balancing 
+    and alternate behavior based on that.
+    Maybe it could be done better, maybe with separate balancing functions
+    for collateral and user's transactions.
+  -}
+
+  result <- handleCollateral @w contractEnv
+  case result of
+    Left e -> pure $ BalanceTxFailed (OtherError e)
+    _ -> do
+      uploadDir @w pabConf.pcSigningKeyFileDir
+      eitherPreBalancedTx <-
+        PreBalance.balanceTxIO @w
+          pabConf
+          pabConf.pcOwnPubKeyHash
+          unbalancedTx
+
+      pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -385,26 +405,6 @@ awaitSlot contractEnv s@(Slot n) = do
       | n < tip'.slot -> pure $ Slot tip'.slot
     _ -> awaitSlot contractEnv s
 
--- -- | Wait for n Blocks.
--- awaitNBlocks ::
---   forall (w :: Type) (effs :: [Type -> Type]).
---   Member (PABEffect w) effs =>
---   ContractEnvironment w ->
---   Integer ->
---   Eff effs ()
--- awaitNBlocks contractEnv n = do
---   current <- currentBlock contractEnv
---   go current
---   where
---     go :: Integer -> Eff effs ()
---     go start = do
---       threadDelay @w (fromIntegral contractEnv.cePABConfig.pcTipPollingInterval)
---       tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
---       case tip of
---         Right tip'
---           | start + n <= tip'.block -> pure ()
---         _ -> go start
-
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
  are applying here as well.
 -}
@@ -446,3 +446,84 @@ currentTime contractEnv =
   currentSlot @w contractEnv
     >>= slotToPOSIXTime @w
     >>= either (error . show) return
+
+-- | Check if collateral in contract environment, if not - create and set to environment
+handleCollateral ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Eff effs (Either Text ())
+handleCollateral cEnv = do
+  maybeCollateral <- getInMemCollateral @w
+  -- FIXME:issue#89: refactor ugly ladder and duplication
+  -- FIXME:issue#89: a lot of debug logging with Notice level, made so to make logs less noisy
+  --                 need to be set to Debug after
+  case maybeCollateral of
+    Just cOref -> do
+      printBpiLog @w Notice $ "Collateral UTxO found in contract env: " <> pretty cOref
+      pure (Right ())
+    Nothing -> do
+      foundCollateral <- findCollateralAtOwnPKH cEnv
+      case foundCollateral of
+        Right cOref -> do
+          printBpiLog @w Notice $ "Collateral UTxO found in wallet: " <> pretty cOref
+          setInMemCollateral @w cOref
+          pure $ Right ()
+        Left e1 -> do
+          printBpiLog @w Notice $
+            "Collateral UTxO not found or failed to be found in wallet: " <> pretty e1
+          printBpiLog @w Notice "Creating collateral UTxO."
+          createdCollateral <- makeCollateral @w cEnv
+          case createdCollateral of
+            Left e2 -> do
+              printBpiLog @w Notice $ "Failed to create collateral UTxO: " <> pretty e2
+              pure $ Left ("Failed to make collateral: " <> e2)
+            Right c -> do
+              setInMemCollateral @w c -- FIXME:issue#89: duplication
+              printBpiLog @w Notice $ "Collateral UTxO created and set to contract env: " <> pretty c
+              pure $ Right ()
+
+-- | Create collateral UTxO by submitting Tx. 
+--  Then try to find created UTxO at own PKH address.
+makeCollateral ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Eff effs (Either Text Ledger.TxOutRef)
+makeCollateral cEnv = runEitherT $ do
+  lift $ printBpiLog @w Notice "Making collateral"
+
+  let pabConf = cEnv.cePABConfig
+  unbalancedTx <-
+    firstEitherT (T.pack . show) $
+      hoistEither $ Collateral.mkCollateralTx pabConf
+
+  balancedTx <- newEitherT $ PreBalance.balanceTxIO @w pabConf pabConf.pcOwnPubKeyHash unbalancedTx
+
+  wbr <- lift $ writeBalancedTx cEnv (Right balancedTx)
+  case wbr of
+    WriteBalancedTxFailed e -> throwE . T.pack $ "Failed to create collateral output: " <> show e
+    WriteBalancedTxSuccess cTx -> do
+      status <- lift $ awaitTxStatusChange cEnv (getCardanoTxId cTx)
+      lift $ printBpiLog @w Notice $ "Collateral Tx Status: " <> pretty status
+      newEitherT $ findCollateralAtOwnPKH cEnv
+
+findCollateralAtOwnPKH ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Eff effs (Either Text Ledger.TxOutRef)
+findCollateralAtOwnPKH cEnv = runEitherT $ do
+  let pabConf = cePABConfig cEnv
+      changeAddr =
+        Ledger.pubKeyHashAddress
+          (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
+          (pabConf.pcOwnStakePubKeyHash)
+
+  r <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+  let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
+  hoistEither $ case filter check refsAndOuts of
+    [] -> Left "Couldn't find colalteral UTxO"
+    ((oref, _) : _) -> Right oref
+  where
+    check (_, txOut) = Tx.txOutValue txOut == collateralValue (cePABConfig cEnv)
