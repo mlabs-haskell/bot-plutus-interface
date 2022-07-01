@@ -46,6 +46,7 @@ module Spec.MockContract (
   utxos,
   mockBudget,
   nonExistingTxId,
+  theCollateralUtxo,
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
@@ -55,6 +56,7 @@ import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
   BudgetEstimationError,
+  Collateral (Collateral),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   LogContext,
@@ -189,6 +191,9 @@ addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Not
 nonExistingTxId :: TxId
 nonExistingTxId = TxId "ff"
 
+theCollateralUtxo :: TxOutRef
+theCollateralUtxo = TxOutRef "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" 0
+
 skeyToPubKey :: SigningKey PaymentKey -> PubKey
 skeyToPubKey =
   Ledger.toPublicKey
@@ -231,6 +236,7 @@ data MockContractState w = MockContractState
   , _contractEnv :: ContractEnvironment w
   , _utxos :: [(TxOutRef, TxOut)]
   , _tip :: Tip
+  , _collateralUtxo :: TxOutRef
   }
   deriving stock (Show)
 
@@ -252,6 +258,7 @@ instance Monoid w => Default (MockContractState w) where
       , _contractEnv = def
       , _utxos = []
       , _tip = Tip 1000 (BlockId "ab12") 4
+      , _collateralUtxo = theCollateralUtxo
       }
 
 instance Monoid w => Default (ContractEnvironment w) where
@@ -262,7 +269,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
       , ceContractLogs = unsafePerformIO $ newTVarIO mempty
-      , ceCollateral = undefined -- FIXME:issue#89
+      , ceCollateral = Collateral $ unsafePerformIO $ newTVarIO (Just theCollateralUtxo)
       }
 
 instance Monoid w => Default (ContractState w) where
