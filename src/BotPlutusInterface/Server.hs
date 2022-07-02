@@ -13,7 +13,7 @@ import BotPlutusInterface.Contract (runContract)
 import BotPlutusInterface.Files (txFileName, txIdToText)
 import BotPlutusInterface.Types (
   AppState (AppState),
-  Collateral (Collateral),
+  CollateralVar (CollateralVar),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   PABConfig (..),
@@ -275,7 +275,7 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
   contractState <- newTVarIO (ContractState Active mempty)
   contractStats <- newTVarIO mempty
   contractLogs <- newTVarIO mempty
-  collateral <- Collateral <$> newTVarIO Nothing
+  collateral <- CollateralVar <$> newTVarIO Nothing
 
   atomically $ modifyTVar st (Map.insert contractInstanceID (SomeContractState contractState))
 

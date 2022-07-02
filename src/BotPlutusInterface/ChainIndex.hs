@@ -2,15 +2,12 @@
 
 module BotPlutusInterface.ChainIndex (
   handleChainIndexReq,
-  removeUtxo,
 ) where
 
 import BotPlutusInterface.Types (ContractEnvironment, PABConfig, readCollateralUtxo)
 import Data.Kind (Type)
-import Ledger (TxOutRef)
 import Network.HTTP.Client (ManagerSettings (managerResponseTimeout), defaultManagerSettings, newManager, responseTimeoutNone)
 import Network.HTTP.Types (Status (statusCode))
-import Plutus.ChainIndex (Page (..))
 import Plutus.ChainIndex.Api (
   TxoAtAddressRequest (TxoAtAddressRequest),
   TxosResponse (TxosResponse),
@@ -28,6 +25,7 @@ import Servant.Client (
   runClientM,
  )
 import Prelude
+import BotPlutusInterface.Collateral (removeCollateralFromPage)
 
 handleChainIndexReq :: forall (w :: Type). ContractEnvironment w -> ChainIndexQuery -> IO ChainIndexResponse
 handleChainIndexReq contractEnv =
@@ -95,7 +93,7 @@ chainIndexQueryOne pabConf endpoint = do
 chainIndexUtxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM UtxosResponse -> IO UtxosResponse
 chainIndexUtxoQuery contractEnv query = do
   collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral (UtxosResponse tip page) = UtxosResponse tip (removeUtxo collateralUtxo page)
+  let removeCollateral (UtxosResponse tip page) = UtxosResponse tip (removeCollateralFromPage collateralUtxo page)
   removeCollateral
     <$> chainIndexQueryMany
       contractEnv.cePABConfig
@@ -105,14 +103,8 @@ chainIndexUtxoQuery contractEnv query = do
 chainIndexTxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM TxosResponse -> IO TxosResponse
 chainIndexTxoQuery contractEnv query = do
   collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral (TxosResponse page) = TxosResponse (removeUtxo collateralUtxo page)
+  let removeCollateral (TxosResponse page) = TxosResponse (removeCollateralFromPage collateralUtxo page)
   removeCollateral
     <$> chainIndexQueryMany
       contractEnv.cePABConfig
       query
-
--- | Removes given utxo from the UtxoResponse. Used to remove collateral utxo.
-removeUtxo :: Maybe TxOutRef -> Page TxOutRef -> Page TxOutRef
-removeUtxo = \case
-  Nothing -> id
-  (Just txOutRef) -> \page -> page {pageItems = filter (/= txOutRef) (pageItems page)}

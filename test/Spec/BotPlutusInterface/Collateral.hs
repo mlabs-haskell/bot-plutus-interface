@@ -2,7 +2,7 @@ module Spec.BotPlutusInterface.Collateral where
 
 import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
-  PABConfig (pcOwnPubKeyHash),
+  PABConfig (pcOwnPubKeyHash), CollateralUtxo (CollateralUtxo)
  )
 import Cardano.Api (TxBodyContent (txIns))
 import Cardano.Api qualified as C
@@ -49,10 +49,11 @@ testTxUsesCollateralCorrectly = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing
       collateralTxOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing
+      (CollateralUtxo collateralTxOutRef) = theCollateralUtxo
 
       -- lets test both orders, strzeżonego pan Bóg strzeże
-      utxos1 = [(theCollateralUtxo, collateralTxOut), (txOutRef, txOut)]
-      utxos2 = [(txOutRef, txOut), (theCollateralUtxo, collateralTxOut)]
+      utxos1 = [(collateralTxOutRef, collateralTxOut), (txOutRef, txOut)]
+      utxos2 = [(txOutRef, txOut), (collateralTxOutRef, collateralTxOut)]
       initState _utxos =
         def & utxos .~ _utxos
           & contractEnv .~ contractEnv'
@@ -65,8 +66,8 @@ testTxUsesCollateralCorrectly = do
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         tx <- submitTx constraints
 
-        let collateralInInputs = Set.member theCollateralUtxo $ getCardanoTxInputs tx
-            expectedCollaterals = Just (Set.fromList [theCollateralUtxo])
+        let collateralInInputs = Set.member collateralTxOutRef $ getCardanoTxInputs tx
+            expectedCollaterals = Just (Set.fromList [collateralTxOutRef])
             collateralsAreUnexpected = expectedCollaterals /= getCardanoTxCollateralInputs tx
 
         -- check that tx doesn't use the collateral in inputs and does in collaterals
@@ -89,14 +90,14 @@ testTxUsesCollateralCorrectly = do
 
 getCardanoTxInputs :: CardanoTx -> Set.Set TxOutRef
 getCardanoTxInputs = \case
-  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txIns = txIns}) _) _)) ->
-    Set.fromList $ fmap (C.fromCardanoTxIn . fst) txIns
+  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txIns = _txIns}) _) _)) ->
+    Set.fromList $ fmap (C.fromCardanoTxIn . fst) _txIns
   (Right tx) -> Set.map txInRef $ txInputs tx
 
 getCardanoTxCollateralInputs :: CardanoTx -> Maybe (Set.Set TxOutRef)
 getCardanoTxCollateralInputs = \case
-  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txInsCollateral = C.TxInsCollateral _ txIns}) _) _)) ->
-    Just $ Set.fromList $ fmap C.fromCardanoTxIn txIns
+  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txInsCollateral = C.TxInsCollateral _ _txIns}) _) _)) ->
+    Just $ Set.fromList $ fmap C.fromCardanoTxIn _txIns
   (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txInsCollateral = C.TxInsCollateralNone}) _) _)) ->
     Nothing
   (Right tx) -> Just $ Set.map txInRef $ txCollateral tx

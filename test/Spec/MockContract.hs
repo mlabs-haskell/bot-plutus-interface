@@ -56,7 +56,8 @@ import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
   BudgetEstimationError,
-  Collateral (Collateral),
+  CollateralVar (CollateralVar),
+  CollateralUtxo (CollateralUtxo),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   LogContext,
@@ -84,7 +85,7 @@ import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
+import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1, set)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, reinterpret2, run)
@@ -147,6 +148,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
+import BotPlutusInterface.Collateral (removeCollateralFromPage)
 
 signingKey1, signingKey2, signingKey3 :: SigningKey PaymentKey
 signingKey1 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 0
@@ -191,8 +193,8 @@ addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Not
 nonExistingTxId :: TxId
 nonExistingTxId = TxId "ff"
 
-theCollateralUtxo :: TxOutRef
-theCollateralUtxo = TxOutRef "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" 0
+theCollateralUtxo :: CollateralUtxo
+theCollateralUtxo = CollateralUtxo $ TxOutRef "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" 0
 
 skeyToPubKey :: SigningKey PaymentKey -> PubKey
 skeyToPubKey =
@@ -236,7 +238,7 @@ data MockContractState w = MockContractState
   , _contractEnv :: ContractEnvironment w
   , _utxos :: [(TxOutRef, TxOut)]
   , _tip :: Tip
-  , _collateralUtxo :: TxOutRef
+  , _collateralUtxo :: CollateralUtxo
   }
   deriving stock (Show)
 
@@ -269,7 +271,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
       , ceContractLogs = unsafePerformIO $ newTVarIO mempty
-      , ceCollateral = Collateral $ unsafePerformIO $ newTVarIO (Just theCollateralUtxo)
+      , ceCollateral = CollateralVar $ unsafePerformIO $ newTVarIO (Just theCollateralUtxo)
       }
 
 instance Monoid w => Default (ContractState w) where
@@ -337,8 +339,8 @@ runPABEffectPure initState req =
     go (SlotToPOSIXTime _) = pure $ Right 1506203091
     go (POSIXTimeToSlot _) = pure $ Right 1
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
-    go GetInMemCollateral = pure . Just $ TxOutRef (TxId "ff") 0 -- FIXME:issue#89:adjust correctly for tests
-    go (SetInMemCollateral _) = pure () -- FIXME:issue#89:adjust correctly for tests
+    go GetInMemCollateral = Just . _collateralUtxo <$> get @(MockContractState w)
+    go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo collateral
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -604,14 +606,14 @@ mockQueryChainIndex = \case
       UtxoSetAtResponse $
         UtxosResponse
           (state ^. tip)
-          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+          (removeCollateralFromPage (Just $ _collateralUtxo state) $ pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   UtxoSetWithCurrency pageQuery _ -> do
     state <- get @(MockContractState w)
     pure $
       UtxoSetAtResponse $
         UtxosResponse
           (state ^. tip)
-          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+          (removeCollateralFromPage (Just $ _collateralUtxo state) (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))))
   TxsFromTxIds ids -> do
     -- TODO: Track some kind of state here, add tests to ensure this works correctly
     -- For now, empty txs

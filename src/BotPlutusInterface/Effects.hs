@@ -46,7 +46,7 @@ import BotPlutusInterface.Types (
   LogsList (LogsList),
   TxBudget,
   TxFile,
-  addBudget,
+  addBudget, CollateralUtxo
  )
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
@@ -122,8 +122,8 @@ data PABEffect (w :: Type) (r :: Type) where
   POSIXTimeRangeToSlotRange ::
     Ledger.POSIXTimeRange ->
     PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
-  GetInMemCollateral :: PABEffect w (Maybe Ledger.TxOutRef)
-  SetInMemCollateral :: Ledger.TxOutRef -> PABEffect w ()
+  GetInMemCollateral :: PABEffect w (Maybe CollateralUtxo)
+  SetInMemCollateral :: CollateralUtxo -> PABEffect w ()
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -410,12 +410,12 @@ posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotR
 getInMemCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  Eff effs (Maybe Ledger.TxOutRef)
+  Eff effs (Maybe CollateralUtxo)
 getInMemCollateral = send @(PABEffect w) GetInMemCollateral
 
 setInMemCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  Ledger.TxOutRef ->
+  CollateralUtxo ->
   Eff effs ()
 setInMemCollateral = send @(PABEffect w) . SetInMemCollateral

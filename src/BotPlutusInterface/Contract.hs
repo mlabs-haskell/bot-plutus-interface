@@ -36,7 +36,7 @@ import BotPlutusInterface.Types (
   LogLevel (Debug, Notice, Warn),
   Tip (block, slot),
   TxFile (Signed),
-  collateralValue,
+  collateralValue, CollateralUtxo (CollateralUtxo)
  )
 import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
 import Control.Lens (preview, (^.))
@@ -490,7 +490,7 @@ makeCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs (Either Text Ledger.TxOutRef)
+  Eff effs (Either Text CollateralUtxo)
 makeCollateral cEnv = runEitherT $ do
   lift $ printBpiLog @w Notice "Making collateral"
 
@@ -513,8 +513,8 @@ findCollateralAtOwnPKH ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs (Either Text Ledger.TxOutRef)
-findCollateralAtOwnPKH cEnv = runEitherT $ do
+  Eff effs (Either Text CollateralUtxo)
+findCollateralAtOwnPKH cEnv = runEitherT $ CollateralUtxo <$>  do
   let pabConf = cePABConfig cEnv
       changeAddr =
         Ledger.pubKeyHashAddress

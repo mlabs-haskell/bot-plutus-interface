@@ -17,7 +17,7 @@ import BotPlutusInterface.Effects (
  )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Types (LogLevel (Debug), PABConfig, collateralValue)
+import BotPlutusInterface.Types (LogLevel (Debug), PABConfig, collateralValue, CollateralUtxo, collateralTxOutRef)
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void, zipWithM)
@@ -73,6 +73,7 @@ import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
+import BotPlutusInterface.Collateral (removeCollateralFromMap)
 
 -- | Get collateral output to protect it from being merged with change output
 getProtectedCollateralOut ::
@@ -106,9 +107,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       utxos' <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
       -- FIXME:issue#89: Collateral WIP - BEGIN
       inMemCollateral <- lift $ getInMemCollateral @w
-      let utxos = case inMemCollateral of
-            Nothing -> utxos'
-            Just cOref -> Map.filterWithKey (\oref _ -> cOref /= oref) utxos'
+      let utxos = removeCollateralFromMap inMemCollateral utxos'
 
       collateralOut <- lift $ getProtectedCollateralOut pabConf unbalancedTx
 
@@ -332,11 +331,11 @@ balanceTxIns utxos tx = do
   pure $ tx {txInputs = txIns <> txInputs tx}
 
 -- | Set collateral or fail in case it's required but not available
-addTxCollaterals :: Maybe TxOutRef -> Tx -> Either Text Tx
+addTxCollaterals :: Maybe CollateralUtxo -> Tx -> Either Text Tx
 addTxCollaterals maybeCollateralOref tx
   | Just cOut <- maybeCollateralOref
     , usesScripts tx =
-    pure $ tx {txCollateral = Set.singleton (Tx.pubKeyTxIn cOut)}
+    pure $ tx {txCollateral = Set.singleton (Tx.pubKeyTxIn (collateralTxOutRef cOut))}
   | Nothing <- maybeCollateralOref
     , usesScripts tx =
     Left "Tx uses scripts but no collateral available"

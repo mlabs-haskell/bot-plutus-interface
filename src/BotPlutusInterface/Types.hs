@@ -24,7 +24,8 @@ module BotPlutusInterface.Types (
   ContractStats (..),
   TxStatusPolling (..),
   LogsList (..),
-  Collateral (..),
+  CollateralUtxo (..),
+  CollateralVar (..),
   addBudget,
   readCollateralUtxo,
   collateralValue,
@@ -60,7 +61,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
   endpointsToSchemas,
  )
 import Plutus.V1.Ledger.Ada qualified as Ada
-import Prettyprinter (Pretty (pretty))
+import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
@@ -185,24 +186,32 @@ newtype LogsList = LogsList
 instance Show (TVar LogsList) where
   show _ = "<ContractLogs>"
 
+newtype CollateralUtxo = CollateralUtxo
+  { collateralTxOutRef :: TxOutRef
+  }
+  deriving (Show)
+
+instance Pretty CollateralUtxo where
+  pretty (CollateralUtxo txOutRef) = "Collateral" <+> pretty txOutRef 
+
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
   , ceContractStats :: TVar ContractStats
   , ceContractLogs :: TVar LogsList
-  , ceCollateral :: Collateral
+  , ceCollateral :: CollateralVar
   }
   deriving stock (Show)
 
-newtype Collateral = Collateral
-  { unCollateral :: TVar (Maybe TxOutRef)
+newtype CollateralVar = CollateralVar
+  { unCollateralVar :: TVar (Maybe CollateralUtxo)
   }
-instance Show Collateral where
+instance Show CollateralVar where
   show _ = "<Collateral TxOutRef>"
 
-readCollateralUtxo :: forall (w :: Type). ContractEnvironment w -> IO (Maybe TxOutRef)
-readCollateralUtxo = readTVarIO . unCollateral . ceCollateral
+readCollateralUtxo :: forall (w :: Type). ContractEnvironment w -> IO (Maybe CollateralUtxo)
+readCollateralUtxo = readTVarIO . unCollateralVar . ceCollateral
 
 data Tip = Tip
   { epoch :: Integer
