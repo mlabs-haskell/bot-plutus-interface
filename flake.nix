@@ -17,12 +17,12 @@
     # all inputs below here are for pinning with haskell.nix
     cardano-addresses = {
       url =
-        "github:input-output-hk/cardano-addresses/b9f424cc64459a95a2f190a1839ec9bc94cc778c";
+        "github:input-output-hk/cardano-addresses/b6f2f3cef01a399376064194fd96711a5bdba4a7";
       flake = false;
     };
     cardano-base = {
       url =
-        "github:input-output-hk/cardano-base/631cb6cf1fa01ab346233b610a38b3b4cba6e6ab";
+        "github:input-output-hk/cardano-base/0f3a867493059e650cda69e20a5cbf1ace289a57";
       flake = false;
     };
     cardano-config = {
@@ -37,12 +37,12 @@
     };
     cardano-ledger = {
       url =
-        "github:input-output-hk/cardano-ledger/e290bf8d0ea272a51e9acd10adc96b4e12e00d37";
+        "github:input-output-hk/cardano-ledger/ce3057e0863304ccb3f79d78c77136219dc786c6";
       flake = false;
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/95c3692cfbd4cdb82071495d771b23e51840fb0e";
+        "github:input-output-hk/cardano-node/1.35.0";
       flake = false; # we need it to be available in shell
     };
     cardano-prelude = {
@@ -51,7 +51,7 @@
       flake = false;
     };
     cardano-wallet = {
-      url = "github:input-output-hk/cardano-wallet/0cdd1b72a16b2f287b5f1bf137b5eba15bc7f300";
+      url = "github:input-output-hk/cardano-wallet/a73d8c9717dc4e174745f8568d6f3fe84f0f9d76";
       flake = false;
     };
     ekg-forward = {
@@ -102,12 +102,12 @@
     };
     ouroboros-network = {
       url =
-        "github:input-output-hk/ouroboros-network/04245dbd69387da98d3a37de9f400965e922bb0e";
+        "github:input-output-hk/ouroboros-network/a65c29b6a85e90d430c7f58d362b7eb097fd4949";
       flake = false;
     };
     plutus = {
       url =
-        "github:input-output-hk/plutus/d24a7540e4659b57ce2ab25dadb968991e232191";
+        "github:input-output-hk/plutus/f680ac6979e069fcc013e4389ee607ff5fa6672f";
       flake = false;
     };
     plutus-apps = {
