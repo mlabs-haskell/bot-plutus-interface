@@ -60,6 +60,7 @@ import Spec.MockContract (
   pkhAddr1,
   runContractPure,
   signingKey1,
+  theCollateralTxId,
   tip,
   toSigningKeyFile,
   toVerificationKeyFile,
@@ -468,6 +469,7 @@ mintTokens = do
       txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000) Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+      collateralTxId = encodeByteString $ fromBuiltin $ TxId.getTxId theCollateralTxId
 
       mintingPolicy :: Scripts.MintingPolicy
       mintingPolicy =
@@ -503,7 +505,7 @@ mintTokens = do
         , [text| 
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
+          --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
@@ -519,7 +521,7 @@ mintTokens = do
         , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
-          --tx-in-collateral ${inTxId}#0
+          --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
           --tx-out ${addr1}+496700
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
@@ -635,6 +637,7 @@ redeemFromValidator = do
       txOut' = TxOut valAddr (Ada.lovelaceValueOf 1250) (Just datumHash)
       initState = def & utxos .~ [(txOutRef, txOut), (txOutRef', txOut')]
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef
+      collateralTxId = encodeByteString $ fromBuiltin $ TxId.getTxId theCollateralTxId
 
       validator :: Scripts.Validator
       validator =
@@ -690,7 +693,7 @@ redeemFromValidator = do
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --tx-in-execution-units (500000,2000)
-          --tx-in-collateral ${inTxId}#0
+          --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+500
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0 --protocol-params-file ./protocol.json --out-file ./txs/tx-?
@@ -706,7 +709,7 @@ redeemFromValidator = do
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --tx-in-execution-units (500000,2000)
-          --tx-in-collateral ${inTxId}#0
+          --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+500
           --tx-out ${addr1}+498350
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey

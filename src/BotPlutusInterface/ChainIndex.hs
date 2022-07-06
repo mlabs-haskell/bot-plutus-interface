@@ -4,6 +4,7 @@ module BotPlutusInterface.ChainIndex (
   handleChainIndexReq,
 ) where
 
+import BotPlutusInterface.Collateral (removeCollateralFromPage)
 import BotPlutusInterface.Types (ContractEnvironment, PABConfig, readCollateralUtxo)
 import Data.Kind (Type)
 import Network.HTTP.Client (ManagerSettings (managerResponseTimeout), defaultManagerSettings, newManager, responseTimeoutNone)
@@ -25,7 +26,6 @@ import Servant.Client (
   runClientM,
  )
 import Prelude
-import BotPlutusInterface.Collateral (removeCollateralFromPage)
 
 handleChainIndexReq :: forall (w :: Type). ContractEnvironment w -> ChainIndexQuery -> IO ChainIndexResponse
 handleChainIndexReq contractEnv =

@@ -26,8 +26,9 @@ common common-lang
     -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
     -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
     -Wunused-packages -fplugin-opt PlutusTx.Plugin:defer-errors
+
   -- -Werror
-  
+
   build-depends:      base ^>=4.14
   default-extensions:
     NoImplicitPrelude

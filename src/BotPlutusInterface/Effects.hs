@@ -39,6 +39,7 @@ import BotPlutusInterface.TimeSlot qualified as TimeSlot
 import BotPlutusInterface.Types (
   BudgetEstimationError,
   CLILocation (..),
+  CollateralUtxo,
   ContractEnvironment,
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
@@ -46,7 +47,7 @@ import BotPlutusInterface.Types (
   LogsList (LogsList),
   TxBudget,
   TxFile,
-  addBudget, CollateralUtxo
+  addBudget,
  )
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified

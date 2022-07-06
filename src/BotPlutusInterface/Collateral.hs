@@ -7,15 +7,15 @@ module BotPlutusInterface.Collateral (
   removeCollateralFromMap,
 ) where
 
-import BotPlutusInterface.Types (ContractEnvironment (ceCollateral), PABConfig (pcOwnPubKeyHash), collateralValue, unCollateralVar, CollateralUtxo (CollateralUtxo))
+import BotPlutusInterface.Types (CollateralUtxo (CollateralUtxo), ContractEnvironment (ceCollateral), PABConfig (pcOwnPubKeyHash), collateralValue, unCollateralVar)
 import Cardano.Prelude (Void)
 import Control.Concurrent.STM (atomically, modifyTVar', readTVarIO)
-import Ledger (PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef, ChainIndexTxOut)
-import Ledger.Constraints qualified as Constraints
-import Prelude
-import Plutus.ChainIndex (Page(..))
 import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Map qualified as Map
+import Ledger (ChainIndexTxOut, PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
+import Ledger.Constraints qualified as Constraints
+import Plutus.ChainIndex (Page (..))
+import Prelude
 
 getInMemCollateral :: ContractEnvironment w -> IO (Maybe CollateralUtxo)
 getInMemCollateral = readTVarIO . unCollateralVar . ceCollateral

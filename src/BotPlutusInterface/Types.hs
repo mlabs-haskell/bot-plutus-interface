@@ -192,7 +192,7 @@ newtype CollateralUtxo = CollateralUtxo
   deriving (Show)
 
 instance Pretty CollateralUtxo where
-  pretty (CollateralUtxo txOutRef) = "Collateral" <+> pretty txOutRef 
+  pretty (CollateralUtxo txOutRef) = "Collateral" <+> pretty txOutRef
 
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig

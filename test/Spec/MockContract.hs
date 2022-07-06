@@ -47,17 +47,19 @@ module Spec.MockContract (
   mockBudget,
   nonExistingTxId,
   theCollateralUtxo,
+  theCollateralTxId,
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
+import BotPlutusInterface.Collateral (removeCollateralFromPage)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
   BudgetEstimationError,
+  CollateralUtxo (CollateralUtxo, collateralTxOutRef),
   CollateralVar (CollateralVar),
-  CollateralUtxo (CollateralUtxo),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   LogContext,
@@ -85,7 +87,7 @@ import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1, set)
+import Control.Lens (at, set, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, reinterpret2, run)
@@ -148,7 +150,6 @@ import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
-import BotPlutusInterface.Collateral (removeCollateralFromPage)
 
 signingKey1, signingKey2, signingKey3 :: SigningKey PaymentKey
 signingKey1 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 0
@@ -195,6 +196,9 @@ nonExistingTxId = TxId "ff"
 
 theCollateralUtxo :: CollateralUtxo
 theCollateralUtxo = CollateralUtxo $ TxOutRef "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" 0
+
+theCollateralTxId :: TxId
+theCollateralTxId = Tx.txOutRefId $ collateralTxOutRef theCollateralUtxo
 
 skeyToPubKey :: SigningKey PaymentKey -> PubKey
 skeyToPubKey =

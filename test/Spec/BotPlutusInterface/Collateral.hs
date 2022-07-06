@@ -22,6 +22,7 @@ import Plutus.Contract (
   Endpoint,
   submitTx,
   throwError,
+  ownPaymentPubKeyHash,
  )
 import Spec.MockContract (
   contractEnv,
@@ -32,6 +33,7 @@ import Spec.MockContract (
   theCollateralUtxo,
   utxos,
  )
+import Plutus.Contract.Logging (logInfo)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase)
 import Prelude
@@ -54,9 +56,9 @@ testTxUsesCollateralCorrectly = do
       -- lets test both orders, strzeżonego pan Bóg strzeże
       utxos1 = [(collateralTxOutRef, collateralTxOut), (txOutRef, txOut)]
       utxos2 = [(txOutRef, txOut), (collateralTxOutRef, collateralTxOut)]
-      initState _utxos =
-        def & utxos .~ _utxos
-          & contractEnv .~ contractEnv'
+      initState utxos' =
+        def & utxos .~ utxos'
+            & contractEnv .~ contractEnv'
       pabConf = def {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1}
       contractEnv' = def {cePABConfig = pabConf}
 
@@ -65,6 +67,8 @@ testTxUsesCollateralCorrectly = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         tx <- submitTx constraints
+
+        logInfo @String "This is a log"
 
         let collateralInInputs = Set.member collateralTxOutRef $ getCardanoTxInputs tx
             expectedCollaterals = Just (Set.fromList [collateralTxOutRef])

@@ -32,11 +32,12 @@ import BotPlutusInterface.Effects (
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (
+  CollateralUtxo (CollateralUtxo),
   ContractEnvironment (..),
   LogLevel (Debug, Notice, Warn),
   Tip (block, slot),
   TxFile (Signed),
-  collateralValue, CollateralUtxo (CollateralUtxo)
+  collateralValue,
  )
 import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
 import Control.Lens (preview, (^.))
@@ -514,17 +515,19 @@ findCollateralAtOwnPKH ::
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
   Eff effs (Either Text CollateralUtxo)
-findCollateralAtOwnPKH cEnv = runEitherT $ CollateralUtxo <$>  do
-  let pabConf = cePABConfig cEnv
-      changeAddr =
-        Ledger.pubKeyHashAddress
-          (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
-          (pabConf.pcOwnStakePubKeyHash)
+findCollateralAtOwnPKH cEnv =
+  runEitherT $
+    CollateralUtxo <$> do
+      let pabConf = cePABConfig cEnv
+          changeAddr =
+            Ledger.pubKeyHashAddress
+              (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
+              (pabConf.pcOwnStakePubKeyHash)
 
-  r <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
-  let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
-  hoistEither $ case filter check refsAndOuts of
-    [] -> Left "Couldn't find colalteral UTxO"
-    ((oref, _) : _) -> Right oref
+      r <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+      let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
+      hoistEither $ case filter check refsAndOuts of
+        [] -> Left "Couldn't find colalteral UTxO"
+        ((oref, _) : _) -> Right oref
   where
     check (_, txOut) = Tx.txOutValue txOut == collateralValue (cePABConfig cEnv)

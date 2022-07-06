@@ -17,7 +17,7 @@ import BotPlutusInterface.Effects (
  )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Types (LogLevel (Debug), PABConfig, collateralValue, CollateralUtxo, collateralTxOutRef)
+import BotPlutusInterface.Types (CollateralUtxo, LogLevel (Debug), PABConfig, collateralTxOutRef, collateralValue)
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void, zipWithM)
@@ -69,11 +69,11 @@ import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 
 -- import BotPlutusInterface.CollateralEff qualified as CollateralEff
 
+import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
-import BotPlutusInterface.Collateral (removeCollateralFromMap)
 
 -- | Get collateral output to protect it from being merged with change output
 getProtectedCollateralOut ::
