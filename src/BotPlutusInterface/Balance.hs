@@ -70,62 +70,112 @@ import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 -- import BotPlutusInterface.CollateralEff qualified as CollateralEff
 
 import BotPlutusInterface.Collateral (removeCollateralFromMap)
-import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
+import Cardano.Prelude (maybeToRight)
 
--- | Get collateral output to protect it from being merged with change output
-getProtectedCollateralOut ::
-  forall (effs :: [Type -> Type]).
-  PABConfig ->
-  UnbalancedTx ->
-  Eff effs (Maybe TxOut)
-getProtectedCollateralOut pabConf (UnbalancedTx tx _ _ _)
-  -- FIXME maybe other checks
-  | [out] <- txOutputs tx
-    , Map.size (txData tx) == 0
-    , txMint tx == mempty
-    , txOutValue out == collateralValue pabConf =
-    pure $ Just out
-  | otherwise = do
-    pure Nothing
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
- assets
+     assets
 -}
+-- TODO: refactor all the balancing functions.
 balanceTxIO ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  (Member (PABEffect w) effs) =>
+  PABConfig ->
+  PubKeyHash ->
+  UnbalancedTx ->
+  Eff effs (Either Text Tx)
+balanceTxIO pabConf ownPkh unbalancedTx@(UnbalancedTx tx' _ _ _)
+  | validCollateralTx tx'   = balanceTxCollateralIO @w pabConf ownPkh unbalancedTx
+  | txUsesScripts tx'       = balanceTxWithScriptsIO @w pabConf ownPkh unbalancedTx
+  | otherwise               = balanceTxWithoutScriptsIO @w pabConf ownPkh unbalancedTx
+
+  where
+
+    validCollateralTx :: Tx -> Bool
+    validCollateralTx tx
+      | [out] <- txOutputs tx
+        , Map.size (txData tx) == 0
+        , txMint tx == mempty
+        , txOutValue out == collateralValue pabConf
+        , txMintScripts tx == mempty
+        , txCollateral tx == mempty
+        , not (txUsesScripts tx)
+        = True
+      | otherwise
+        = False
+
+
+balanceTxCollateralIO ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
   Eff effs (Either Text Tx)
-balanceTxIO pabConf ownPkh unbalancedTx =
+balanceTxCollateralIO pabConf ownPkh unbalancedTx =
   runEitherT $
     do
+
+      let changeAddr = getChangeAddr pabConf ownPkh
+
+      utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+      privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
+
+      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+          requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+
+      tx <-
+        newEitherT $
+          addValidRange @w
+            (unBalancedTxValidityTimeRange unbalancedTx)
+            (unBalancedTxTx unbalancedTx)
+
+      lift $ printBpiLog @w Debug $ viaShow utxoIndex
+
+      -- We need this folder on the CLI machine, which may not be the local machine
+      lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
+
+      preBalancedTx <-
+        hoistEither $
+            addSignatories ownPkh privKeys requiredSigs tx
+
+      (balancedTx, minUtxos) <- balanceTxLoop @w pabConf changeAddr utxoIndex privKeys [] preBalancedTx
+
+      let adaChange = getAdaChange utxoIndex balancedTx
+          collateralTxOut = head $ txOutputs $ unBalancedTxTx unbalancedTx
+
+      balancedTxWithChange <-
+        if adaChange /= 0
+          then fst <$> balanceTxLoop @w pabConf changeAddr utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
+          else pure balancedTx
+
+      -- Get the updated change, add it to the tx
+      let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
+          fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange (Just collateralTxOut)
+
+      -- finally, we must update the signatories
+      hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
+
+
+balanceTxWithScriptsIO ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  (Member (PABEffect w) effs) =>
+  PABConfig ->
+  PubKeyHash ->
+  UnbalancedTx ->
+  Eff effs (Either Text Tx)
+balanceTxWithScriptsIO pabConf ownPkh unbalancedTx =
+    runEitherT $ do
+      let changeAddr = getChangeAddr pabConf ownPkh
+
+      inMemCollateral <- newEitherT $ maybeToRight @Text "Expected a collateral." <$> getInMemCollateral @w
+
       utxos' <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
-      -- FIXME:issue#89: Collateral WIP - BEGIN
-      inMemCollateral <- lift $ getInMemCollateral @w
-      let utxos = removeCollateralFromMap inMemCollateral utxos'
 
-      collateralOut <- lift $ getProtectedCollateralOut pabConf unbalancedTx
-
-      {- FIXME:issue#89: I wish we don't need to do it at all.
-      See fixme-comment for `balanceTx`
-      Sanity check.
-      They can't be both Just or Nothing.
-      Either we balancing collateral Tx, and in this case collateralOut is Just and inMemCollateral is Nothing,
-      or we balancing user's Tx, and then collateralOut is Nothing and inMemCollateral is Just
-      -}
-      case (inMemCollateral, collateralOut) of
-        (Nothing, Just _) -> pure ()
-        (Just _, Nothing) -> pure ()
-        _ ->
-          throwE $
-            "Collateral output and collateral TxOutRef from memory cant be both Just or Nothing at same time."
-              <> "Something doesn't work how it's suppose to x_x"
-      -- FIXME:issue#89: Collateral WIP - END
+      let utxos = removeCollateralFromMap (Just inMemCollateral) utxos'
 
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
@@ -145,65 +195,129 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       -- Adds required collaterals, only needs to happen once
       -- Also adds signatures for fee calculationteral is set
       preBalancedTx <-
-        hoistEither $
-          addTxCollaterals inMemCollateral tx
-            >>= addSignatories ownPkh privKeys requiredSigs
+        hoistEither $ addSignatories ownPkh privKeys requiredSigs
+                    $ addTxCollaterals inMemCollateral tx
 
       -- Balance the tx
-      (balancedTx, minUtxos) <- loop utxoIndex privKeys [] preBalancedTx
+      (balancedTx, minUtxos) <- balanceTxLoop @w pabConf changeAddr utxoIndex privKeys [] preBalancedTx
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
       -- If we have change but no change UTxO, we need to add an output for it
-      -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
+      -- We'll add a minimal output, run the balanceTxLoop again so it gets minUTxO, then update change
       balancedTxWithChange <-
-        if adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx collateralOut)
-          then fst <$> loop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
+        if adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx)
+          then fst <$> balanceTxLoop @w pabConf changeAddr utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
           else pure balancedTx
 
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
-          fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange collateralOut
+          fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange Nothing
 
       -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
-  where
-    changeAddr :: Address
-    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) (pabConf.pcOwnStakePubKeyHash)
-    loop ::
-      Map TxOutRef TxOut ->
-      Map PubKeyHash DummyPrivKey ->
-      [(TxOut, Integer)] ->
-      Tx ->
-      EitherT Text (Eff effs) (Tx, [(TxOut, Integer)])
-    loop utxoIndex privKeys prevMinUtxos tx = do
-      void $ lift $ Files.writeAll @w pabConf tx
-      nextMinUtxos <-
+
+balanceTxWithoutScriptsIO ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  (Member (PABEffect w) effs) =>
+  PABConfig ->
+  PubKeyHash ->
+  UnbalancedTx ->
+  Eff effs (Either Text Tx)
+balanceTxWithoutScriptsIO pabConf ownPkh unbalancedTx =
+    runEitherT $ do
+      let changeAddr = getChangeAddr pabConf ownPkh
+
+      inMemCollateral <- lift $ getInMemCollateral @w
+
+      utxos' <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+
+      let utxos = removeCollateralFromMap inMemCollateral utxos'
+
+      privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
+      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+          requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+
+      tx <-
         newEitherT $
-          calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
+          addValidRange @w
+            (unBalancedTxValidityTimeRange unbalancedTx)
+            (unBalancedTxTx unbalancedTx)
 
-      let minUtxos = prevMinUtxos ++ nextMinUtxos
+      lift $ printBpiLog @w Debug $ viaShow utxoIndex
 
-      lift $ printBpiLog @w Debug $ "Min utxos:" <+> pretty minUtxos
+      -- We need this folder on the CLI machine, which may not be the local machine
+      lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
 
-      -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
-      txWithoutFees <-
-        hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` 0
+      -- Adds required collaterals, only needs to happen once
+      -- Also adds signatures for fee calculationteral is set
+      preBalancedTx <- hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
-      exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
+      -- Balance the tx
+      (balancedTx, minUtxos) <- balanceTxLoop @w pabConf changeAddr utxoIndex privKeys [] preBalancedTx
 
-      nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
+      -- Get current Ada change
+      let adaChange = getAdaChange utxoIndex balancedTx
+      -- If we have change but no change UTxO, we need to add an output for it
+      -- We'll add a minimal output, run the balanceTxLoop again so it gets minUTxO, then update change
+      balancedTxWithChange <-
+        if adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx)
+          then fst <$> balanceTxLoop @w pabConf changeAddr utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
+          else pure balancedTx
 
-      let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
+      -- Get the updated change, add it to the tx
+      let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
+          fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange Nothing
 
-      lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
+      -- finally, we must update the signatories
+      hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
 
-      -- Rebalance the initial tx with the above fees
-      balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
 
-      if balancedTx == tx
-        then pure (balancedTx, minUtxos)
-        else loop utxoIndex privKeys minUtxos balancedTx
+balanceTxLoop ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  Address ->
+  Map TxOutRef TxOut ->
+  Map PubKeyHash DummyPrivKey ->
+  [(TxOut, Integer)] ->
+  Tx ->
+  EitherT Text (Eff effs) (Tx, [(TxOut, Integer)])
+balanceTxLoop pabConf changeAddr utxoIndex privKeys prevMinUtxos tx = do
+  void $ lift $ Files.writeAll @w pabConf tx
+  nextMinUtxos <-
+    newEitherT $
+      calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
+
+  let minUtxos = prevMinUtxos ++ nextMinUtxos
+
+  lift $ printBpiLog @w Debug $ "Min utxos:" <+> pretty minUtxos
+
+  -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
+  txWithoutFees <-
+    hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` 0
+
+  exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
+
+  nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
+
+  let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
+
+  lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
+
+  -- Rebalance the initial tx with the above fees
+  balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
+
+  if balancedTx == tx
+    then pure (balancedTx, minUtxos)
+    else balanceTxLoop @w pabConf changeAddr utxoIndex privKeys minUtxos balancedTx
+
+hasChangeUTxO :: Address -> Tx -> Bool
+hasChangeUTxO changeAddr tx =
+  any check $ txOutputs tx
+  where
+    check txOut =
+      Tx.txOutAddress txOut == changeAddr
 
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
 getExecutionUnitPrices pabConf = fromMaybe (ExecutionUnitPrices 0 0) $ protocolParamPrices pabConf.pcProtocolParams
@@ -220,6 +334,9 @@ multRational (num :% denom) s = (s * num) :% denom
 
 withFee :: Tx -> Integer -> Tx
 withFee tx fee = tx {txFee = Ada.lovelaceValueOf fee}
+
+getChangeAddr :: PABConfig -> PubKeyHash -> Address
+getChangeAddr pabConf ownPkh = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) (pabConf.pcOwnStakePubKeyHash)
 
 calculateMinUtxos ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -331,21 +448,17 @@ balanceTxIns utxos tx = do
   pure $ tx {txInputs = txIns <> txInputs tx}
 
 -- | Set collateral or fail in case it's required but not available
-addTxCollaterals :: Maybe CollateralUtxo -> Tx -> Either Text Tx
-addTxCollaterals maybeCollateralOref tx
-  | Just cOut <- maybeCollateralOref
-    , usesScripts tx =
-    pure $ tx {txCollateral = Set.singleton (Tx.pubKeyTxIn (collateralTxOutRef cOut))}
-  | Nothing <- maybeCollateralOref
-    , usesScripts tx =
-    Left "Tx uses scripts but no collateral available"
-  | otherwise = Right tx
-  where
-    usesScripts Tx {txInputs, txMintScripts} =
-      not (null txMintScripts)
-        || any
-          (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
-          (Set.toList txInputs)
+addTxCollaterals :: CollateralUtxo -> Tx -> Tx
+addTxCollaterals cOut tx
+  | txUsesScripts tx = tx {txCollateral = Set.singleton (Tx.pubKeyTxIn (collateralTxOutRef cOut))}
+  | otherwise = tx
+
+txUsesScripts :: Tx -> Bool
+txUsesScripts Tx {txInputs, txMintScripts} =
+  not (null txMintScripts)
+    || any
+      (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
+      (Set.toList txInputs)
 
 -- | Ensures all non ada change goes back to user
 handleNonAdaChange :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
@@ -365,14 +478,6 @@ handleNonAdaChange changeAddr utxos tx =
    in if isValueNat nonAdaChange
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
-
-hasChangeUTxO :: Address -> Tx -> Maybe TxOut -> Bool
-hasChangeUTxO changeAddr tx collateralOut =
-  any check $ txOutputs tx
-  where
-    check txOut =
-      Tx.txOutAddress txOut == changeAddr
-        && Just txOut /= collateralOut
 
 -- | Adds ada change to a transaction, assuming there is already an output going to ownPkh. Otherwise, this is identity
 addAdaChange :: Address -> Integer -> Tx -> Maybe TxOut -> Tx

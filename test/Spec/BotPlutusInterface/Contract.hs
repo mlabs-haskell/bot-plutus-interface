@@ -330,7 +330,7 @@ multisigSupport = do
         )
       ,
         ( 10
-        , [text| 
+        , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
           --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
@@ -504,7 +504,7 @@ mintTokens = do
       state
       [
         ( 3
-        , [text| 
+        , [text|
           cardano-cli transaction build-raw --alonzo-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${collateralTxId}#0
