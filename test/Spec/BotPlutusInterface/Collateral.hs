@@ -22,7 +22,6 @@ import Plutus.Contract (
   Endpoint,
   submitTx,
   throwError,
-  ownPaymentPubKeyHash,
  )
 import Spec.MockContract (
   contractEnv,
@@ -46,6 +45,7 @@ tests =
     ]
 
 -- | check that tx doesn't spend collateral but uses it as collateral
+--- FIXME: This test is wrong because collateral is only required when interacting with the scripts.
 testTxUsesCollateralCorrectly :: Assertion
 testTxUsesCollateralCorrectly = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
@@ -67,6 +67,8 @@ testTxUsesCollateralCorrectly = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
         tx <- submitTx constraints
+
+        throwError @Text $ pack (show tx)
 
         logInfo @String "This is a log"
 
