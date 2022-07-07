@@ -262,7 +262,10 @@ instance Monoid w => Default (MockContractState w) where
       , _observableState = mempty
       , _logHistory = mempty
       , _contractEnv = def
-      , _utxos = []
+      -- This is the collateral UTxO in the wallet, with lovelace value specified in `PABConfig`.
+      , _utxos = [( collateralTxOutRef theCollateralUtxo
+                  , TxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing
+                  )]
       , _tip = Tip 1000 (BlockId "ab12") 4
       , _collateralUtxo = theCollateralUtxo
       }
