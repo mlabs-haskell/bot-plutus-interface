@@ -48,9 +48,10 @@ import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
-import Control.Monad.Trans.Except (throwE)
+import Control.Monad.Trans.Except (throwE, ExceptT)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
+import Data.Either.Combinators (swapEither, maybeToRight)
 import Data.Function (fix)
 import Data.HashMap.Strict qualified as HM
 import Data.Kind (Type)
@@ -455,34 +456,38 @@ handleCollateral ::
   ContractEnvironment w ->
   Eff effs (Either Text ())
 handleCollateral cEnv = do
-  maybeCollateral <- getInMemCollateral @w
-  -- FIXME:issue#89: refactor ugly ladder and duplication
-  -- FIXME:issue#89: a lot of debug logging with Notice level, made so to make logs less noisy
-  --                 need to be set to Debug after
-  case maybeCollateral of
-    Just cOref -> do
-      printBpiLog @w Notice $ "Collateral UTxO found in contract env: " <> pretty cOref
-      pure (Right ())
-    Nothing -> do
-      foundCollateral <- findCollateralAtOwnPKH cEnv
-      case foundCollateral of
-        Right cOref -> do
-          printBpiLog @w Notice $ "Collateral UTxO found in wallet: " <> pretty cOref
-          setInMemCollateral @w cOref
-          pure $ Right ()
-        Left e1 -> do
-          printBpiLog @w Notice $
-            "Collateral UTxO not found or failed to be found in wallet: " <> pretty e1
-          printBpiLog @w Notice "Creating collateral UTxO."
-          createdCollateral <- makeCollateral @w cEnv
-          case createdCollateral of
-            Left e2 -> do
-              printBpiLog @w Notice $ "Failed to create collateral UTxO: " <> pretty e2
-              pure $ Left ("Failed to make collateral: " <> e2)
-            Right c -> do
-              setInMemCollateral @w c -- FIXME:issue#89: duplication
-              printBpiLog @w Notice $ "Collateral UTxO created and set to contract env: " <> pretty c
-              pure $ Right ()
+  result <- (fmap swapEither .  runEitherT) $
+    do
+      collateralNotInMem <- newEitherT
+        $ swapEither . maybeToRight "Collateral UTxO not found in contract env."
+        <$> getInMemCollateral @w
+
+      helperLog collateralNotInMem
+
+      collateralNotInWallet <- newEitherT $ swapEither <$> findCollateralAtOwnPKH cEnv
+
+      helperLog
+        ("Collateral UTxO not found or failed to be found in wallet: " <> pretty collateralNotInWallet)
+
+      helperLog "Creating collateral UTxO."
+      --
+      notCreatedCollateral <- newEitherT $ swapEither <$> makeCollateral @w cEnv
+
+      helperLog
+        ("Failed to create collateral UTxO: " <> pretty notCreatedCollateral)
+
+      return ()
+
+  case result of
+    Right collteralUtxo -> setInMemCollateral @w collteralUtxo >>
+                           Right <$> printBpiLog @w Debug "successfully set the collateral utxo in env."
+    Left  ()            -> pure $ Left "Failed to make collateral"
+
+  where
+    -- 
+    helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
+    helperLog msg = newEitherT $ Right <$> printBpiLog @w Debug msg
+
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.

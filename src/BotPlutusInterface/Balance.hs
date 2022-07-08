@@ -80,7 +80,7 @@ data BalanceTx = BalanceTxCollateral
                | BalanceTxWithScripts
                | BalanceTxWithoutScripts
                deriving stock (Eq)
-  
+
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
      assets
 -}
@@ -96,9 +96,9 @@ balanceTxIO pabConf ownPkh unbalancedTx@(UnbalancedTx tx' _ _ _)
   | validCollateralTx tx'   = balanceTxIO' @w pabConf ownPkh unbalancedTx BalanceTxCollateral
   | txUsesScripts tx'       = balanceTxIO' @w pabConf ownPkh unbalancedTx BalanceTxWithScripts
   | otherwise               = balanceTxIO' @w pabConf ownPkh unbalancedTx BalanceTxWithoutScripts
-  
+
   where
-    
+
     validCollateralTx :: Tx -> Bool
     validCollateralTx tx
       | [out] <- txOutputs tx
@@ -126,7 +126,7 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
 
       (utxos, mcollateral) <- newEitherT $ utxosAndCollateralAtAddress @w balanceTxType pabConf changeAddr
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
-      
+
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
 
@@ -140,12 +140,12 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
           addValidRange @w
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
-      
+
       preBalancedTx <- if balanceTxType == BalanceTxWithScripts
                           then hoistEither $ addSignatories ownPkh privKeys requiredSigs
-                               $ addTxCollaterals (fromJust mcollateral) tx     
+                               $ addTxCollaterals (fromJust mcollateral) tx
                           else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
-      
+
       (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
 
       let adaChange = getAdaChange utxoIndex balancedTx
@@ -164,12 +164,12 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
           fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange collateralTxOut
 
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
-  
+
   where
-  
+
     changeAddr :: Address
     changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) (pabConf.pcOwnStakePubKeyHash)
-    
+
     balanceTxLoop ::
       Map TxOutRef TxOut ->
       Map PubKeyHash DummyPrivKey ->
@@ -212,19 +212,18 @@ utxosAndCollateralAtAddress ::
   PABConfig ->
   Address ->
   Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
-utxosAndCollateralAtAddress txType pabConf changeAddr     =
+utxosAndCollateralAtAddress balanceTxType pabConf changeAddr     =
   runEitherT $ do
     utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
     inMemCollateral <- lift $ getInMemCollateral @w
 
-    case txType of
+    case balanceTxType of
       BalanceTxCollateral -> return (utxos, Nothing)
       BalanceTxWithoutScripts -> return (removeCollateralFromMap inMemCollateral utxos, Nothing)
-      BalanceTxWithScripts -> case inMemCollateral of
-                                Nothing -> throwE "Expected Collateral."
-                                (Just _) -> return (removeCollateralFromMap inMemCollateral utxos, inMemCollateral)
-
-
+      BalanceTxWithScripts ->
+        case inMemCollateral of
+          Nothing -> throwE "Expected Collateral."
+          (Just _) -> return (removeCollateralFromMap inMemCollateral utxos, inMemCollateral)
 
 hasChangeUTxO :: Address -> Tx -> Bool
 hasChangeUTxO changeAddr tx =
