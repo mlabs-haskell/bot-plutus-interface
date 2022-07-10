@@ -288,16 +288,10 @@ balanceTx ::
 balanceTx contractEnv unbalancedTx = do
   let pabConf = contractEnv.cePABConfig
 
-  {- FIXME:issue#89: not really good design probably:
-    `balanceTxIO` used for both: balancing collateral UTxO transactions (during `handleCollateral`)
-    and balancing user's transactions. This leads to some not to elegant logic
-    in `balanceTxIO` where we have to detect what exactly we balancing
-    and alternate behavior based on that.
-    Maybe it could be done better, maybe with separate balancing functions
-    for collateral and user's transactions.
-  -}
-
-  result <- handleCollateral @w contractEnv
+  result <- if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
+              then handleCollateral @w contractEnv
+              else pure $ Right ()
+  
   case result of
     Left e -> pure $ BalanceTxFailed (OtherError e)
     _ -> do

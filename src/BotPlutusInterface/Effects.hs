@@ -407,7 +407,6 @@ posixTimeRangeToContainedSlotRange ::
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
 posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange
 
--- FIXME:issue#89: better naming, probably
 getInMemCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>

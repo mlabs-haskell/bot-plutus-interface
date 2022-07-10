@@ -4,6 +4,7 @@
 module BotPlutusInterface.Balance (
   balanceTxStep,
   balanceTxIO,
+  txUsesScripts,
   withFee,
 ) where
 
