@@ -288,6 +288,8 @@ balanceTx ::
 balanceTx contractEnv unbalancedTx = do
   let pabConf = contractEnv.cePABConfig
 
+  -- We first check if the `Tx` uses scripts, if it doesn't then we don't
+  -- need to handle the collateral & if it does then we call `handleCollateral`.
   result <- if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
               then handleCollateral @w contractEnv
               else pure $ Right ()

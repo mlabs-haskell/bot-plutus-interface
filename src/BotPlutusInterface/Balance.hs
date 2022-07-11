@@ -77,15 +77,13 @@ import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
 
-data BalanceTx = BalanceTxCollateral
-               | BalanceTxWithScripts
-               | BalanceTxWithoutScripts
+-- `BalanceTx` is for checking which type of `Tx` we are balancing.
+data BalanceTx = BalanceTxCollateral -- ^ `BalanceTxCollateral` denotes that we are balancing the `Tx` that creates collateral.
+               | BalanceTxWithScripts -- ^ `BalanceTxWithScripts` denotes that we are balancing the `Tx` that uses scripts.
+               | BalanceTxWithoutScripts -- ^ `BalanceTxWithoutScripts` denotes that we are balancing the `Tx` that doesn't uses any scripts.
                deriving stock (Eq)
 
-{- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
-     assets
--}
--- TODO: Add docs.
+-- `balanceTxIO` checks the type of the current `UnbalancedTx` and then calls `balanceTxIO'`.
 balanceTxIO ::
   forall (w :: Type) (effs :: [Type -> Type]).
   (Member (PABEffect w) effs) =>
@@ -113,6 +111,9 @@ balanceTxIO pabConf ownPkh unbalancedTx@(UnbalancedTx tx' _ _ _)
       | otherwise
         = False
 
+{- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
+     assets
+-}
 balanceTxIO' ::
   forall (w :: Type) (effs :: [Type -> Type]).
   (Member (PABEffect w) effs) =>
@@ -142,28 +143,38 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
+      -- Adds required collaterals in the `Tx`, if the `Tx` is of type `BalanceTxWithScripts`.
+      -- Also adds signatures for fee calculation
       preBalancedTx <- if balanceTxType == BalanceTxWithScripts
                           then hoistEither $ addSignatories ownPkh privKeys requiredSigs
                                $ addTxCollaterals (fromJust mcollateral) tx
                           else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
+      -- Balance the tx
       (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
 
+      -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
+      -- This represents the collateral TxOut, in cases of `BalanceTxWithoutScripts` & `BalanceTxWithScripts`
+      -- we don't create any collateral TxOut, hence the result is Nothing.
           collateralTxOut = case balanceTxType of
                               BalanceTxCollateral -> Just $ head $ txOutputs $ unBalancedTxTx unbalancedTx
                               BalanceTxWithoutScripts -> Nothing
                               BalanceTxWithScripts -> Nothing
 
+      -- If we have change but no change UTxO, we need to add an output for it
+      -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change                       BalanceTxWithScripts -> Nothing
       balancedTxWithChange <-
-        if   (adaChange /= 0 && balanceTxType == BalanceTxCollateral)
-          || (adaChange /= 0 && balanceTxType /= BalanceTxCollateral && not (hasChangeUTxO changeAddr balancedTx))
+        if   (balanceTxType == BalanceTxCollateral && adaChange /= 0)
+          || (balanceTxType /= BalanceTxCollateral && adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx))
           then fst <$> balanceTxLoop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
           else pure balancedTx
 
+      -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
           fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange collateralTxOut
 
+      -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
 
   where
@@ -206,6 +217,10 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
         then pure (balancedTx, minUtxos)
         else balanceTxLoop utxoIndex privKeys minUtxos balancedTx
 
+-- `utxosAndCollateralAtAddress` returns all the utxos that can be used as input of a `Tx`,
+-- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
+-- This function throws error if the `Tx` type is of `BalanceTxWithScripts` but there's not `CollateralUtxo`
+-- in the environment.
 utxosAndCollateralAtAddress ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -223,7 +238,7 @@ utxosAndCollateralAtAddress balanceTxType pabConf changeAddr     =
       BalanceTxWithoutScripts -> return (removeCollateralFromMap inMemCollateral utxos, Nothing)
       BalanceTxWithScripts ->
         case inMemCollateral of
-          Nothing -> throwE "Expected Collateral."
+          Nothing -> throwE "The given transaction uses script, but there's no collateral provided. This usually means that, we failed to create Tx and update our ContractEnvironment."
           (Just _) -> return (removeCollateralFromMap inMemCollateral utxos, inMemCollateral)
 
 hasChangeUTxO :: Address -> Tx -> Bool
@@ -248,7 +263,6 @@ multRational (num :% denom) s = (s * num) :% denom
 
 withFee :: Tx -> Integer -> Tx
 withFee tx fee = tx {txFee = Ada.lovelaceValueOf fee}
-
 
 calculateMinUtxos ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -407,23 +421,6 @@ addAdaChange changeAddr change tx collateralOut =
       Tx.txOutAddress txOut == changeAddr
         && Just txOut /= collateralOut
 
-consJust :: forall (a :: Type). Maybe a -> [a] -> [a]
-consJust (Just x) = (x :)
-consJust _ = id
-
-{- | Modifies the first element matching a predicate, or, if none found, call the modifier with Nothing
- Calling this function ensures the modifier will always be run once
--}
-modifyFirst ::
-  forall (a :: Type).
-  -- | Predicate for value to update
-  (a -> Bool) ->
-  -- | Modifier, input Maybe representing existing value (or Nothing if missing), output value representing new value (or Nothing to remove)
-  (Maybe a -> Maybe a) ->
-  [a] ->
-  [a]
-modifyFirst _ m [] = m Nothing `consJust` []
-modifyFirst p m (x : xs) = if p x then m (Just x) `consJust` xs else x : modifyFirst p m xs
 
 addValueToTxOut :: Value -> TxOut -> TxOut
 addValueToTxOut val txOut = txOut {txOutValue = txOutValue txOut <> val}
@@ -475,6 +472,20 @@ validateRange (Interval (LowerBound (Finite lowerBound) _) (UpperBound (Finite u
   | lowerBound >= upperBound = False
 validateRange _ = True
 
+{- | Modifies the first element matching a predicate, or, if none found, call the modifier with Nothing
+ Calling this function ensures the modifier will always be run once
+-}
+modifyFirst ::
+  forall (a :: Type).
+  -- | Predicate for value to update
+  (a -> Bool) ->
+  -- | Modifier, input Maybe representing existing value (or Nothing if missing), output value representing new value (or Nothing to remove)
+  (Maybe a -> Maybe a) ->
+  [a] ->
+  [a]
+modifyFirst _ m [] = m Nothing `consJust` []
+modifyFirst p m (x : xs) = if p x then m (Just x) `consJust` xs else x : modifyFirst p m xs
+
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
 
@@ -490,3 +501,8 @@ unflattenValue (curSymbol, tokenName, amount) =
 isValueNat :: Value -> Bool
 isValueNat =
   all (\(_, _, a) -> a >= 0) . Value.flattenValue
+
+consJust :: forall (a :: Type). Maybe a -> [a] -> [a]
+consJust (Just x) = (x :)
+consJust _ = id
+
