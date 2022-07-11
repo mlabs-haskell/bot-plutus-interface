@@ -1,14 +1,12 @@
-module TestRun (testnetRun) where
+module TestRun (testnetRun, main) where
 
 import BotPlutusInterface.Contract qualified as BPI
 import BotPlutusInterface.Types
-import Cardano.Api (NetworkId (Mainnet, Testnet), NetworkMagic (NetworkMagic))
+import Cardano.Api (NetworkId (Mainnet))
 import Cardano.Api.Shelley (ProtocolParameters)
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM (newTVarIO, readTVarIO)
 import Control.Monad (void)
-import Data.Aeson (decodeFileStrict, (.=))
-import Data.Aeson qualified as JSON
+import Data.Aeson (decodeFileStrict)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.UUID.V4 qualified as UUID
@@ -20,11 +18,13 @@ import SomeDebugContract qualified
 import System.Directory (listDirectory)
 import System.Environment (getArgs, getEnv, setEnv)
 import System.FilePath ((</>))
-import System.Random (Random (randomR), newStdGen, randomRIO)
 import TimeDebugContract qualified
 import Tools
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
+
+main :: IO ()
+main = testnetRun
 
 testnetRun :: IO ()
 testnetRun = do
@@ -41,7 +41,7 @@ testnetRun = do
 
   -- putStrLn $ "=== Stats ===\n" ++ show stats
   void $ runMyContract cEnv operation
-  collateral <- readTVarIO . unCollateral . ceCollateral $ cEnv
+  collateral <- readTVarIO . unCollateralVar . ceCollateral $ cEnv
   -- stats <- readTVarIO (ceContractStats cEnv)
   putStrLn $ "Collateral env: " <> show collateral
   where
@@ -78,12 +78,6 @@ testnetRun = do
         -- randomDelay
         -- runMyContract cEnv operation
         Left e -> putStrLn ("=== FAILED ===\n" ++ show e) -- >> return (show e)
-    randomDelay :: IO ()
-    randomDelay = do
-      g <- newStdGen
-      let (t, _) = randomR (0, 2_000_000) g
-      putStrLn $ "delay: " ++ show t
-      threadDelay t
 
 type NetMagic = Integer -- 0 fot mainnet, 1097911063 public testnet
 
@@ -95,7 +89,7 @@ mkContractEnv netMagic bpiDir = do
   contractState <- newTVarIO (ContractState Active mempty)
   contractStats <- newTVarIO (ContractStats mempty)
   contractLogs <- newTVarIO (LogsList mempty)
-  collateral <- Collateral <$> newTVarIO Nothing
+  collateral <- CollateralVar <$> newTVarIO Nothing
   pkhs <- getPkhs bpiDir
   return $
     ContractEnvironment
@@ -108,10 +102,10 @@ mkContractEnv netMagic bpiDir = do
       }
 
 mkPabConf :: NetMagic -> ProtocolParameters -> Text -> FilePath -> PubKeyHash -> PABConfig
-mkPabConf netMagic pparams pparamsFile bpiDir ownPkh =
+mkPabConf _ pparams pparamsFile bpiDir ownPkh =
   PABConfig
     { pcCliLocation = Local
-    , pcNetwork = netId
+    , pcNetwork = Mainnet
     , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
     , pcPort = 9080
     , pcProtocolParams = pparams
@@ -132,10 +126,6 @@ mkPabConf netMagic pparams pparamsFile bpiDir ownPkh =
     , pcTxStatusPolling = TxStatusPolling 500_000 5
     , pcCollateralSize = 10_248_256
     }
-  where
-    netId = case netMagic of
-      0 -> Mainnet
-      other -> Testnet . NetworkMagic . fromInteger $ other
 
 getPkhs :: FilePath -> IO [PubKeyHash]
 getPkhs bpiDir = do
@@ -153,3 +143,5 @@ getPkhs bpiDir = do
 
 -- getOrFailM :: (Show e, Functor f) => f (Either e b) -> f b
 -- getOrFailM = (getOrFail <$>)
+--
+-- :main "/run/user/1000/test-cluster295608/bot-plutus-interface/" "/nix/st4ore/s76zj58fp6fvgmv2id76xib4sni81yvz-cardano-cli-exe-cardano-cli-1.34.1/bin" "/run/user/1000/test-cluster295608/node/node.socket" 0 "lock"

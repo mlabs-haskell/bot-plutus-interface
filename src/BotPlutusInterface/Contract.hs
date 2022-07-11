@@ -48,10 +48,10 @@ import Control.Monad.Freer.Extras.Modify (raiseEnd)
 import Control.Monad.Freer.Writer (Writer (Tell))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
-import Control.Monad.Trans.Except (throwE, ExceptT)
+import Control.Monad.Trans.Except (ExceptT, throwE)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
-import Data.Either.Combinators (swapEither, maybeToRight)
+import Data.Either.Combinators (maybeToRight, swapEither)
 import Data.Function (fix)
 import Data.HashMap.Strict qualified as HM
 import Data.Kind (Type)
@@ -288,12 +288,8 @@ balanceTx ::
 balanceTx contractEnv unbalancedTx = do
   let pabConf = contractEnv.cePABConfig
 
-  -- We first check if the `Tx` uses scripts, if it doesn't then we don't
-  -- need to handle the collateral & if it does then we call `handleCollateral`.
-  result <- if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
-              then handleCollateral @w contractEnv
-              else pure $ Right ()
-  
+  result <- handleCollateral @w contractEnv
+
   case result of
     Left e -> pure $ BalanceTxFailed (OtherError e)
     _ -> do
@@ -452,11 +448,12 @@ handleCollateral ::
   ContractEnvironment w ->
   Eff effs (Either Text ())
 handleCollateral cEnv = do
-  result <- (fmap swapEither .  runEitherT) $
+  result <- (fmap swapEither . runEitherT) $
     do
-      collateralNotInMem <- newEitherT
-        $ swapEither . maybeToRight "Collateral UTxO not found in contract env."
-        <$> getInMemCollateral @w
+      collateralNotInMem <-
+        newEitherT $
+          swapEither . maybeToRight "Collateral UTxO not found in contract env."
+            <$> getInMemCollateral @w
 
       helperLog collateralNotInMem
 
@@ -472,18 +469,17 @@ handleCollateral cEnv = do
       helperLog
         ("Failed to create collateral UTxO: " <> pretty notCreatedCollateral)
 
-      return ()
+      return ("Failed to create collateral UTxO: " <> notCreatedCollateral)
 
   case result of
-    Right collteralUtxo -> setInMemCollateral @w collteralUtxo >>
-                           Right <$> printBpiLog @w Debug "successfully set the collateral utxo in env."
-    Left  ()            -> pure $ Left "Failed to make collateral"
-
+    Right collteralUtxo ->
+      setInMemCollateral @w collteralUtxo
+        >> Right <$> printBpiLog @w Debug "successfully set the collateral utxo in env."
+    Left err -> pure $ Left $ "Failed to make collateral: " <> err
   where
-    -- 
+    --
     helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
-    helperLog msg = newEitherT $ Right <$> printBpiLog @w Debug msg
-
+    helperLog msg = newEitherT $ Right <$> printBpiLog @w Notice msg
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.
@@ -511,6 +507,7 @@ makeCollateral cEnv = runEitherT $ do
       lift $ printBpiLog @w Notice $ "Collateral Tx Status: " <> pretty status
       newEitherT $ findCollateralAtOwnPKH cEnv
 
+-- | Finds a collateral present at user's address
 findCollateralAtOwnPKH ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>

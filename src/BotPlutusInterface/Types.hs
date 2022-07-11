@@ -189,7 +189,8 @@ instance Show (TVar LogsList) where
 newtype CollateralUtxo = CollateralUtxo
   { collateralTxOutRef :: TxOutRef
   }
-  deriving (Show)
+  deriving stock (Show)
+  deriving newtype (Eq)
 
 instance Pretty CollateralUtxo where
   pretty (CollateralUtxo txOutRef) = "Collateral" <+> pretty txOutRef

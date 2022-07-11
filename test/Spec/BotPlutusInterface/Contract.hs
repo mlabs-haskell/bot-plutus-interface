@@ -1,11 +1,11 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Spec.BotPlutusInterface.Contract (tests, commandEqual) where
+module Spec.BotPlutusInterface.Contract (assertCommandHistory, assertContract, assertFiles, commandEqual, tests) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import Cardano.Api (NetworkId (Mainnet))
-import Control.Lens (ix, (&), (.~), (^.), (^?), (<>~))
+import Control.Lens (ix, (&), (.~), (<>~), (^.), (^?))
 import Data.Aeson (ToJSON)
 import Data.Aeson.Extras (encodeByteString)
 import Data.Char (isSpace)

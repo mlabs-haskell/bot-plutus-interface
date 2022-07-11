@@ -1,109 +1,135 @@
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 module Spec.BotPlutusInterface.Collateral where
 
-import BotPlutusInterface.Types (
-  ContractEnvironment (cePABConfig),
-  PABConfig (pcOwnPubKeyHash), CollateralUtxo (CollateralUtxo)
- )
-import Cardano.Api (TxBodyContent (txIns))
-import Cardano.Api qualified as C
-import Control.Lens ((&), (.~))
-import Control.Monad (when)
+import Control.Lens ((&), (.~), (^.))
+import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
-import Data.Set qualified as Set
 import Data.Text (Text, pack)
-import Data.Text qualified as Text
-import Ledger (PaymentPubKeyHash (unPaymentPubKeyHash), Tx (txCollateral, txInputs), txInRef)
+import Data.Void (Void)
+import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
+import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (CardanoTx, TxOut (TxOut), TxOutRef (TxOutRef))
-import Ledger.Tx.CardanoAPI qualified as C
+import Ledger.Tx qualified as Tx
+import Ledger.TxId qualified as TxId
+import Ledger.Value qualified as Value
+import NeatInterpolation (text)
 import Plutus.Contract (
   Contract (..),
   Endpoint,
-  submitTx,
-  throwError,
+  submitTxConstraintsWith,
  )
 import Spec.MockContract (
+  addr1,
+  collateralUtxo,
   contractEnv,
-  paymentPkh1,
   paymentPkh2,
+  pkh1',
   pkhAddr1,
   runContractPure,
-  theCollateralUtxo,
   utxos,
  )
-import Plutus.Contract.Logging (logInfo)
+
+import BotPlutusInterface.Types (CollateralUtxo (CollateralUtxo), CollateralVar (CollateralVar), ContractEnvironment (..), PABConfig (pcCollateralSize))
+import Control.Concurrent.STM (newTVarIO)
+
+import Spec.BotPlutusInterface.Contract (assertCommandHistory, assertContract)
+
+import PlutusTx qualified
+import PlutusTx.Builtins (fromBuiltin)
+import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (Assertion, assertFailure, testCase)
+import Test.Tasty.HUnit (Assertion, assertEqual, testCase)
 import Prelude
 
 tests :: TestTree
 tests =
   testGroup
     "Doesn't spend collateral."
-    [ testCase "Use collateral utxo as collateral and not as input" testTxUsesCollateralCorrectly
+    [ testCase
+        "Use collateral utxo present in the user's wallet, instead of creating new one."
+        testTxUsesCollateralCorrectly
+    , testCase "create collateral utxo" testTxCreatesCollateralCorrectly
     ]
 
--- | check that tx doesn't spend collateral but uses it as collateral
---- FIXME: This test is wrong because collateral is only required when interacting with the scripts.
+-- Test to check that correct UTxo is selected from user's wallet as collateral.
 testTxUsesCollateralCorrectly :: Assertion
 testTxUsesCollateralCorrectly = do
-  let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing
-      collateralTxOut = TxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing
-      (CollateralUtxo collateralTxOutRef) = theCollateralUtxo
+  let txOutRef1 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+      txOut1 = TxOut pkhAddr1 (Ada.lovelaceValueOf 10_000_000) Nothing
+      txOutRef2 = TxOutRef "d406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e4" 0
+      txOut2 = TxOut pkhAddr1 (Ada.lovelaceValueOf 90_000_000) Nothing
+      cenv' = def {ceCollateral = CollateralVar $ unsafePerformIO $ newTVarIO Nothing}
+      initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)] & contractEnv .~ cenv' & collateralUtxo .~ Nothing
 
-      -- lets test both orders, strzeżonego pan Bóg strzeże
-      utxos1 = [(collateralTxOutRef, collateralTxOut), (txOutRef, txOut)]
-      utxos2 = [(txOutRef, txOut), (collateralTxOutRef, collateralTxOut)]
-      initState utxos' =
-        def & utxos .~ utxos'
-            & contractEnv .~ contractEnv'
-      pabConf = def {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1}
-      contractEnv' = def {cePABConfig = pabConf}
+      collatUtxo = Just $ CollateralUtxo txOutRef1
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text ()
-      contract = do
-        let constraints =
-              Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
-        tx <- submitTx constraints
+  assertContract mintContract initState $ \state -> do
+    assertEqual
+      ("InValid collateral. Expected: " <> show collatUtxo <> " but Got: " <> show (state ^. collateralUtxo))
+      collatUtxo
+      (state ^. collateralUtxo)
 
-        throwError @Text $ pack (show tx)
+-- Test to check that collateral UTxo is first created if it is not present in the user's wallet.
+testTxCreatesCollateralCorrectly :: Assertion
+testTxCreatesCollateralCorrectly = do
+  let txOutRef1 = TxOutRef "d406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e4" 0
+      txOut1 = TxOut pkhAddr1 (Ada.lovelaceValueOf 90_000_000) Nothing
+      cenv' = def {ceCollateral = CollateralVar $ unsafePerformIO $ newTVarIO Nothing}
+      initState = def & utxos .~ [(txOutRef1, txOut1)] & contractEnv .~ cenv' & collateralUtxo .~ Nothing
 
-        logInfo @String "This is a log"
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef1
 
-        let collateralInInputs = Set.member collateralTxOutRef $ getCardanoTxInputs tx
-            expectedCollaterals = Just (Set.fromList [collateralTxOutRef])
-            collateralsAreUnexpected = expectedCollaterals /= getCardanoTxCollateralInputs tx
+      (_, state) = runContractPure mintContract initState
+      collatVal = pack $ show $ pcCollateralSize $ cePABConfig (state ^. contractEnv)
 
-        -- check that tx doesn't use the collateral in inputs and does in collaterals
-        when collateralInInputs $ throwError "Tx spends utxo chosen for collateral."
-        when collateralsAreUnexpected $
-          throwError @Text
-            ( "Unexpected collaterals. Expected: " <> pack (show expectedCollaterals)
-                <> ". Actual: "
-                <> pack (show (getCardanoTxCollateralInputs tx))
-            )
+  assertCommandHistory
+    state
+    [
+      ( 2
+      , [text|
+         cardano-cli transaction calculate-min-required-utxo
+         --alonzo-era
+         --tx-out ${addr1}+${collatVal}
+         --protocol-params-file ./protocol.json
+       |]
+      )
+    ,
+      ( 3
+      , [text|
+         cardano-cli transaction build-raw
+         --alonzo-era
+         --tx-in ${inTxId}#0
+         --tx-out ${addr1}+${collatVal}
+         --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+         --fee 0
+         --protocol-params-file ./protocol.json
+         --out-file ./txs/tx-fa4c303a2d6feb62b43440d6e0b9a90f5b20b00ecfe5364b6927806b0e8e0198.raw
+       |]
+      )
+    ]
 
-  -- run the same contract with two orders of starting utxos
-  let (res1, _) = runContractPure contract (initState utxos1)
-      (res2, _) = runContractPure contract (initState utxos2)
+curSymbol :: Value.CurrencySymbol
+curSymbol = Ledger.scriptCurrencySymbol mintingPolicy
 
-  -- if both fail show only one error message
-  case res1 >> res2 of
-    Left err -> assertFailure $ Text.unpack err
-    Right _ -> pure ()
+curSymbol' :: Text
+curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
 
-getCardanoTxInputs :: CardanoTx -> Set.Set TxOutRef
-getCardanoTxInputs = \case
-  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txIns = _txIns}) _) _)) ->
-    Set.fromList $ fmap (C.fromCardanoTxIn . fst) _txIns
-  (Right tx) -> Set.map txInRef $ txInputs tx
+mintContract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+mintContract = do
+  let lookups =
+        Constraints.mintingPolicy mintingPolicy
+  let constraints =
+        Constraints.mustMintValue (Value.singleton curSymbol "testToken" 5)
+          <> Constraints.mustPayToPubKey
+            paymentPkh2
+            (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
+  submitTxConstraintsWith @Void lookups constraints
 
-getCardanoTxCollateralInputs :: CardanoTx -> Maybe (Set.Set TxOutRef)
-getCardanoTxCollateralInputs = \case
-  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txInsCollateral = C.TxInsCollateral _ _txIns}) _) _)) ->
-    Just $ Set.fromList $ fmap C.fromCardanoTxIn _txIns
-  (Left (C.SomeTx (C.Tx (C.TxBody C.TxBodyContent {txInsCollateral = C.TxInsCollateralNone}) _) _)) ->
-    Nothing
-  (Right tx) -> Just $ Set.map txInRef $ txCollateral tx
+mintingPolicy :: Scripts.MintingPolicy
+mintingPolicy =
+  Scripts.mkMintingPolicyScript
+    $$(PlutusTx.compile [||(\_ _ -> ())||])

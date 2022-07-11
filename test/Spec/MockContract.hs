@@ -35,6 +35,7 @@ module Spec.MockContract (
   runContractPure,
   runContractPure',
   MockContractState (..),
+  collateralUtxo,
   commandHistory,
   statsUpdates,
   instanceUpdateHistory,
@@ -242,7 +243,7 @@ data MockContractState w = MockContractState
   , _contractEnv :: ContractEnvironment w
   , _utxos :: [(TxOutRef, TxOut)]
   , _tip :: Tip
-  , _collateralUtxo :: CollateralUtxo
+  , _collateralUtxo :: Maybe CollateralUtxo
   }
   deriving stock (Show)
 
@@ -262,12 +263,15 @@ instance Monoid w => Default (MockContractState w) where
       , _observableState = mempty
       , _logHistory = mempty
       , _contractEnv = def
-      -- This is the collateral UTxO in the wallet, with lovelace value specified in `PABConfig`.
-      , _utxos = [( collateralTxOutRef theCollateralUtxo
-                  , TxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing
-                  )]
+      , -- This is the collateral UTxO in the wallet, with lovelace value specified in `PABConfig`.
+        _utxos =
+          [
+            ( collateralTxOutRef theCollateralUtxo
+            , TxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing
+            )
+          ]
       , _tip = Tip 1000 (BlockId "ab12") 4
-      , _collateralUtxo = theCollateralUtxo
+      , _collateralUtxo = Just theCollateralUtxo
       }
 
 instance Monoid w => Default (ContractEnvironment w) where
@@ -346,8 +350,8 @@ runPABEffectPure initState req =
     go (SlotToPOSIXTime _) = pure $ Right 1506203091
     go (POSIXTimeToSlot _) = pure $ Right 1
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
-    go GetInMemCollateral = Just . _collateralUtxo <$> get @(MockContractState w)
-    go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo collateral
+    go GetInMemCollateral = _collateralUtxo <$> get @(MockContractState w)
+    go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -613,14 +617,14 @@ mockQueryChainIndex = \case
       UtxoSetAtResponse $
         UtxosResponse
           (state ^. tip)
-          (removeCollateralFromPage (Just $ _collateralUtxo state) $ pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+          (removeCollateralFromPage (_collateralUtxo state) $ pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   UtxoSetWithCurrency pageQuery _ -> do
     state <- get @(MockContractState w)
     pure $
       UtxoSetAtResponse $
         UtxosResponse
           (state ^. tip)
-          (removeCollateralFromPage (Just $ _collateralUtxo state) (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))))
+          (removeCollateralFromPage (_collateralUtxo state) (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))))
   TxsFromTxIds ids -> do
     -- TODO: Track some kind of state here, add tests to ensure this works correctly
     -- For now, empty txs
