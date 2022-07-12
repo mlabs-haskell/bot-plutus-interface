@@ -61,6 +61,6 @@ geth-node/chaindata/history
 .direnv
 
 # debug configs
-./examples/debug/ci-test.http
-./examples/debug/run-test-lc.sh
-./examples/debug/run-test-tn.sh
+examples/debug/ci-test.http
+examples/debug/run-test-lc.sh
+examples/debug/run-test-tn.sh
