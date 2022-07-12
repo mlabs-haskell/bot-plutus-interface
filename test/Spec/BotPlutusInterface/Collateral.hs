@@ -24,6 +24,7 @@ import Plutus.Contract (
  )
 import Spec.MockContract (
   addr1,
+  addr2,
   collateralUtxo,
   contractEnv,
   paymentPkh2,
@@ -66,12 +67,33 @@ testTxUsesCollateralCorrectly = do
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)] & contractEnv .~ cenv' & collateralUtxo .~ Nothing
 
       collatUtxo = Just $ CollateralUtxo txOutRef1
-
+      
+      collateralTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef1
+      inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef2
+      
   assertContract mintContract initState $ \state -> do
     assertEqual
       ("InValid collateral. Expected: " <> show collatUtxo <> " but Got: " <> show (state ^. collateralUtxo))
       collatUtxo
       (state ^. collateralUtxo)
+
+    assertCommandHistory state
+      [ (3
+        , [text|
+            cardano-cli transaction build-raw --alonzo-era
+            --tx-in ${inTxId}#0
+            --tx-in-collateral ${collateralTxId}#0
+            --tx-out ${addr2}+1000 + 5 648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198.74657374546F6B656E
+            --mint-script-file ./result-scripts/policy-648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198.plutus
+            --mint-redeemer-file ./result-scripts/redeemer-923918e403bf43c34b4ef6b48eb2ee04babed17320d8d1b9ff9ad086e86f44ec.json
+            --mint-execution-units (0,0)
+            --mint 5 648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198.74657374546F6B656E
+            --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+            --fee 0 --protocol-params-file ./protocol.json
+            --out-file ./txs/tx-9e13584e45ce4c310f2b0f14341b9ab51bd3ec7978caeaf8e395f7a54315f94e.raw
+          |]
+        )
+      ]
 
 -- Test to check that collateral UTxo is first created if it is not present in the user's wallet.
 testTxCreatesCollateralCorrectly :: Assertion
