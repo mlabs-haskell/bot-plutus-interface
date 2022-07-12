@@ -33,7 +33,7 @@ import Data.Kind (Type)
 import Data.List (uncons, (\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -144,12 +144,13 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
       -- Adds required collaterals in the `Tx`, if the `Tx` is of type `BalanceTxWithScripts`.
       -- Also adds signatures for fee calculation
       preBalancedTx <-
-        if balanceTxType == BalanceTxWithScripts
-          then
-            hoistEither $
-              addSignatories ownPkh privKeys requiredSigs $
-                addTxCollaterals (fromJust mcollateral) tx
-          else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
+        case balanceTxType of
+          BalanceTxWithScripts ->
+            maybe
+              (throwE "Tx uses script but no collateral was provided.")
+              (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
+              mcollateral
+          _ -> hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
       -- Balance the tx
       (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
