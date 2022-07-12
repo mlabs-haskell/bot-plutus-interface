@@ -23,7 +23,6 @@ utxosAtDebug = do
       addr = Address (PubKeyCredential pkh) Nothing
   utxos <- Contract.utxosAt addr
   traceM $ "UTXOs len: " ++ Hask.show (length $ M.toList utxos)
-  Hask.undefined
 
 payToHardcodedPKH :: Contract () EmptySchema Text ()
 payToHardcodedPKH = do
@@ -39,7 +38,6 @@ payToHardcodedPKH = do
           ownAddr = Address (PubKeyCredential ownPkh) Nothing
 
       let txc =
-            -- Constraints.mustPayToPubKey ownPPkh (adaValueOf 22)
             Constraints.mustPayToPubKey payToPkh (adaValueOf 44)
               <> Constraints.mustPayToPubKey ownPPkh (adaValueOf 21)
               <> Constraints.mustPayToPubKey ownPPkh (adaValueOf 33)
@@ -53,5 +51,3 @@ payToHardcodedPKH = do
       utxosAfter <- Contract.utxosAt ownAddr
       traceM $ "UTxOs Size AFTER: " <> Hask.show (size utxosAfter)
       traceM $ "UTxOs AFTER: " <> ppShow utxosAfter
-
-      pure ()

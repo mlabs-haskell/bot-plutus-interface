@@ -29,7 +29,7 @@ main = testnetRun
 testnetRun :: IO ()
 testnetRun = do
   setLocaleEncoding utf8
-  [bpiDir, cliDir, sockPath, netMagic, operation] <- getArgs -- /home/mike/dev/mlabs/net-setups/testnet-bpi-setup/data
+  [bpiDir, cliDir, sockPath, netMagic, operation] <- getArgs
   setEnv "CARDANO_NODE_SOCKET_PATH" sockPath
   getEnv "PATH" >>= \p -> setEnv "PATH" (p ++ ":" ++ cliDir)
 
@@ -39,10 +39,8 @@ testnetRun = do
 
   putStrLn "Running contract"
 
-  -- putStrLn $ "=== Stats ===\n" ++ show stats
   void $ runMyContract cEnv operation
   collateral <- readTVarIO . unCollateralVar . ceCollateral $ cEnv
-  -- stats <- readTVarIO (ceContractStats cEnv)
   putStrLn $ "Collateral env: " <> show collateral
   where
     runMyContract cEnv operation = do
@@ -72,12 +70,9 @@ testnetRun = do
         other -> error $ "Unsupported operation: " ++ other
 
       case res of
-        -- Right r -> "=== OK ===\n" ++ show r >> runMyContract
         Right r -> do
           putStrLn ("=== OK ===\n" ++ show r)
-        -- randomDelay
-        -- runMyContract cEnv operation
-        Left e -> putStrLn ("=== FAILED ===\n" ++ show e) -- >> return (show e)
+        Left e -> putStrLn ("=== FAILED ===\n" ++ show e)
 
 type NetMagic = Integer -- 0 fot mainnet, 1097911063 public testnet
 
@@ -91,7 +86,7 @@ mkContractEnv netMagic bpiDir = do
   contractLogs <- newTVarIO (LogsList mempty)
   collateral <- CollateralVar <$> newTVarIO Nothing
   pkhs <- getPkhs bpiDir
-  return $
+  pure $
     ContractEnvironment
       { cePABConfig = mkPabConf netMagic pparams (Text.pack paramsFile) bpiDir (head pkhs)
       , ceContractState = contractState
@@ -136,12 +131,4 @@ getPkhs bpiDir = do
           . Text.replace ".skey" ""
           . Text.pack
   keyNames <- listDirectory dir
-  return $ map (pkhFromHash . replace) keyNames
-
--- getOrFail :: Show e => Either e a -> a
--- getOrFail = either (error . show) id
-
--- getOrFailM :: (Show e, Functor f) => f (Either e b) -> f b
--- getOrFailM = (getOrFail <$>)
---
--- :main "/run/user/1000/test-cluster295608/bot-plutus-interface/" "/nix/st4ore/s76zj58fp6fvgmv2id76xib4sni81yvz-cardano-cli-exe-cardano-cli-1.34.1/bin" "/run/user/1000/test-cluster295608/node/node.socket" 0 "lock"
+  pure $ map (pkhFromHash . replace) keyNames

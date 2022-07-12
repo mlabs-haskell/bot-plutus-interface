@@ -30,7 +30,7 @@ import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List ((\\))
+import Data.List ((\\), uncons)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
@@ -69,8 +69,6 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
-
--- import BotPlutusInterface.CollateralEff qualified as CollateralEff
 
 import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import Prettyprinter (pretty, viaShow, (<+>))
@@ -161,17 +159,19 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
           -- This represents the collateral TxOut, in cases of `BalanceTxWithoutScripts` & `BalanceTxWithScripts`
           -- we don't create any collateral TxOut, hence the result is Nothing.
           collateralTxOut = case balanceTxType of
-            BalanceTxCollateral -> Just $ head $ txOutputs $ unBalancedTxTx unbalancedTx
+            BalanceTxCollateral -> fmap fst . uncons . txOutputs $ unBalancedTxTx unbalancedTx
             BalanceTxWithoutScripts -> Nothing
             BalanceTxWithScripts -> Nothing
+          bTx = fst <$> balanceTxLoop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
 
       -- If we have change but no change UTxO, we need to add an output for it
-      -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change                       BalanceTxWithScripts -> Nothing
+      -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
+      
       balancedTxWithChange <-
-        if (balanceTxType == BalanceTxCollateral && adaChange /= 0)
-          || (balanceTxType /= BalanceTxCollateral && adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx))
-          then fst <$> balanceTxLoop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
-          else pure balancedTx
+        case balanceTxType of
+          BalanceTxCollateral | adaChange /= 0 -> bTx
+          _ | adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx) -> bTx
+          _ -> pure balancedTx
 
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
@@ -235,17 +235,18 @@ utxosAndCollateralAtAddress balanceTxType pabConf changeAddr =
     inMemCollateral <- lift $ getInMemCollateral @w
 
     case balanceTxType of
-      BalanceTxCollateral -> return (utxos, Nothing)
-      BalanceTxWithoutScripts -> return (removeCollateralFromMap inMemCollateral utxos, Nothing)
+      BalanceTxCollateral -> pure (utxos, Nothing)
+      BalanceTxWithoutScripts -> pure (removeCollateralFromMap inMemCollateral utxos, Nothing)
       BalanceTxWithScripts ->
         case inMemCollateral of
           Nothing -> throwE "The given transaction uses script, but there's no collateral provided. This usually means that, we failed to create Tx and update our ContractEnvironment."
-          (Just _) -> return (removeCollateralFromMap inMemCollateral utxos, inMemCollateral)
+          Just _ -> pure (removeCollateralFromMap inMemCollateral utxos, inMemCollateral)
 
 hasChangeUTxO :: Address -> Tx -> Bool
 hasChangeUTxO changeAddr tx =
   any check $ txOutputs tx
   where
+    check :: TxOut -> Bool
     check txOut =
       Tx.txOutAddress txOut == changeAddr
 
@@ -418,6 +419,7 @@ addAdaChange changeAddr change tx collateralOut =
           (txOutputs tx)
     }
   where
+    check :: TxOut -> Bool
     check txOut =
       Tx.txOutAddress txOut == changeAddr
         && Just txOut /= collateralOut

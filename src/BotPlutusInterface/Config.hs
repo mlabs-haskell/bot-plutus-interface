@@ -292,7 +292,7 @@ loadPABConfig :: FilePath -> IO (Either String PABConfig)
 loadPABConfig fn = do
   confE <- deserialize <$> readFile fn
   case confE of
-    Left err -> return $ Left $ "PABConfig: " <> fn <> ": " <> err
+    Left err -> pure $ Left $ "PABConfig: " <> fn <> ": " <> err
     Right conf@PABConfig {pcProtocolParamsFile, pcNetwork, pcCliLocation} -> do
       pparamsE <- readProtocolParametersJSON (toString pcProtocolParamsFile)
       case pparamsE of
@@ -313,11 +313,11 @@ loadPABConfig fn = do
                     }
             callLocalCommand shellArgs
               >>= \case
-                Left errPParams -> return $ Left $ Text.unpack errPParams
+                Left errPParams -> pure $ Left $ Text.unpack errPParams
                 Right _ -> loadPABConfig fn
           | otherwise ->
-            return $ pparamsError pcProtocolParamsFile err
-        Right pcProtocolParams -> return $ Right conf {pcProtocolParams}
+            pure $ pparamsError pcProtocolParamsFile err
+        Right pcProtocolParams -> pure $ Right conf {pcProtocolParams}
   where
     pparamsError f e = Left $ "protocolParamsFile: " <> toString f <> ": " <> e
 

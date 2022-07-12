@@ -153,7 +153,7 @@ websocketHandler :: AppState -> PendingConnection -> Handler ()
 websocketHandler state pendingConn = liftIO $ do
   conn <- acceptRequest pendingConn
 
-  withPingThread conn 30 (return ()) $
+  withPingThread conn 30 (pure ()) $
     forever $ do
       msg <- receiveData conn
 
@@ -254,7 +254,7 @@ contractLookupHandler ::
   Handler Bool
 contractLookupHandler (AppState s) contractInstanceId = liftIO . atomically $ do
   instances <- readTVar s
-  return $ Map.member contractInstanceId instances
+  pure $ Map.member contractInstanceId instances
 
 handleContract ::
   forall

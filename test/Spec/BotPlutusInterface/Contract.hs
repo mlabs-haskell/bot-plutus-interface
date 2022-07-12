@@ -902,7 +902,7 @@ assertCommandHistory state =
 -- | assertEqual but using `commandEqual`
 assertCommandEqual :: String -> Text -> Text -> Assertion
 assertCommandEqual err expected actual
-  | commandEqual expected actual = return ()
+  | commandEqual expected actual = pure ()
   | otherwise = assertFailure $ err ++ "\nExpected:\n" ++ show expected ++ "\nGot:\n" ++ show actual
 
 {- | Checks if a command matches an expected command pattern

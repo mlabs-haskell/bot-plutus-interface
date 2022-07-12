@@ -244,28 +244,28 @@ awaitTxStatusChange contractEnv txId = do
           , [" - waited ", show pollTimeout, " blocks."]
           , [" Current status: ", show status]
           ]
-        return status
+        pure status
       (Unknown, _) -> do
         threadDelay @w pollInterval
         loop
-      (status, _) -> return status
+      (status, _) -> pure status
   where
     getStatus = do
       mTx <- queryChainIndexForTxState
       case mTx of
         Nothing -> do
           logDebug $ "TxId " ++ show txId ++ " not found in index"
-          return Unknown
+          pure Unknown
         Just txState -> do
           logDebug $ "TxId " ++ show txId ++ " found in index, checking status"
           blk <- fromInteger <$> currentBlock contractEnv
           case transactionStatus blk txState txId of
             Left e -> do
               logDebug $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
-              return Unknown
+              pure Unknown
             Right st -> do
               logDebug $ "Status for TxId " ++ show txId ++ " is " ++ show st
-              return st
+              pure st
 
     queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
     queryChainIndexForTxState = do
@@ -439,7 +439,7 @@ currentTime ::
 currentTime contractEnv =
   currentSlot @w contractEnv
     >>= slotToPOSIXTime @w
-    >>= either (error . show) return
+    >>= either (error . show) pure
 
 -- | Check if collateral in contract environment, if not - create and set to environment
 handleCollateral ::
@@ -469,7 +469,7 @@ handleCollateral cEnv = do
       helperLog
         ("Failed to create collateral UTxO: " <> pretty notCreatedCollateral)
 
-      return ("Failed to create collateral UTxO: " <> notCreatedCollateral)
+      pure ("Failed to create collateral UTxO: " <> notCreatedCollateral)
 
   case result of
     Right collteralUtxo ->

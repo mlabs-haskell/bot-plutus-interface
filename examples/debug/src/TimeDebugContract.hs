@@ -65,9 +65,6 @@ mkValidator _ timeRmr ctx =
     && rangesAreSame
     && boundsTimesCheck
   where
-    -- && ctxUpperIsBigger
-    -- && ctxUpperIsSmaller
-    -- && ctxUpperIsEqual
 
     info = scriptContextTxInfo ctx
     vRange = txInfoValidRange info
@@ -98,23 +95,7 @@ mkValidator _ timeRmr ctx =
       traceIfFalse "Ranges not equal" $
         vRange == rmrRange
 
-    -- ctxUpperIsBigger =
-    --   traceIfTrue
-    --   "Ctx upper is bigger"
-    --   (ctxUb > rmrUb)
-
-    -- ctxUpperIsSmaller =
-    --   traceIfTrue
-    --   "Ctx upper is smaller"
-    --   (ctxUb < rmrUb)
-
-    -- ctxUpperIsEqual =
-    --   traceIfTrue
-    --   "Ctx upper is equal"
-    --   (ctxUb == rmrUb)
-
     boundsTimesCheck =
-      -- True
       traceIfFalse "Bounds times check failed" $
         let (LowerBound (Finite startTime) _) = ctxLb
             (UpperBound (Finite endTime) _) = ctxUb
@@ -149,7 +130,6 @@ timeDebugViaPay vInterval = do
         Constraints.mustPayToPubKey ownPkh (Value.adaValueOf 4)
           <> Constraints.mustValidateIn validInterval
   tx <- submitTx constr
-  -- Contract.awaitTxConfirmed $ getCardanoTxId tx
   _ <- Contract.awaitTxStatusChange $ getCardanoTxId tx
   pure "Time debug done"
 
@@ -169,7 +149,6 @@ timeDebugLight = do
 
   void $ Contract.awaitTime (endTime + POSIXTime 4_000)
   void $ submitTx constr
-  -- awaitTxConfirmed $ getCardanoTxId tx
   pure "Light debug done"
 
 splitUtxo :: Contract () EmptySchema Text ()
@@ -190,9 +169,7 @@ unlockWithTimeCheck = do
 
   utxos <- Map.toList <$> Contract.utxosAt validatorAddr
   case utxos of
-    -- [(oref, _)] -> do
     (oref, _) : _ -> do
-      -- let rmrInterval = interval startTime endTime
       let rmrInterval = Interval (lowerBound startTime) (strictUpperBound endTime)
           rmr' = TimeRedeemer startTime endTime rmrInterval
           rmr = Redeemer $ PlutusTx.toBuiltinData rmr'
@@ -228,5 +205,4 @@ lockAtScript = do
 lockUnlock :: Contract () EmptySchema Text Hask.String
 lockUnlock =
   lockAtScript
-    -- >> waitNSlots 1
     >> unlockWithTimeCheck

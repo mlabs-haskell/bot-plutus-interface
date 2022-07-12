@@ -7,20 +7,27 @@ module BotPlutusInterface.Collateral (
   removeCollateralFromMap,
 ) where
 
-import BotPlutusInterface.Types (CollateralUtxo (CollateralUtxo), ContractEnvironment (ceCollateral), PABConfig (pcOwnPubKeyHash), collateralValue, unCollateralVar)
+import BotPlutusInterface.Types (
+  CollateralUtxo (CollateralUtxo),
+  ContractEnvironment (ceCollateral),
+  PABConfig (pcOwnPubKeyHash),
+  collateralValue,
+  unCollateralVar
+  )
 import Cardano.Prelude (Void)
 import Control.Concurrent.STM (atomically, modifyTVar', readTVarIO)
+import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Ledger (ChainIndexTxOut, PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
 import Ledger.Constraints qualified as Constraints
-import Plutus.ChainIndex (Page (..))
+import Plutus.ChainIndex (Page(pageItems))
 import Prelude
 
-getInMemCollateral :: ContractEnvironment w -> IO (Maybe CollateralUtxo)
+getInMemCollateral :: forall (w :: Type). ContractEnvironment w -> IO (Maybe CollateralUtxo)
 getInMemCollateral = readTVarIO . unCollateralVar . ceCollateral
 
-setInMemCollateral :: ContractEnvironment w -> CollateralUtxo -> IO ()
+setInMemCollateral :: forall (w :: Type). ContractEnvironment w -> CollateralUtxo -> IO ()
 setInMemCollateral cEnv txOutRef = do
   let cVar = unCollateralVar $ ceCollateral cEnv
   atomically $ modifyTVar' cVar (const (Just txOutRef))
@@ -28,6 +35,7 @@ setInMemCollateral cEnv txOutRef = do
 mkCollateralTx :: PABConfig -> Either Constraints.MkTxError Constraints.UnbalancedTx
 mkCollateralTx pabConf = Constraints.mkTx @Void mempty txc
   where
+    txc :: Constraints.TxConstraints Void Void
     txc = Constraints.mustPayToPubKey (PaymentPubKeyHash $ pcOwnPubKeyHash pabConf) (collateralValue pabConf)
 
 filterCollateral :: CollateralUtxo -> [TxOutRef] -> [TxOutRef]
@@ -37,7 +45,7 @@ filterCollateral (CollateralUtxo collateralTxOutRef) = filter (/= collateralTxOu
 removeCollateralFromPage :: Maybe CollateralUtxo -> Page TxOutRef -> Page TxOutRef
 removeCollateralFromPage = \case
   Nothing -> id
-  (Just txOutRef) -> \page -> page {pageItems = filterCollateral txOutRef (pageItems page)}
+  Just txOutRef -> \page -> page {pageItems = filterCollateral txOutRef (pageItems page)}
 
 removeCollateralFromMap :: Maybe CollateralUtxo -> Map TxOutRef ChainIndexTxOut -> Map TxOutRef ChainIndexTxOut
 removeCollateralFromMap = \case

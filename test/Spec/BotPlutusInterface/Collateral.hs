@@ -34,7 +34,12 @@ import Spec.MockContract (
   utxos,
  )
 
-import BotPlutusInterface.Types (CollateralUtxo (CollateralUtxo), CollateralVar (CollateralVar), ContractEnvironment (..), PABConfig (pcCollateralSize))
+import BotPlutusInterface.Types (
+  CollateralUtxo (CollateralUtxo),
+  CollateralVar (CollateralVar),
+  ContractEnvironment (ContractEnvironment),
+  PABConfig (pcCollateralSize)
+  )
 import Control.Concurrent.STM (newTVarIO)
 
 import Spec.BotPlutusInterface.Contract (assertCommandHistory, assertContract)
