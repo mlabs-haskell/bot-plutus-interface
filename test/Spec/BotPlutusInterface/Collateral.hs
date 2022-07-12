@@ -37,7 +37,7 @@ import Spec.MockContract (
 import BotPlutusInterface.Types (
   CollateralUtxo (CollateralUtxo),
   CollateralVar (CollateralVar),
-  ContractEnvironment (ContractEnvironment),
+  ContractEnvironment (ceCollateral, cePABConfig),
   PABConfig (pcCollateralSize),
  )
 import Control.Concurrent.STM (newTVarIO)
