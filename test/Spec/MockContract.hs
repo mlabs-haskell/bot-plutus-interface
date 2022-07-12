@@ -45,6 +45,7 @@ module Spec.MockContract (
   tip,
   utxos,
   mockBudget,
+  nonExistingTxId,
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
@@ -91,7 +92,9 @@ import Control.Monad.Freer.State (State, get, modify, runState)
 import Data.Aeson (Result (Success), ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
+import Data.Bool (bool)
 import Data.ByteString qualified as ByteString
+import Data.ByteString.Char8 qualified as BS
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight, mapLeft)
 import Data.Hex (hex, unhex)
@@ -183,6 +186,9 @@ addr1 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh1 Not
 addr2 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 Nothing)
 addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Nothing)
 
+nonExistingTxId :: TxId
+nonExistingTxId = TxId "ff"
+
 skeyToPubKey :: SigningKey PaymentKey -> PubKey
 skeyToPubKey =
   Ledger.toPublicKey
@@ -255,6 +261,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
+      , ceContractLogs = unsafePerformIO $ newTVarIO mempty
       }
 
 instance Monoid w => Default (ContractState w) where
@@ -327,12 +334,16 @@ runPABEffectPure initState req =
       mc <* modify @(MockContractState w) (tip %~ incTip)
 
     incTip TipAtGenesis = Tip 1 (BlockId "00") 0
-    incTip Tip {tipSlot, tipBlockId, tipBlockNo} =
-      Tip
-        { tipSlot = tipSlot + 1
-        , tipBlockId = tipBlockId
-        , tipBlockNo = tipBlockNo
-        }
+    incTip Tip {tipSlot, tipBlockNo} =
+      let nextSlot = succ tipSlot
+          -- new block each 3 slots
+          newBlock =
+            tipBlockNo & bool id succ (nextSlot `mod` 3 == 0)
+       in Tip
+            { tipSlot = nextSlot
+            , tipBlockId = BlockId . BS.pack . show $ newBlock
+            , tipBlockNo = newBlock
+            }
 
 mockCallCommand ::
   forall (w :: Type) (a :: Type).
@@ -556,14 +567,15 @@ mockQueryChainIndex = \case
   TxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
     pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
-  TxFromTxId txId -> do
-    -- TODO: Track some kind of state here, add tests to ensure this works correctly
-    -- For now, empty txs
-    state <- get @(MockContractState w)
-    let knownUtxos = state ^. utxos
-    pure $
-      TxIdResponse $
-        Just $
+  TxFromTxId txId ->
+    if txId == nonExistingTxId
+      then pure $ TxIdResponse Nothing
+      else do
+        -- TODO: Track some kind of state here, add tests to ensure this works correctly
+        -- For now, empty txs
+        state <- get @(MockContractState w)
+        let knownUtxos = state ^. utxos
+        pure . TxIdResponse . Just $
           ChainIndexTx
             { _citxTxId = txId
             , _citxInputs = mempty
@@ -608,8 +620,9 @@ mockQueryChainIndex = \case
         }
   TxoSetAtAddress _ _ ->
     throwError @Text "TxoSetAtAddress is unimplemented"
-  GetTip ->
-    throwError @Text "GetTip is unimplemented"
+  GetTip -> do
+    state <- get @(MockContractState w)
+    pure $ GetTipResponse (state ^. tip)
 
 -- | Fills in gaps of inputs with garbage TxOuts, so that the indexes we know about are in the correct positions
 buildOutputsFromKnownUTxOs :: [(TxOutRef, TxOut)] -> TxId -> ChainIndexTxOutputs

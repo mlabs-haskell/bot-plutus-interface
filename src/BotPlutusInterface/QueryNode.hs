@@ -3,6 +3,7 @@
 -- | Several query functions to query local node
 module BotPlutusInterface.QueryNode (
   NodeInfo (..),
+  NodeQueryError (..),
   queryProtocolParams,
   querySystemStart,
   queryEraHistory,
@@ -77,11 +78,15 @@ flattenQueryResult = \case
 connectionInfo :: NodeInfo -> C.LocalNodeConnectInfo C.CardanoMode
 connectionInfo (NodeInfo netId socket) =
   C.LocalNodeConnectInfo
-    ( C.CardanoModeParams
-        (C.EpochSlots 21600) -- TODO: this probably should be settable somehow?
-    )
+    (C.CardanoModeParams epochSlots)
     netId
     socket
+  where
+    -- This parameter needed only for the Byron era. Since the Byron
+    -- era is over and the parameter has never changed it is ok to
+    -- hardcode this. See comment on `Cardano.Api.ConsensusModeParams` in
+    -- cardano-node.
+    epochSlots = C.EpochSlots 21600
 
 toQueryError :: Show e => e -> NodeQueryError
 toQueryError = NodeQueryError . pack . show

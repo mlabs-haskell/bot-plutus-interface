@@ -14,7 +14,12 @@ import BotPlutusInterface.Effects (
   ShellArgs (..),
   callLocalCommand,
  )
-import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..))
+import BotPlutusInterface.Types (
+  CLILocation (..),
+  LogLevel (..),
+  PABConfig (..),
+  TxStatusPolling (TxStatusPolling, spBlocksTimeOut, spInterval),
+ )
 
 import Cardano.Api (NetworkId (Mainnet, Testnet), unNetworkMagic)
 import Config (Section (Section), Value (Atom, Sections, Text))
@@ -24,6 +29,7 @@ import Config.Schema (
   atomSpec,
   generateDocs,
   naturalSpec,
+  reqSection',
   sectionsSpec,
   trueOrFalseSpec,
   (<!>),
@@ -33,6 +39,7 @@ import Data.String.ToString (toString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import PlutusConfig.Base (
+  customRationalSpec,
   enumToAtom,
   filepathSpec,
   maybeSpec,
@@ -74,6 +81,29 @@ logLevelSpec =
     <!> Info <$ atomSpec "info"
     <!> Debug <$ atomSpec "debug"
 
+instance ToValue TxStatusPolling where
+  toValue (TxStatusPolling interval timeout) =
+    Sections
+      ()
+      [ Section () "pollingInterval" $ toValue interval
+      , Section () "pollingTimeout" $ toValue timeout
+      ]
+
+txStatusPollingSpec :: ValueSpec TxStatusPolling
+txStatusPollingSpec =
+  sectionsSpec "TxStatusPolling configuration" $ do
+    spInterval <-
+      reqSection'
+        "microseconds"
+        naturalSpec
+        "Interval between chain-index queries for transactions status change detection"
+    spBlocksTimeOut <-
+      reqSection'
+        "blocks"
+        naturalSpec
+        "Timeout (in blocks) after which awaiting of transaction status change will be cancelled and current Status returned"
+    pure $ TxStatusPolling {..}
+
 {- ORMOLU_DISABLE -}
 instance ToValue PABConfig where
   toValue
@@ -95,6 +125,9 @@ instance ToValue PABConfig where
         pcPort
         pcEnableTxEndpoint
         pcCollectStats
+        pcCollectLogs
+        pcBudgetMultiplier
+        pcTxStatusPolling
       ) =
       Sections
         ()
@@ -116,6 +149,9 @@ instance ToValue PABConfig where
         , Section () "port"               $ toValue pcPort
         , Section () "enableTxEndpoint"   $ toValue pcEnableTxEndpoint
         , Section () "collectStats"       $ toValue pcCollectStats
+        , Section () "collectLogs"        $ toValue pcCollectLogs
+        , Section () "budgetMultiplier"   $ toValue pcBudgetMultiplier
+        , Section () "pcTxStatusPolling"  $ toValue pcTxStatusPolling
         ]
 {- ORMOLU_ENABLE -}
 
@@ -205,6 +241,27 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       "collectStats"
       trueOrFalseSpec
       "Save some stats during contract run (only transactions execution budgets supported atm)"
+
+  pcCollectLogs <-
+    sectionWithDefault'
+      (pcCollectLogs def)
+      "collectLogs"
+      trueOrFalseSpec
+      "Save logs from contract execution: pab request logs and contract logs"
+
+  pcBudgetMultiplier <-
+    sectionWithDefault'
+      (pcBudgetMultiplier def)
+      "budgetMultiplier"
+      customRationalSpec
+      "Multiplier on the budgets automatically calculated"
+
+  pcTxStatusPolling <-
+    sectionWithDefault'
+      (pcTxStatusPolling def)
+      "pcTxStatusPolling"
+      txStatusPollingSpec
+      "Set interval between `chain-index` queries and number of blocks to wait until timeout while await Transaction status to change"
 
   pure PABConfig {..}
 

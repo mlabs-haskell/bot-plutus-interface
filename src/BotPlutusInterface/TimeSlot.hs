@@ -148,7 +148,7 @@ posixTimeRangeToContainedSlotRangeIO
           NegInf -> pure NegInf
           PosInf -> pure PosInf
 
-      -- helper to calulate bound's closure
+      -- helper to calculate bound's closure
       -- if bound is not `NegInf` or `PosInf`, then `Closure` need to be calculated
       -- https://github.com/input-output-hk/plutus-apps/blob/e51f57fa99f4cc0942ba6476b0689e43f0948eb3/plutus-ledger/src/Ledger/TimeSlot.hs#L125-L130
       getExtClosure ::
@@ -186,7 +186,7 @@ posixTimeToSlot sysStart eraHist pTime = do
     toUtc (Ledger.POSIXTime milliseconds) =
       posixSecondsToUTCTime
         . secondsToNominalDiffTime
-        $ fromInteger (milliseconds `div` 1000)
+        $ fromInteger milliseconds / 1000
 
 -- helper functions --
 
