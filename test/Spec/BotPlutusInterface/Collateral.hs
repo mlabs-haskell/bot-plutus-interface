@@ -67,18 +67,20 @@ testTxUsesCollateralCorrectly = do
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)] & contractEnv .~ cenv' & collateralUtxo .~ Nothing
 
       collatUtxo = Just $ CollateralUtxo txOutRef1
-      
+
       collateralTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef1
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef2
-      
+
   assertContract mintContract initState $ \state -> do
     assertEqual
       ("InValid collateral. Expected: " <> show collatUtxo <> " but Got: " <> show (state ^. collateralUtxo))
       collatUtxo
       (state ^. collateralUtxo)
 
-    assertCommandHistory state
-      [ (3
+    assertCommandHistory
+      state
+      [
+        ( 3
         , [text|
             cardano-cli transaction build-raw --alonzo-era
             --tx-in ${inTxId}#0
