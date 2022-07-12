@@ -412,7 +412,5 @@
       checks = perSystem (system: self.flake.${system}.checks // {
         formatCheck = formatCheckFor system;
       });
-
-      herculesCI.ciSystems = [ "x86_64-linux" ];
     };
 }
