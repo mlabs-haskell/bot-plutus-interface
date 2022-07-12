@@ -65,7 +65,6 @@ mkValidator _ timeRmr ctx =
     && rangesAreSame
     && boundsTimesCheck
   where
-
     info = scriptContextTxInfo ctx
     vRange = txInfoValidRange info
     (TimeRedeemer rmrStart rmrEnd rmrRange) = timeRmr

@@ -30,7 +30,7 @@ import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List ((\\), uncons)
+import Data.List (uncons, (\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
@@ -166,7 +166,7 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
 
       -- If we have change but no change UTxO, we need to add an output for it
       -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
-      
+
       balancedTxWithChange <-
         case balanceTxType of
           BalanceTxCollateral | adaChange /= 0 -> bTx

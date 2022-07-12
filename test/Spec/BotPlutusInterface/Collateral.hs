@@ -38,8 +38,8 @@ import BotPlutusInterface.Types (
   CollateralUtxo (CollateralUtxo),
   CollateralVar (CollateralVar),
   ContractEnvironment (ContractEnvironment),
-  PABConfig (pcCollateralSize)
-  )
+  PABConfig (pcCollateralSize),
+ )
 import Control.Concurrent.STM (newTVarIO)
 
 import Spec.BotPlutusInterface.Contract (assertCommandHistory, assertContract)
