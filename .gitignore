@@ -60,6 +60,9 @@ geth-node/chaindata/history
 *.ipc
 .direnv
 
+# emacs stuff
+*.~undo-tree~
+
 # debug configs
 examples/debug/ci-test.http
 examples/debug/run-test-lc.sh

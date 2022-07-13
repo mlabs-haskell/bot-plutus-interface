@@ -479,7 +479,7 @@ handleCollateral cEnv = do
   where
     --
     helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
-    helperLog msg = newEitherT $ Right <$> printBpiLog @w Notice msg
+    helperLog msg = newEitherT $ Right <$> printBpiLog @w Debug msg
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.
