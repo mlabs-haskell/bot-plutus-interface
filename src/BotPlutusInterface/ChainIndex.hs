@@ -93,7 +93,8 @@ chainIndexQueryOne pabConf endpoint = do
 chainIndexUtxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM UtxosResponse -> IO UtxosResponse
 chainIndexUtxoQuery contractEnv query = do
   collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral (UtxosResponse tip page) = UtxosResponse tip (removeCollateralFromPage collateralUtxo page)
+  let removeCollateral :: UtxosResponse -> UtxosResponse
+      removeCollateral (UtxosResponse tip page) = UtxosResponse tip (removeCollateralFromPage collateralUtxo page)
   removeCollateral
     <$> chainIndexQueryMany
       contractEnv.cePABConfig
@@ -103,7 +104,8 @@ chainIndexUtxoQuery contractEnv query = do
 chainIndexTxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM TxosResponse -> IO TxosResponse
 chainIndexTxoQuery contractEnv query = do
   collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral (TxosResponse page) = TxosResponse (removeCollateralFromPage collateralUtxo page)
+  let removeCollateral :: TxosResponse -> TxosResponse
+      removeCollateral (TxosResponse page) = TxosResponse (removeCollateralFromPage collateralUtxo page)
   removeCollateral
     <$> chainIndexQueryMany
       contractEnv.cePABConfig
