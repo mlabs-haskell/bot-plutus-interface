@@ -452,7 +452,7 @@ handleCollateral cEnv = do
     do
       collateralNotInMem <-
         newEitherT $
-        maybeToLeft "Collateral UTxO not found in contract env."
+          maybeToLeft "Collateral UTxO not found in contract env."
             <$> getInMemCollateral @w
 
       helperLog collateralNotInMem

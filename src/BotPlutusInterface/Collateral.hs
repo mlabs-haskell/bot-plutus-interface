@@ -15,7 +15,7 @@ import BotPlutusInterface.Types (
   unCollateralVar,
  )
 import Cardano.Prelude (Void)
-import Control.Concurrent.STM (atomically, writeTVar, readTVarIO)
+import Control.Concurrent.STM (atomically, readTVarIO, writeTVar)
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
