@@ -8,10 +8,13 @@ import Control.Concurrent.STM (newTVarIO, readTVarIO)
 import Control.Monad (void)
 import Data.Aeson (decodeFileStrict)
 import Data.Text (Text)
+import Data.String (fromString)
+
 import Data.Text qualified as Text
 import Data.UUID.V4 qualified as UUID
 import GHC.IO.Encoding
 import Ledger (PubKeyHash)
+import Ledger.Value qualified as Value
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import SomeDebugContract qualified
@@ -23,17 +26,28 @@ import Tools
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 
-main :: IO ()
 main = testnetRun
 
 testnetRun :: IO ()
 testnetRun = do
   setLocaleEncoding utf8
-  [bpiDir, cliDir, sockPath, netMagic, operation] <- getArgs
+  [operation] <- getArgs
+  
+  bpiDir <- getEnv "BPI_PATH"
+
+  print bpiDir
+  
+  sockPath <- getEnv "CARDANO_NODE_SOCKET_PATH"
+  
+  -- cliDir <- getEnv "/usr/"
+  -- let bpiDir =
+  let cliDir = "/nix/st4ore/s76zj58fp6fvgmv2id76xib4sni81yvz-cardano-cli-exe-cardano-cli-1.34.1/bin"
+      netMagic = "0"
   setEnv "CARDANO_NODE_SOCKET_PATH" sockPath
   getEnv "PATH" >>= \p -> setEnv "PATH" (p ++ ":" ++ cliDir)
 
   let netMagic' = read netMagic
+      
 
   cEnv <- mkContractEnv netMagic' bpiDir
 
@@ -67,6 +81,9 @@ testnetRun = do
         "collateral" -> do
           putStrLn "payToHardcodedPKH"
           BPI.runContract cEnv SomeDebugContract.payToHardcodedPKH >> pure (Right "Done")
+        "mint" -> do
+          putStrLn "minting, provide the token name to be minted: "
+          BPI.runContract cEnv (SomeDebugContract.mintContract "diamond") >> pure (Right "Done")
         other -> error $ "Unsupported operation: " ++ other
 
       case res of
@@ -111,7 +128,7 @@ mkPabConf _ pparams pparamsFile bpiDir ownPkh =
     , pcSigningKeyFileDir = Text.pack $ bpiDir </> "signing-keys"
     , pcTxFileDir = Text.pack $ bpiDir </> "txs"
     , pcDryRun = False
-    , pcLogLevel = Notice
+    , pcLogLevel = Debug
     , pcProtocolParamsFile = pparamsFile
     , pcEnableTxEndpoint = False
     , pcCollectStats = False

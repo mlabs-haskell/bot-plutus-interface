@@ -1,17 +1,30 @@
+{-# LANGUAGE TemplateHaskell #-}
 module SomeDebugContract where
 
-import Data.Text (Text)
 
+import Data.Aeson.Extras (encodeByteString)
 import Data.Map (size)
 import Data.Map qualified as M
+import Data.Text (Text)
+import Data.Void (Void)
 import Debug.Trace (traceM)
+import Ledger qualified
 import Ledger (Address (Address), PaymentPubKeyHash (PaymentPubKeyHash), getCardanoTxId)
 import Ledger.Constraints qualified as Constraints
-import Plutus.Contract (Contract, submitTx)
+import Ledger.Scripts qualified as Scripts
+import Ledger.Tx (CardanoTx)
+import Ledger.Value qualified as Value
 import Plutus.Contract qualified as Contract
+import Plutus.Contract (
+  Contract,
+  Endpoint,
+  submitTx,
+  submitTxConstraintsWith,
+ )
 import Plutus.PAB.Effects.Contract.Builtin (EmptySchema)
 import Plutus.V1.Ledger.Ada (adaValueOf)
 import Plutus.V1.Ledger.Api (Credential (PubKeyCredential))
+import PlutusTx qualified
 import PlutusTx.Prelude
 import Text.Show.Pretty (ppShow)
 import Tools
@@ -51,3 +64,35 @@ payToHardcodedPKH = do
       utxosAfter <- Contract.utxosAt ownAddr
       traceM $ "UTxOs Size AFTER: " <> Hask.show (size utxosAfter)
       traceM $ "UTxOs AFTER: " <> ppShow utxosAfter
+
+
+curSymbol :: Value.CurrencySymbol
+curSymbol = Ledger.scriptCurrencySymbol mintingPolicy
+
+curSymbol' :: Text
+curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
+
+mintContract :: Ledger.TokenName -> Contract () (Endpoint "SendAda" ()) Text ()
+mintContract tn = do
+  ownPPkh <- Contract.ownPaymentPubKeyHash
+  
+  let lookups =
+        Constraints.mintingPolicy mintingPolicy
+      constraints =
+        Constraints.mustMintValue (Value.singleton curSymbol tn 10)
+      (PaymentPubKeyHash ownPkh) = ownPPkh
+      ownAddr = Address (PubKeyCredential ownPkh) Nothing
+        
+  
+  tx <- submitTxConstraintsWith @Void lookups constraints
+  
+  Contract.awaitTxConfirmed (getCardanoTxId tx)
+
+  utxosAfter <- Contract.utxosAt ownAddr
+  traceM $ "UTxOs Size AFTER: " <> Hask.show (size utxosAfter)
+  traceM $ "UTxOs AFTER: " <> ppShow utxosAfter
+
+mintingPolicy :: Scripts.MintingPolicy
+mintingPolicy =
+  Scripts.mkMintingPolicyScript
+    $$(PlutusTx.compile [||(\_ _ -> ())||])

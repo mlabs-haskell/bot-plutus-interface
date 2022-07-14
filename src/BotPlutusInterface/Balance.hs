@@ -177,12 +177,23 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
           fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange collateralTxOut
+          txInfoLog = printBpiLog @w Debug
+                    $     "UnbalancedTx TxInputs: "
+                      <+> pretty (length $ txInputs preBalancedTx)
+                      <+> "UnbalancedTx TxOutputs: "
+                      <+> pretty (length $ txOutputs preBalancedTx)
+                      <+> "TxInputs: "
+                      <+> pretty (length $ txInputs fullyBalancedTx)
+                      <+> "TxOutputs: "
+                      <+> pretty (length $ txOutputs fullyBalancedTx)
 
+      lift txInfoLog
+                      
       -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
     changeAddr :: Address
-    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) (pabConf.pcOwnStakePubKeyHash)
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) pabConf.pcOwnStakePubKeyHash
 
     balanceTxLoop ::
       Map TxOutRef TxOut ->
@@ -208,12 +219,17 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
 
       nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
-      let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
+      let fees      = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
       lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
       balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
+
+      
+      lift $ printBpiLog @w Debug
+           $ "Tx Old:" <+> pretty tx
+             <+> "Tx New:" <+> pretty balancedTx
 
       if balancedTx == tx
         then pure (balancedTx, minUtxos)

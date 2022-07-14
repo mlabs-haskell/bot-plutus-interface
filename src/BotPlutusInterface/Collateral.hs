@@ -15,7 +15,7 @@ import BotPlutusInterface.Types (
   unCollateralVar,
  )
 import Cardano.Prelude (Void)
-import Control.Concurrent.STM (atomically, modifyTVar', readTVarIO)
+import Control.Concurrent.STM (atomically, writeTVar, readTVarIO)
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -30,7 +30,7 @@ getInMemCollateral = readTVarIO . unCollateralVar . ceCollateral
 setInMemCollateral :: forall (w :: Type). ContractEnvironment w -> CollateralUtxo -> IO ()
 setInMemCollateral cEnv txOutRef = do
   let cVar = unCollateralVar $ ceCollateral cEnv
-  atomically $ modifyTVar' cVar (const (Just txOutRef))
+  atomically $ writeTVar cVar (Just txOutRef)
 
 mkCollateralTx :: PABConfig -> Either Constraints.MkTxError Constraints.UnbalancedTx
 mkCollateralTx pabConf = Constraints.mkTx @Void mempty txc
