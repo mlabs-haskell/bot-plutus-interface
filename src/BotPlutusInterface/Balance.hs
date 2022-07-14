@@ -85,7 +85,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
-          requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+          requiredSigs = map Ledger.unPaymentPubKeyHash $ Set.toList (unBalancedTxRequiredSignatories unbalancedTx)
 
       tx <-
         newEitherT $
@@ -159,7 +159,9 @@ balanceTxIO pabConf ownPkh unbalancedTx =
         else loop utxoIndex privKeys minUtxos balancedTx
 
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
-getExecutionUnitPrices pabConf = fromMaybe (ExecutionUnitPrices 0 0) $ protocolParamPrices pabConf.pcProtocolParams
+getExecutionUnitPrices pabConf =
+  fromMaybe (ExecutionUnitPrices 0 0) $
+    pabConf.pcProtocolParams >>= protocolParamPrices
 
 getBudgetPrice :: ExecutionUnitPrices -> Ledger.ExBudget -> Integer
 getBudgetPrice (ExecutionUnitPrices cpuPrice memPrice) (Ledger.ExBudget cpuUsed memUsed) =

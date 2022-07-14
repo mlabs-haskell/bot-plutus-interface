@@ -127,7 +127,7 @@ singleWithDatum = do
     addr
     [text|                           TxHash                                 TxIx        Amount
           --------------------------------------------------------------------------------------
-          384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51     0        5000000000 lovelace + TxOutDatumHash ScriptDataInAlonzoEra "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0"
+          384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51     0        5000000000 lovelace + TxOutDatumHash ScriptDataInBabbageEra "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0"
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0

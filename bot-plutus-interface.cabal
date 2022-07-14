@@ -30,7 +30,7 @@ common common-lang
     -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
 
   build-depends:
-    , base                     ^>=4.14
+    , base
     , record-dot-preprocessor
     , record-hasfield
 
@@ -99,7 +99,7 @@ library
     PlutusConfig.Types
 
   build-depends:
-    , aeson                      ^>=1.5.0.0
+    , aeson
     , attoparsec                 >=0.13.2.2
     , bytestring                 ^>=0.10.12.0
     , cardano-api
@@ -134,6 +134,7 @@ library
     , plutus-ledger-api
     , plutus-ledger-constraints
     , plutus-pab
+    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
     , pretty
@@ -182,7 +183,7 @@ test-suite bot-plutus-interface-test
     Spec.MockContract
 
   build-depends:
-    , aeson                      ^>=1.5.0.0
+    , aeson
     , attoparsec
     , base
     , base-compat
@@ -213,6 +214,7 @@ test-suite bot-plutus-interface-test
     , plutus-ledger-api
     , plutus-ledger-constraints
     , plutus-pab
+    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
     , prettyprinter

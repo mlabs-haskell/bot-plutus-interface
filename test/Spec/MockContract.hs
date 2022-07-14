@@ -82,7 +82,7 @@ import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
+import Control.Lens (at, view, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, reinterpret2, run)
@@ -124,15 +124,26 @@ import Ledger (
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
-import Ledger.Scripts (DatumHash (DatumHash))
+import Ledger.Scripts (Datum (Datum), DatumHash (DatumHash))
 import Ledger.Slot (Slot (getSlot))
-import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef))
+import Ledger.Tx (
+  ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
+  TxId (TxId),
+  TxOutRef (TxOutRef),
+  ciTxOutAddress,
+  ciTxOutValue,
+ )
 import Ledger.Tx qualified as Tx
-import Ledger.TxId (TxId (TxId))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
 import Plutus.ChainIndex.Api (UtxosResponse (..))
-import Plutus.ChainIndex.Tx (ChainIndexTx (..), ChainIndexTxOutputs (ValidTx))
+import Plutus.ChainIndex.Tx (
+  ChainIndexTx (..),
+  ChainIndexTxOutputs (ValidTx),
+  OutputDatum (NoOutputDatum, OutputDatum, OutputDatumHash),
+  ReferenceScript (ReferenceScriptNone),
+ )
+import Plutus.ChainIndex.Tx qualified as CIT
 import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
@@ -229,7 +240,7 @@ data MockContractState w = MockContractState
   , _observableState :: w
   , _logHistory :: [(LogContext, LogLevel, PP.Doc ())]
   , _contractEnv :: ContractEnvironment w
-  , _utxos :: [(TxOutRef, TxOut)]
+  , _utxos :: [(TxOutRef, ChainIndexTxOut)]
   , _tip :: Tip
   }
   deriving stock (Show)
@@ -410,7 +421,7 @@ mockQueryTip = do
   pure $
     Text.unpack
       [text|{
-              "era": "Alonzo",
+              "era": "Babbage",
               "syncProgress": "100.00",
               "hash": "${blockId}",
               "epoch": 1,
@@ -426,10 +437,10 @@ mockQueryUtxo addr = do
   pure $
     mockQueryUtxoOut $
       filter
-        ((==) addr . unsafeSerialiseAddress network . Ledger.txOutAddress . snd)
+        ((==) addr . unsafeSerialiseAddress network . view ciTxOutAddress . snd)
         (state ^. utxos)
 
-mockQueryUtxoOut :: [(TxOutRef, TxOut)] -> String
+mockQueryUtxoOut :: [(TxOutRef, ChainIndexTxOut)] -> String
 mockQueryUtxoOut utxos' =
   Text.unpack $
     Text.unlines
@@ -437,15 +448,18 @@ mockQueryUtxoOut utxos' =
       , "--------------------------------------------------------------------------------------"
       , Text.unlines $
           map
-            ( \(TxOutRef (TxId txId) txIx, TxOut _ val datumHash) ->
+            ( \(TxOutRef (TxId txId) txIx, ciTxOut) ->
                 let txId' = encodeByteString $ fromBuiltin txId
                     txIx' = Text.pack $ show txIx
-                    amts = valueToUtxoOut val
-                    datumHash' = case datumHash of
-                      Nothing -> "TxOutDatumNone"
-                      Just (DatumHash dh) ->
-                        "TxDatumHash ScriptDataInAlonzoEra " <> encodeByteString (fromBuiltin dh)
-                 in [text|${txId'}     ${txIx'}        ${amts} + ${datumHash'}|]
+                    amts = valueToUtxoOut $ view ciTxOutValue ciTxOut
+                    outDatum = case ciTxOut of
+                      PublicKeyChainIndexTxOut {} -> "TxOutDatumNone"
+                      ScriptChainIndexTxOut _ _ (Left (DatumHash dh)) _ ->
+                        "TxDatumHash ScriptDataInBabbageEra " <> encodeByteString (fromBuiltin dh)
+                      ScriptChainIndexTxOut _ _ (Right (Datum d)) _ ->
+                        "TxOutDatumInline ReferenceTxInsScriptsInlineDatumsInBabbageEra "
+                          <> Text.pack (show d)
+                 in [text|${txId'}     ${txIx'}        ${amts} + ${outDatum}|]
             )
             utxos'
       ]
@@ -566,7 +580,10 @@ mockQueryChainIndex = \case
     throwError @Text "RedeemerFromHash is unimplemented"
   TxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
-    pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
+    pure $ TxOutRefResponse $ lookup txOutRef (state ^. utxos)
+  UnspentTxOutFromRef txOutRef -> do
+    state <- get @(MockContractState w)
+    pure $ UnspentTxOutResponse $ lookup txOutRef (state ^. utxos)
   TxFromTxId txId ->
     if txId == nonExistingTxId
       then pure $ TxIdResponse Nothing
@@ -625,16 +642,30 @@ mockQueryChainIndex = \case
     pure $ GetTipResponse (state ^. tip)
 
 -- | Fills in gaps of inputs with garbage TxOuts, so that the indexes we know about are in the correct positions
-buildOutputsFromKnownUTxOs :: [(TxOutRef, TxOut)] -> TxId -> ChainIndexTxOutputs
-buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ fillGaps sortedRelatedRefs 0
+buildOutputsFromKnownUTxOs :: [(TxOutRef, ChainIndexTxOut)] -> TxId -> ChainIndexTxOutputs
+buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map converCiTxOut $ fillGaps sortedRelatedRefs 0
   where
     sortedRelatedRefs = sortOn (Tx.txOutRefIdx . fst) $ filter ((== txId) . Tx.txOutRefId . fst) knownUtxos
-    fillGaps :: [(TxOutRef, TxOut)] -> Integer -> [TxOut]
+    fillGaps :: [(TxOutRef, ChainIndexTxOut)] -> Integer -> [ChainIndexTxOut]
     fillGaps [] _ = []
     fillGaps (out@(TxOutRef _ n', txOut) : outs) n
       | n' == n = txOut : fillGaps outs (n + 1)
       | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
-    defTxOut = TxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty Nothing
+    defTxOut = PublicKeyChainIndexTxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty
+
+    converCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
+    converCiTxOut (PublicKeyChainIndexTxOut addr val) =
+      CIT.ChainIndexTxOut addr val NoOutputDatum ReferenceScriptNone
+    converCiTxOut (ScriptChainIndexTxOut addr _ eitherDatum val) =
+      let datum = case eitherDatum of
+            Left dh -> OutputDatumHash dh
+            Right d -> OutputDatum d
+       in -- TODO: do some better conversion
+          -- validator =
+          --   case eitherValidator of
+          --     Left _ -> ReferenceScriptNone
+          --     Right v -> ReferenceScriptInAnyLang v
+          CIT.ChainIndexTxOut addr val datum ReferenceScriptNone
 
 mockExBudget ::
   forall (w :: Type).
@@ -666,7 +697,7 @@ mockExBudget _ = pure . Right $ TxBudget inBudgets policyBudgets
 dummyTxRawFile :: TextEnvelope
 dummyTxRawFile =
   TextEnvelope
-    { teType = "TxBodyAlonzo"
+    { teType = "TxBodyBabbage"
     , teDescription = ""
     , teRawCBOR = fromRight (error "failed to unpack CBOR hex") $ unhex "86a500848258205d677265fa5bb21ce6d8c7502aca70b9316d10e958611f3c6b758f65ad9599960182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc9300008258209405c89393ba84b14bf8d3e7ed4788cc6e2257831943b58338bee8d37a3668fc00825820a1be9565ccac4a04d2b5bf0d0167196ae467da0d88161c9c827fbe76452b24ef000d8182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc930000018482581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975461a3b8cc4a582581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1a000d062782581d606696936bb8ae24859d0c2e4d05584106601f58a5e9466282c8561b88821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1282581d60981fc565bcf0c95c0cfa6ee6693875b60d529d87ed7082e9bf03c6a4821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e0f021a000320250e81581c0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975469fff8080f5f6"
     }
@@ -674,7 +705,7 @@ dummyTxRawFile =
 dummyTxSignedFile :: TextEnvelope
 dummyTxSignedFile =
   TextEnvelope
-    { teType = "Tx AlonzoEra"
+    { teType = "Tx BabbageEra"
     , teDescription = ""
     , teRawCBOR = fromRight (error "failed to unpack CBOR hex") $ unhex "84a500848258205d677265fa5bb21ce6d8c7502aca70b9316d10e958611f3c6b758f65ad9599960182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc9300008258209405c89393ba84b14bf8d3e7ed4788cc6e2257831943b58338bee8d37a3668fc00825820a1be9565ccac4a04d2b5bf0d0167196ae467da0d88161c9c827fbe76452b24ef000d8182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc930000018482581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975461a3b8cc4a582581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1a000d062782581d606696936bb8ae24859d0c2e4d05584106601f58a5e9466282c8561b88821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1282581d60981fc565bcf0c95c0cfa6ee6693875b60d529d87ed7082e9bf03c6a4821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e0f021a000320250e81581c0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546a10081825820096092b8515d75c2a2f75d6aa7c5191996755840e81deaa403dba5b690f091b65840295a93849a67cecabb8286e561c407b6bd49abf8d2da8bfb821105eae4d28ef0ef1b9ee5e8abb8fd334059f3dfc78c0a65e74057a2dc8d1d12e46842abea600ff5f6"
     }

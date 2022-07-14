@@ -47,9 +47,7 @@ import PlutusConfig.Base (
   portSpec,
  )
 import PlutusConfig.Cardano.Api ()
-import PlutusConfig.Cardano.Api.Shelley (
-  readProtocolParametersJSON,
- )
+import PlutusConfig.Cardano.Api.Shelley (readProtocolParametersJSON)
 import PlutusConfig.Ledger ()
 import PlutusConfig.Types (
   ToValue (toValue),
@@ -177,7 +175,7 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
   -- pcProtocolParamsFile .json file
   -- pcProtocolParams <-
   --   sectionWithDefault (pcProtocolParams def) "protocolParams" ""
-  let pcProtocolParams = def
+  let pcProtocolParams = Nothing
 
   pcScriptFileDir <-
     sectionWithDefault'
@@ -308,7 +306,7 @@ loadPABConfig fn = do
                 Right _ -> loadPABConfig fn
           | otherwise ->
             return $ pparamsError pcProtocolParamsFile err
-        Right pcProtocolParams -> return $ Right conf {pcProtocolParams}
+        Right pparams -> return $ Right conf {pcProtocolParams = Just pparams}
   where
     pparamsError f e = Left $ "protocolParamsFile: " <> toString f <> ": " <> e
 

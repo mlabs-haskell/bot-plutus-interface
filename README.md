@@ -65,8 +65,7 @@ instance HasDefinitions MyContracts where
 3. Write your main entrypoint for the application and the configuration file
 
 ```haskell
-import BotPlutusInterface qualified
-import BotPlutusInterface.Config qualified as BotPlutusInterface
+d601900dab2e364aea1084bcb8281116e4724309
 import Prelude
 
 main :: IO ()
@@ -77,9 +76,9 @@ main = do
   BotPlutusInterface.runPAB @MyContracts pabConf
 ```
 
-Configuration format (example: <examples/plutus-game/pabConfig.value>): 
+Configuration format (example: <examples/plutus-game/pabConfig.value>):
 
-``` console
+```console
 $ cabal repl --disable-optimisation --repl-options -Wwarn
 ...
 BotPlutusInterface> :m Prelude

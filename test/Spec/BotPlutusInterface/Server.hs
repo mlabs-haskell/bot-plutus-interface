@@ -9,7 +9,7 @@ import BotPlutusInterface.Types (
   SomeBuiltin (..),
  )
 
-import Ledger.TxId (TxId)
+import Ledger.Tx (TxId)
 import Playground.Types (FunctionSchema)
 import Schema (FormSchema)
 
@@ -115,7 +115,7 @@ testTxFileName = unpack $ txFileName txHash "raw"
 rawTx :: RawTx
 rawTx =
   RawTx
-    { _type = "TxBodyAlonzo"
+    { _type = "TxBodyBabbage"
     , _description = "description"
     , _cborHex = "hex"
     }

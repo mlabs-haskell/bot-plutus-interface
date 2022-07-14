@@ -11,7 +11,7 @@ module BotPlutusInterface.QueryNode (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Api.ProtocolParameters (ProtocolParameters)
+import Cardano.Api.Shelley (ProtocolParameters)
 import Cardano.Slotting.Time (SystemStart)
 import Control.Arrow (left)
 import Data.Set qualified as Set
@@ -35,8 +35,8 @@ queryProtocolParams (connectionInfo -> cInfo) =
   flattenQueryResult <$> C.queryNodeLocalState cInfo Nothing query
   where
     query =
-      C.QueryInEra C.AlonzoEraInCardanoMode $
-        C.QueryInShelleyBasedEra C.ShelleyBasedEraAlonzo C.QueryProtocolParameters
+      C.QueryInEra C.BabbageEraInCardanoMode $
+        C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters
 
 querySystemStart :: NodeInfo -> IO (Either NodeQueryError SystemStart)
 querySystemStart (connectionInfo -> cInfo) =
@@ -54,7 +54,7 @@ queryEraHistory (connectionInfo -> cInfo) =
       Nothing
       (C.QueryEraHistory C.CardanoModeIsMultiEra)
 
-queryOutsByInputs :: NodeInfo -> [C.TxIn] -> IO (Either NodeQueryError (C.UTxO C.AlonzoEra))
+queryOutsByInputs :: NodeInfo -> [C.TxIn] -> IO (Either NodeQueryError (C.UTxO C.BabbageEra))
 queryOutsByInputs (connectionInfo -> cInfo) ins =
   flattenQueryResult
     <$> C.queryNodeLocalState
@@ -63,8 +63,8 @@ queryOutsByInputs (connectionInfo -> cInfo) ins =
       query
   where
     query =
-      C.QueryInEra C.AlonzoEraInCardanoMode $
-        C.QueryInShelleyBasedEra C.ShelleyBasedEraAlonzo $
+      C.QueryInEra C.BabbageEraInCardanoMode $
+        C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage $
           C.QueryUTxO (C.QueryUTxOByTxIn (Set.fromList ins))
 
 flattenQueryResult ::

@@ -17,7 +17,7 @@ import BotPlutusInterface.QueryNode (
   querySystemStart,
  )
 import BotPlutusInterface.Types (
-  PABConfig,
+  PABConfig (pcProtocolParams),
   pcNetwork,
   pcProtocolParams,
  )
@@ -28,9 +28,10 @@ import Cardano.Ledger.Alonzo.PParams (PParams, _protocolVersion)
 import Cardano.Ledger.Alonzo.TxInfo (slotToPOSIXTime)
 import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Slot (EpochInfo)
+import Cardano.Prelude (maybeToEither)
 import Cardano.Slotting.EpochInfo (hoistEpochInfo)
 import Cardano.Slotting.Time (SystemStart, toRelativeTime)
-import Control.Monad.Except (runExcept)
+import Control.Monad.Except (liftEither, runExcept)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Either (
   EitherT,
@@ -69,11 +70,12 @@ slotToPOSIXTimeIO pabConf lSlot = runEitherT $ do
   nodeInfo <- liftIO $ mkNodeInfo pabConf
   eraHistory <- newET (queryEraHistory nodeInfo)
   sysStart <- newET $ querySystemStart nodeInfo
+  pparams <-
+    liftEither
+      . fmap (CAPI.toLedgerPParams CAPI.ShelleyBasedEraAlonzo)
+      . maybeToEither (TimeSlotConversionError "No protocol params found")
+      $ pcProtocolParams pabConf
   let epochInfo = toLedgerEpochInfo eraHistory
-      pparams =
-        CAPI.toLedgerPParams
-          CAPI.ShelleyBasedEraAlonzo
-          (pcProtocolParams pabConf)
 
   firstEitherT toError . hoistEither $
     slotToPOSIXTime pparams epochInfo sysStart (toSlotNo lSlot)
@@ -108,11 +110,12 @@ posixTimeRangeToContainedSlotRangeIO
     nodeInfo <- liftIO $ mkNodeInfo pabConf
     sysStart <- newET $ querySystemStart nodeInfo
     eraHistory <- newET $ queryEraHistory nodeInfo
+    pparams <-
+      liftEither
+        . fmap (CAPI.toLedgerPParams CAPI.ShelleyBasedEraAlonzo)
+        . maybeToEither (TimeSlotConversionError "No protocol params found")
+        $ pcProtocolParams pabConf
     let epochInfo = toLedgerEpochInfo eraHistory
-        pparams =
-          CAPI.toLedgerPParams
-            CAPI.ShelleyBasedEraAlonzo
-            (pcProtocolParams pabConf)
 
     let extTimeToExtSlot = convertExtended sysStart eraHistory
         getClosure = getExtClosure pparams epochInfo sysStart
@@ -153,7 +156,7 @@ posixTimeRangeToContainedSlotRangeIO
       -- https://github.com/input-output-hk/plutus-apps/blob/e51f57fa99f4cc0942ba6476b0689e43f0948eb3/plutus-ledger/src/Ledger/TimeSlot.hs#L125-L130
       getExtClosure ::
         PParams (AlonzoEra StandardCrypto) ->
-        EpochInfo (Either CAPI.TransactionValidityError) ->
+        EpochInfo (Either Text) ->
         SystemStart ->
         Extended Ledger.Slot ->
         Bool -> -- current `Closure` of lower or upper bound of `Ledger.POSIXTimeRange`
@@ -211,9 +214,9 @@ toError = TimeSlotConversionError . Text.pack . show
 -- | Get Ledger `EpochInfo` from "Cardano.Api" `EraHistory`.
 toLedgerEpochInfo ::
   CAPI.EraHistory mode ->
-  EpochInfo (Either CAPI.TransactionValidityError)
+  EpochInfo (Either Text)
 toLedgerEpochInfo (CAPI.EraHistory _ interpreter) =
-  hoistEpochInfo (first CAPI.TransactionValidityIntervalError . runExcept) $
+  hoistEpochInfo (first (Text.pack . show) . runExcept) $
     Consensus.interpreterToEpochInfo interpreter
 
 mkNodeInfo :: PABConfig -> IO NodeInfo
