@@ -16,6 +16,7 @@ import BotPlutusInterface.Effects (
   posixTimeRangeToContainedSlotRange,
   printBpiLog,
  )
+import BotPlutusInterface.CoinSelection (selectTxIn)
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (CollateralUtxo, LogLevel (Debug), PABConfig, collateralTxOutRef, collateralValue)
@@ -226,10 +227,6 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
       -- Rebalance the initial tx with the above fees
       balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
 
-      
-      lift $ printBpiLog @w Debug
-           $ "Tx Old:" <+> pretty tx
-             <+> "Tx New:" <+> pretty balancedTx
 
       if balancedTx == tx
         then pure (balancedTx, minUtxos)
@@ -326,27 +323,37 @@ getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
 
 -- | Getting the necessary utxos to cover the fees for the transaction
 collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
-collectTxIns originalTxIns utxos value =
+collectTxIns originalTxIns utxos value = do
+  updatedInputs <- selectTxInStep originalTxIns utxos value
   if isSufficient updatedInputs
-    then Right updatedInputs
-    else
-      Left $
-        Text.unlines
-          [ "Insufficient tx inputs, needed: "
-          , showText (Value.flattenValue value)
-          , "got:"
-          , showText (Value.flattenValue (txInsValue updatedInputs))
-          ]
+    then pure updatedInputs
+    else Left $
+          Text.unlines
+            [ "Insufficient tx inputs, needed: "
+            , showText (Value.flattenValue value)
+            , "got:"
+            , showText (Value.flattenValue (txInsValue updatedInputs))
+            ]
   where
-    updatedInputs =
-      foldl
-        ( \acc txIn ->
-            if isSufficient acc
-              then acc
-              else Set.insert txIn acc
-        )
-        originalTxIns
-        $ mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
+
+    selectTxInStep ins utxoIndex outValue
+      | null utxoIndex = return ins
+      | otherwise      = do
+                           newIns <- selectTxIn ins utxoIndex outValue
+
+                           if isSufficient newIns
+                             then return newIns
+                             else selectTxInStep newIns utxoIndex outValue
+  
+    -- updatedInputs =
+    --   foldl
+    --     ( \acc txIn ->
+    --         if isSufficient acc
+    --           then acc
+    --           else Set.insert txIn acc
+    --     )
+    --     originalTxIns
+    --     $ mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
 
     isSufficient :: Set TxIn -> Bool
     isSufficient txIns' =
