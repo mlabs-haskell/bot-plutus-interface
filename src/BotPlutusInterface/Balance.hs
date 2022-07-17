@@ -189,7 +189,7 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
                       <+> pretty (length $ txOutputs fullyBalancedTx)
 
       lift txInfoLog
-                      
+
       -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
@@ -336,15 +336,22 @@ collectTxIns originalTxIns utxos value = do
             ]
   where
 
-    selectTxInStep ins utxoIndex outValue
-      | null utxoIndex = return ins
-      | otherwise      = do
-                           newIns <- selectTxIn ins utxoIndex outValue
+    selectTxInStep ins utxoIndex outValue = do
+      let txInRefs :: [TxOutRef]
+          txInRefs = map txInRef $ Set.toList originalTxIns
 
-                           if isSufficient newIns
-                             then return newIns
-                             else selectTxInStep newIns utxoIndex outValue
-  
+          diffUtxos :: [(TxOutRef, TxOut)]
+          diffUtxos = Map.toList $ Map.filterWithKey (\k _ ->  k `notElem` txInRefs) utxoIndex
+
+      case null diffUtxos of
+        True -> return ins
+        False -> do
+                   newIns <- selectTxIn ins utxoIndex outValue
+
+                   if isSufficient newIns
+                     then return newIns
+                     else selectTxInStep newIns utxoIndex outValue
+
     -- updatedInputs =
     --   foldl
     --     ( \acc txIn ->

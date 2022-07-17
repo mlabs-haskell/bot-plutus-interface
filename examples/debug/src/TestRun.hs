@@ -32,13 +32,13 @@ testnetRun :: IO ()
 testnetRun = do
   setLocaleEncoding utf8
   [operation] <- getArgs
-  
+
   bpiDir <- getEnv "BPI_PATH"
 
   print bpiDir
-  
+
   sockPath <- getEnv "CARDANO_NODE_SOCKET_PATH"
-  
+
   -- cliDir <- getEnv "/usr/"
   -- let bpiDir =
   let cliDir = "/nix/st4ore/s76zj58fp6fvgmv2id76xib4sni81yvz-cardano-cli-exe-cardano-cli-1.34.1/bin"
@@ -47,7 +47,7 @@ testnetRun = do
   getEnv "PATH" >>= \p -> setEnv "PATH" (p ++ ":" ++ cliDir)
 
   let netMagic' = read netMagic
-      
+
 
   cEnv <- mkContractEnv netMagic' bpiDir
 

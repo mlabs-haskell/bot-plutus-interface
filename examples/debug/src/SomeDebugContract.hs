@@ -75,17 +75,17 @@ curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
 mintContract :: Ledger.TokenName -> Contract () (Endpoint "SendAda" ()) Text ()
 mintContract tn = do
   ownPPkh <- Contract.ownPaymentPubKeyHash
-  
+
   let lookups =
         Constraints.mintingPolicy mintingPolicy
       constraints =
         Constraints.mustMintValue (Value.singleton curSymbol tn 10)
       (PaymentPubKeyHash ownPkh) = ownPPkh
       ownAddr = Address (PubKeyCredential ownPkh) Nothing
-        
-  
+
+
   tx <- submitTxConstraintsWith @Void lookups constraints
-  
+
   Contract.awaitTxConfirmed (getCardanoTxId tx)
 
   utxosAfter <- Contract.utxosAt ownAddr
