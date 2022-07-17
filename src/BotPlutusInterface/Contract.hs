@@ -287,6 +287,11 @@ balanceTx ::
   Eff effs BalanceTxResponse
 balanceTx contractEnv unbalancedTx = do
   let pabConf = contractEnv.cePABConfig
+      -- balanceTxconstaints =
+      --   if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
+      --     then [PreBalance.TxWithScript]
+      --     else [PreBalance.TxWithoutScript]
+                            
 
   result <- handleCollateral @w contractEnv
 
@@ -497,7 +502,10 @@ makeCollateral cEnv = runEitherT $ do
     firstEitherT (T.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
 
-  balancedTx <- newEitherT $ PreBalance.balanceTxIO @w pabConf pabConf.pcOwnPubKeyHash unbalancedTx
+  balancedTx <- newEitherT
+              $ PreBalance.balanceTxIO' @w
+                 [PreBalance.TxWithoutScript, PreBalance.TxWithSeparateChange]
+                 pabConf pabConf.pcOwnPubKeyHash unbalancedTx
 
   wbr <- lift $ writeBalancedTx cEnv (Right balancedTx)
   case wbr of

@@ -2,8 +2,10 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Balance (
+  BalanceTxConstraint(..),
   balanceTxStep,
   balanceTxIO,
+  balanceTxIO',
   txUsesScripts,
   withFee,
 ) where
@@ -18,7 +20,7 @@ import BotPlutusInterface.Effects (
  )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Types (CollateralUtxo, LogLevel (Debug), PABConfig, collateralTxOutRef, collateralValue)
+import BotPlutusInterface.Types (CollateralUtxo, LogLevel (Debug), PABConfig, collateralTxOutRef)
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void, zipWithM)
@@ -34,6 +36,7 @@ import Data.List (uncons, (\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Proxy (Proxy(Proxy))
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -74,17 +77,29 @@ import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
--- `BalanceTx` is for checking which type of `Tx` we are balancing.
-data BalanceTx
-  = -- | `BalanceTxCollateral` denotes that we are balancing the `Tx` that creates collateral.
-    BalanceTxCollateral
-  | -- | `BalanceTxWithScripts` denotes that we are balancing the `Tx` that uses scripts.
-    BalanceTxWithScripts
-  | -- | `BalanceTxWithoutScripts` denotes that we are balancing the `Tx` that doesn't uses any scripts.
-    BalanceTxWithoutScripts
-  deriving stock (Eq)
+data TxWithScript
+data TxWithoutScript
 
--- `balanceTxIO` checks the type of the current `UnbalancedTx` and then calls `balanceTxIO'`.
+data BalanceTxConstraint a where
+  TxWithScript        :: BalanceTxConstraint TxWithScript
+  TxWithoutScript     :: BalanceTxConstraint TxWithoutScript
+  TxWithSeparateChange :: BalanceTxConstraint a
+
+instance Eq (BalanceTxConstraint a) where
+  TxWithScript == TxWithScript = True
+  TxWithoutScript == TxWithoutScript = True
+  TxWithSeparateChange == TxWithSeparateChange = True
+  _ == _ = False
+
+class KnowBalanceConstraint (a :: Type) where
+  constraint :: proxy a -> BalanceTxConstraint a
+
+instance KnowBalanceConstraint TxWithScript where
+  constraint _ = TxWithScript
+
+instance KnowBalanceConstraint TxWithoutScript where
+  constraint _ = TxWithoutScript
+
 balanceTxIO ::
   forall (w :: Type) (effs :: [Type -> Type]).
   (Member (PABEffect w) effs) =>
@@ -92,39 +107,23 @@ balanceTxIO ::
   PubKeyHash ->
   UnbalancedTx ->
   Eff effs (Either Text Tx)
-balanceTxIO pabConf ownPkh unbalancedTx@(UnbalancedTx tx' _ _ _)
-  | validCollateralTx tx' = balanceTxIO' @w pabConf ownPkh unbalancedTx BalanceTxCollateral
-  | txUsesScripts tx' = balanceTxIO' @w pabConf ownPkh unbalancedTx BalanceTxWithScripts
-  | otherwise = balanceTxIO' @w pabConf ownPkh unbalancedTx BalanceTxWithoutScripts
-  where
-    validCollateralTx :: Tx -> Bool
-    validCollateralTx tx
-      | [out] <- txOutputs tx
-        , Map.size (txData tx) == 0
-        , txMint tx == mempty
-        , txOutValue out == collateralValue pabConf
-        , txMintScripts tx == mempty
-        , txCollateral tx == mempty
-        , not (txUsesScripts tx) =
-        True
-      | otherwise =
-        False
+balanceTxIO = balanceTxIO' @w [TxWithScript]
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
      assets
 -}
 balanceTxIO' ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  (Member (PABEffect w) effs) =>
+  forall (w :: Type) (effs :: [Type -> Type]) (a :: Type) .
+  (Member (PABEffect w) effs, KnowBalanceConstraint a) =>
+  [BalanceTxConstraint a] ->
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
-  BalanceTx ->
   Eff effs (Either Text Tx)
-balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
+balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
   runEitherT $
     do
-      (utxos, mcollateral) <- newEitherT $ utxosAndCollateralAtAddress @w balanceTxType pabConf changeAddr
+      (utxos, mcollateral) <- newEitherT $ utxosAndCollateralAtAddress @w balanceTxconstraints pabConf changeAddr
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
@@ -143,14 +142,13 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
 
       -- Adds required collaterals in the `Tx`, if the `Tx` is of type `BalanceTxWithScripts`.
       -- Also adds signatures for fee calculation
-      preBalancedTx <-
-        case balanceTxType of
-          BalanceTxWithScripts ->
-            maybe
-              (throwE "Tx uses script but no collateral was provided.")
-              (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
-              mcollateral
-          _ -> hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
+
+      preBalancedTx <- case constraint @a Proxy of
+                        TxWithScript -> maybe
+                              (throwE "Tx uses script but no collateral was provided.")
+                              (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
+                              mcollateral
+                        _           -> hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
       -- Balance the tx
       (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
@@ -159,30 +157,30 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
       let adaChange = getAdaChange utxoIndex balancedTx
           -- This represents the collateral TxOut, in cases of `BalanceTxWithoutScripts` & `BalanceTxWithScripts`
           -- we don't create any collateral TxOut, hence the result is Nothing.
-          collateralTxOut = case balanceTxType of
-            BalanceTxCollateral -> fmap fst . uncons . txOutputs $ unBalancedTxTx unbalancedTx
-            BalanceTxWithoutScripts -> Nothing
-            BalanceTxWithScripts -> Nothing
+          ownTxOut = if TxWithSeparateChange `elem` balanceTxconstraints
+                      then fmap fst . uncons $ filter ((== changeAddr) . txOutAddress) $ txOutputs $ unBalancedTxTx unbalancedTx
+                      else Nothing
           bTx = fst <$> balanceTxLoop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
 
       -- If we have change but no change UTxO, we need to add an output for it
       -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
 
       balancedTxWithChange <-
-        case balanceTxType of
-          BalanceTxCollateral | adaChange /= 0 -> bTx
-          _ | adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx) -> bTx
-          _ -> pure balancedTx
-
+        case adaChange /= 0 of
+          True | TxWithSeparateChange `elem` balanceTxconstraints -> bTx
+          True | not (hasChangeUTxO changeAddr balancedTx) -> bTx
+          True   -> pure balancedTx
+          False  -> pure balancedTx
+          
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
-          fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange collateralTxOut
+          fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange ownTxOut
 
       -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
     changeAddr :: Address
-    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) (pabConf.pcOwnStakePubKeyHash)
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) pabConf.pcOwnStakePubKeyHash
 
     balanceTxLoop ::
       Map TxOutRef TxOut ->
@@ -219,29 +217,27 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
         then pure (balancedTx, minUtxos)
         else balanceTxLoop utxoIndex privKeys minUtxos balancedTx
 
--- `utxosAndCollateralAtAddress` returns all the utxos that can be used as input of a `Tx`,
--- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
--- This function throws error if the `Tx` type is of `BalanceTxWithScripts` but there's not `CollateralUtxo`
--- in the environment.
 utxosAndCollateralAtAddress ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  BalanceTx ->
+  forall (w :: Type) (effs :: [Type -> Type]) (a :: Type).
+  (Member (PABEffect w) effs, KnowBalanceConstraint a) =>
+  [BalanceTxConstraint a] ->
   PABConfig ->
   Address ->
   Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
-utxosAndCollateralAtAddress balanceTxType pabConf changeAddr =
+utxosAndCollateralAtAddress _ pabConf changeAddr =
   runEitherT $ do
     utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
     inMemCollateral <- lift $ getInMemCollateral @w
 
-    case balanceTxType of
-      BalanceTxCollateral -> pure (utxos, Nothing)
-      BalanceTxWithoutScripts -> pure (removeCollateralFromMap inMemCollateral utxos, Nothing)
-      BalanceTxWithScripts ->
+    case constraint @a Proxy of
+      TxWithScript -> 
         case inMemCollateral of
           Nothing -> throwE "The given transaction uses script, but there's no collateral provided. This usually means that, we failed to create Tx and update our ContractEnvironment."
           Just _ -> pure (removeCollateralFromMap inMemCollateral utxos, inMemCollateral)
+      
+      TxWithoutScript -> pure (removeCollateralFromMap inMemCollateral utxos, Nothing)
+      
+      _ -> pure (utxos, Nothing)
 
 hasChangeUTxO :: Address -> Tx -> Bool
 hasChangeUTxO changeAddr tx =
