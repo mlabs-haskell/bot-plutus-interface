@@ -132,8 +132,13 @@ balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
       (utxos, mcollateral) <- newEitherT $ utxosAndCollateralAtAddress @w balanceTxconstraints pabConf changeAddr
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
-      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+      let utxoIndex :: Map TxOutRef TxOut
+          utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+          
+          requiredSigs :: [PubKeyHash]
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+          
+          txType :: BalanceTxConstraint a
           txType = knownConstraint @a Proxy
 
       lift $ printBpiLog @w Debug $ viaShow utxoIndex
