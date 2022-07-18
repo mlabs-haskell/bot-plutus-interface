@@ -1,8 +1,13 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module BotPlutusInterface.CoinSelection (valueToVec, valuesToVecs, selectTxIns) where
 
 import Control.Lens (Cons, cons, ix, uncons, (^?))
+import Control.Monad.Freer (Eff, Member)
 
-import Data.Either.Combinators (maybeToRight)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Either (hoistEither, runEitherT)
+import Data.Either.Combinators (isRight, maybeToRight)
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -20,44 +25,70 @@ import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
  )
 
+import BotPlutusInterface.Effects (PABEffect, printBpiLog)
+import BotPlutusInterface.Types (LogLevel (Notice))
+
+import Prettyprinter (pretty, (<+>))
 import Prelude
 
 data Search = Greedy
   deriving stock (Show)
 
-selectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
-selectTxIns originalTxIns utxosIndex outValue = do
-  let txInsValue :: Value
-      txInsValue =
-        mconcat $ map txOutValue $ mapMaybe ((`Map.lookup` utxosIndex) . txInRef) $ Set.toList originalTxIns
+selectTxIns ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Set TxIn ->
+  Map TxOutRef TxOut ->
+  Value ->
+  Eff effs (Either Text (Set TxIn))
+selectTxIns originalTxIns utxosIndex outValue =
+  runEitherT $ do
+    lift $ printBpiLog @w Notice $ pretty (Map.toList utxosIndex)
 
-      allAssetClasses :: Set AssetClass
-      allAssetClasses =
-        uniqueAssetClasses $ txInsValue : outValue : map (txOutValue . snd) (Map.toList utxosIndex)
+    let txInsValue :: Value
+        txInsValue =
+          mconcat $ map txOutValue $ mapMaybe ((`Map.lookup` utxosIndex) . txInRef) $ Set.toList originalTxIns
 
-      txInRefs :: [TxOutRef]
-      txInRefs = map txInRef $ Set.toList originalTxIns
+        allAssetClasses :: Set AssetClass
+        allAssetClasses =
+          uniqueAssetClasses $ txInsValue : outValue : map (txOutValue . snd) (Map.toList utxosIndex)
 
-      remainingUtxos :: [(TxOutRef, TxOut)]
-      remainingUtxos = Map.toList $ Map.filterWithKey (\k _ -> k `notElem` txInRefs) utxosIndex
+        txInRefs :: [TxOutRef]
+        txInRefs = map txInRef $ Set.toList originalTxIns
 
-  txInsVec <-
-    if Value.isZero txInsValue
-      then Right $ zeroVec (toInteger $ length allAssetClasses)
-      else valueToVec allAssetClasses txInsValue
+        remainingUtxos :: [(TxOutRef, TxOut)]
+        remainingUtxos =
+          Map.toList $
+            Map.filterWithKey
+              (\k v -> k `notElem` txInRefs && isRight (txOutToTxIn (k, v)))
+              utxosIndex
 
-  outVec <- valueToVec allAssetClasses outValue
+    lift $ printBpiLog @w Notice $ "\n\n Remaining UTxOs: " <+> pretty remainingUtxos <+> "\n\n"
 
-  remainingUtxosVec <- mapM (valueToVec allAssetClasses . txOutValue . snd) remainingUtxos
+    txInsVec <-
+      hoistEither $
+        if Value.isZero txInsValue
+          then Right $ zeroVec (toInteger $ length allAssetClasses)
+          else valueToVec allAssetClasses txInsValue
 
-  selectedUtxosIdxs <- selectTxIns' Greedy (isSufficient outVec) outVec txInsVec remainingUtxosVec
+    outVec <- hoistEither $ valueToVec allAssetClasses outValue
 
-  let selectedUtxos :: [(TxOutRef, TxOut)]
-      selectedUtxos = mapMaybe (\idx -> remainingUtxos ^? ix (fromInteger idx)) selectedUtxosIdxs
+    lift $ printBpiLog @w Notice $ "IsSufficient: " <+> pretty (isSufficient outVec txInsVec) <+> "\n\n"
 
-  selectedTxIns <- mapM txOutToTxIn selectedUtxos
+    remainingUtxosVec <- hoistEither $ mapM (valueToVec allAssetClasses . txOutValue . snd) remainingUtxos
 
-  return $ originalTxIns <> Set.fromList selectedTxIns
+    selectedUtxosIdxs <- hoistEither $ selectTxIns' Greedy (isSufficient outVec) outVec txInsVec remainingUtxosVec
+
+    lift $ printBpiLog @w Notice $ "\n\n" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs <+> "\n\n"
+
+    let selectedUtxos :: [(TxOutRef, TxOut)]
+        selectedUtxos = mapMaybe (\idx -> remainingUtxos ^? ix (fromInteger idx)) selectedUtxosIdxs
+
+    selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
+
+    lift $ printBpiLog @w Notice $ "Selected TxIns: " <+> pretty selectedTxIns <+> "\n\n"
+
+    return $ originalTxIns <> Set.fromList selectedTxIns
   where
     isSufficient :: Vector Integer -> Vector Integer -> Bool
     isSufficient outVec = Vec.all (== True) . Vec.zipWith (<=) outVec
@@ -69,20 +100,20 @@ selectTxIns' ::
   Vector Integer ->
   [Vector Integer] ->
   Either Text [Integer]
-selectTxIns' Greedy stopSearch outVec txInsVec utxosVec =
-  if null utxosVec
-    then Right mempty
-    else do
+selectTxIns' Greedy stopSearch outVec txInsVec utxosVec
+  | null utxosVec || stopSearch txInsVec = Right mempty
+  | otherwise =
+    do
       utxosDist <- Vec.fromList . map (l2norm outVec) <$> mapM (addVec txInsVec) utxosVec
       let minIndex = toInteger $ Vec.minIndex utxosDist
 
-      (selectedUtxoVec, remainingUtxosVec) <- popN utxosVec minIndex
+      (selectedUtxoVec, remainingUtxosVec) <- pop utxosVec minIndex
 
       newTxInsVec <- addVec txInsVec selectedUtxoVec
 
-      case stopSearch newTxInsVec of
-        True -> return [minIndex]
-        False -> (minIndex :) <$> selectTxIns' Greedy stopSearch outVec newTxInsVec remainingUtxosVec
+      if stopSearch newTxInsVec
+        then return [minIndex]
+        else (minIndex :) <$> selectTxIns' Greedy stopSearch outVec newTxInsVec remainingUtxosVec
 
 l2norm :: Vector Integer -> Vector Integer -> Either Text Float
 l2norm v1 v2
@@ -144,15 +175,15 @@ txOutToTxIn (txOutRef, txOut) =
     PubKeyCredential _ -> Right $ pubKeyTxIn txOutRef
     ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
 
-popN ::
+pop ::
   forall (v :: Type -> Type) a.
   (Cons (v a) (v a) a a) =>
   v a ->
   Integer ->
   Either Text (a, v a)
-popN va idx = do
+pop va idx = do
   (a, va') <- maybeToRight "Error: Not able to uncons from empty structure." $ uncons va
 
   if idx == 0
     then return (a, va')
-    else popN va' (idx - 1) >>= (\(a', va'') -> return (a', cons a va''))
+    else pop va' (idx - 1) >>= (\(a', va'') -> return (a', cons a va''))

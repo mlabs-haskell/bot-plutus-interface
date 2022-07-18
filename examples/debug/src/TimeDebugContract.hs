@@ -155,7 +155,7 @@ splitUtxo = do
   ownPkh <- Contract.ownPaymentPubKeyHash
   let txc =
         Hask.mconcat $
-          Hask.replicate 5 (Constraints.mustPayToPubKey ownPkh (adaValueOf 10))
+          Hask.replicate 5 (Constraints.mustPayToPubKey ownPkh (adaValueOf 100))
   void $ submitTx txc
 
 unlockWithTimeCheck :: Contract () EmptySchema Text Hask.String

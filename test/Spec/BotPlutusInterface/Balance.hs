@@ -2,8 +2,12 @@ module Spec.BotPlutusInterface.Balance (tests) where
 
 import BotPlutusInterface.Balance (withFee)
 import BotPlutusInterface.Balance qualified as Balance
+import BotPlutusInterface.Effects (PABEffect)
+import Data.Default (Default (def))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
+import Data.Text (Text)
+import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address, PaymentPubKeyHash (PaymentPubKeyHash))
@@ -12,8 +16,9 @@ import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
 import Ledger.Value qualified as Value
+import Spec.MockContract (runPABEffectPure)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (Assertion, testCase, (@?=))
+import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
 import Prelude
 
 {- | Tests for 'cardano-cli query utxo' result parsers
@@ -62,10 +67,11 @@ addUtxosForFees = do
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
-      balancedTx =
-        Balance.balanceTxStep minUtxo utxoIndex ownAddr tx
+      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @[Text] @'[PABEffect [Text]] minUtxo utxoIndex ownAddr tx
 
-  txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])
+  case ebalancedTx of
+    Left e -> assertFailure (Text.unpack e)
+    Right balanceTx -> txInputs <$> balanceTx @?= Right (Set.fromList [txIn1, txIn2])
 
 addUtxosForNativeTokens :: Assertion
 addUtxosForNativeTokens = do
@@ -74,10 +80,11 @@ addUtxosForNativeTokens = do
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       ownAddr = addr1
-      balancedTx =
-        Balance.balanceTxStep minUtxo utxoIndex ownAddr tx
+      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @[Text] @'[PABEffect [Text]] minUtxo utxoIndex ownAddr tx
 
-  txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
+  case ebalancedTx of
+    Left e -> assertFailure (Text.unpack e)
+    Right balancedTx -> txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
 
 addUtxosForChange :: Assertion
 addUtxosForChange = do
@@ -86,7 +93,8 @@ addUtxosForChange = do
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
-      balancedTx =
-        Balance.balanceTxStep minUtxo utxoIndex ownAddr tx
+      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @[Text] @'[PABEffect [Text]] minUtxo utxoIndex ownAddr tx
 
-  txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])
+  case ebalancedTx of
+    Left e -> assertFailure (Text.unpack e)
+    Right balancedTx -> txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])

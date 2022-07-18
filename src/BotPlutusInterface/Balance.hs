@@ -212,7 +212,7 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
-        hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` 0
+        newEitherT $ balanceTxStep @w minUtxos utxoIndex changeAddr $ tx `withFee` 0
 
       exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
 
@@ -223,7 +223,7 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
       lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
-      balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
+      balancedTx <- newEitherT $ balanceTxStep @w minUtxos utxoIndex changeAddr $ tx `withFee` fees
 
       if balancedTx == tx
         then pure (balancedTx, minUtxos)
@@ -288,15 +288,17 @@ calculateMinUtxos pabConf datums txOuts =
   zipWithM (fmap . (,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo @w pabConf datums) txOuts
 
 balanceTxStep ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   [(TxOut, Integer)] ->
   Map TxOutRef TxOut ->
   Address ->
   Tx ->
-  Either Text Tx
+  Eff effs (Either Text Tx)
 balanceTxStep minUtxos utxos changeAddr tx =
-  Right (addLovelaces minUtxos tx)
-    >>= balanceTxIns utxos
-    >>= handleNonAdaChange changeAddr utxos
+  runEitherT $
+    (newEitherT . balanceTxIns @w utxos) (addLovelaces minUtxos tx)
+      >>= hoistEither . handleNonAdaChange changeAddr utxos
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
 getChange :: Map TxOutRef TxOut -> Tx -> Value
@@ -385,17 +387,23 @@ addLovelaces minLovelaces tx =
           $ txOutputs tx
    in tx {txOutputs = lovelacesAdded}
 
-balanceTxIns :: Map TxOutRef TxOut -> Tx -> Either Text Tx
+balanceTxIns ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Map TxOutRef TxOut ->
+  Tx ->
+  Eff effs (Either Text Tx)
 balanceTxIns utxos tx = do
-  let txOuts = Tx.txOutputs tx
-      nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
-      minSpending =
-        mconcat
-          [ txFee tx
-          , nonMintedValue
-          ]
-  txIns <- selectTxIns (txInputs tx) utxos minSpending
-  pure $ tx {txInputs = txIns <> txInputs tx}
+  runEitherT $ do
+    let txOuts = Tx.txOutputs tx
+        nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
+        minSpending =
+          mconcat
+            [ txFee tx
+            , nonMintedValue
+            ]
+    txIns <- newEitherT $ selectTxIns @w (txInputs tx) utxos minSpending
+    pure $ tx {txInputs = txIns <> txInputs tx}
 
 -- | Set collateral or fail in case it's required but not available
 addTxCollaterals :: CollateralUtxo -> Tx -> Tx
