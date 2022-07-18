@@ -115,7 +115,7 @@ balanceTxIO ::
   Eff effs (Either Text Tx)
 balanceTxIO = balanceTxIO' @w [TxWithoutScript]
 
-{- | This is just a more flexible version of `balanceTxIO` which let's specify the `BalanceTxConstraint`
+{- | This is just a more flexible version of `balanceTxIO` which let us specify the `BalanceTxConstraint`(s)
  -   for the `Tx` that we are balancing.
 -}
 balanceTxIO' ::
@@ -216,9 +216,9 @@ balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
         then pure (balancedTx, minUtxos)
         else balanceTxLoop utxoIndex privKeys minUtxos balancedTx
 
--- `utxosAndCollateralAtAddress` returns all the utxos that can be used as input of a `Tx`,
+-- `utxosAndCollateralAtAddress` returns all the utxos that can be used as an input of a `Tx`,
 -- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
--- This function throws error if the `Tx` type is of `BalanceTxWithScripts` but there's not `CollateralUtxo`
+-- This function throws error if `TxWithScript` constraint is present but there's no `CollateralUtxo`
 -- in the environment.
 utxosAndCollateralAtAddress ::
   forall (w :: Type) (effs :: [Type -> Type]) (a :: Type).
@@ -409,7 +409,7 @@ handleNonAdaChange changeAddr utxos tx =
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
 
-{- | `addAdaChange` checks if `TxWithSeparateChange` is the present in the provided balancing
+{- | `addAdaChange` checks if `TxWithSeparateChange` is present in the provided balancing
   constraints, if it is then we add the ada change to seperate `TxOut`, else we add it to
   any `TxOut` present at changeAddr.
 -}
