@@ -9,6 +9,7 @@ module BotPlutusInterface.Balance (
 ) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.CoinSelection (selectTxIns)
 import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissingCLI,
@@ -16,7 +17,6 @@ import BotPlutusInterface.Effects (
   posixTimeRangeToContainedSlotRange,
   printBpiLog,
  )
-import BotPlutusInterface.CoinSelection (selectTxIn)
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (CollateralUtxo, LogLevel (Debug), PABConfig, collateralTxOutRef, collateralValue)
@@ -29,13 +29,11 @@ import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
-import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
 import Data.List (uncons, (\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -64,7 +62,6 @@ import Ledger.Tx qualified as Tx
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
-  Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
   TokenName (..),
  )
@@ -178,15 +175,16 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
           fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange collateralTxOut
-          txInfoLog = printBpiLog @w Debug
-                    $     "UnbalancedTx TxInputs: "
-                      <+> pretty (length $ txInputs preBalancedTx)
-                      <+> "UnbalancedTx TxOutputs: "
-                      <+> pretty (length $ txOutputs preBalancedTx)
-                      <+> "TxInputs: "
-                      <+> pretty (length $ txInputs fullyBalancedTx)
-                      <+> "TxOutputs: "
-                      <+> pretty (length $ txOutputs fullyBalancedTx)
+          txInfoLog =
+            printBpiLog @w Debug $
+              "UnbalancedTx TxInputs: "
+                <+> pretty (length $ txInputs preBalancedTx)
+                <+> "UnbalancedTx TxOutputs: "
+                <+> pretty (length $ txOutputs preBalancedTx)
+                <+> "TxInputs: "
+                <+> pretty (length $ txInputs fullyBalancedTx)
+                <+> "TxOutputs: "
+                <+> pretty (length $ txOutputs fullyBalancedTx)
 
       lift txInfoLog
 
@@ -220,13 +218,12 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
 
       nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
-      let fees      = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
+      let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
       lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
       balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
-
 
       if balancedTx == tx
         then pure (balancedTx, minUtxos)
@@ -321,61 +318,55 @@ getAdaChange utxos = lovelaceValue . getChange utxos
 getNonAdaChange :: Map TxOutRef TxOut -> Tx -> Value
 getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
 
--- | Getting the necessary utxos to cover the fees for the transaction
-collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
-collectTxIns originalTxIns utxos value = do
-  updatedInputs <- selectTxInStep originalTxIns utxos value
-  if isSufficient updatedInputs
-    then pure updatedInputs
-    else Left $
-          Text.unlines
-            [ "Insufficient tx inputs, needed: "
-            , showText (Value.flattenValue value)
-            , "got:"
-            , showText (Value.flattenValue (txInsValue updatedInputs))
-            ]
-  where
+{- | Getting the necessary utxos to cover the fees for the transaction
+ collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
+ collectTxIns originalTxIns utxos value = do
+   updatedInputs <- selectTxInStep originalTxIns utxos value
+   if isSufficient updatedInputs
+     then pure updatedInputs
+     else Left $
+           Text.unlines
+             [ "Insufficient tx inputs, needed: "
+             , showText (Value.flattenValue value)
+             , "got:"
+             , showText (Value.flattenValue (txInsValue updatedInputs))
+             ]
+   where
 
-    selectTxInStep ins utxoIndex outValue = do
-      let txInRefs :: [TxOutRef]
-          txInRefs = map txInRef $ Set.toList originalTxIns
+     selectTxInStep ins utxoIndex outValue = do
+       let txInRefs :: [TxOutRef]
+           txInRefs = map txInRef $ Set.toList originalTxIns
 
-          diffUtxos :: [(TxOutRef, TxOut)]
-          diffUtxos = Map.toList $ Map.filterWithKey (\k _ ->  k `notElem` txInRefs) utxoIndex
+           diffUtxos :: [(TxOutRef, TxOut)]
+           diffUtxos = Map.toList $ Map.filterWithKey (\k _ ->  k `notElem` txInRefs) utxoIndex
 
-      case null diffUtxos of
-        True -> return ins
-        False -> do
-                   newIns <- selectTxIn ins utxoIndex outValue
+       case null diffUtxos of
+         True -> return ins
+         False -> do
+                    newIns <- selectTxIn ins utxoIndex outValue
 
-                   if isSufficient newIns
-                     then return newIns
-                     else selectTxInStep newIns utxoIndex outValue
+                    if isSufficient newIns
+                      then return newIns
+                      else selectTxInStep newIns utxoIndex outValue
+-}
 
-    -- updatedInputs =
-    --   foldl
-    --     ( \acc txIn ->
-    --         if isSufficient acc
-    --           then acc
-    --           else Set.insert txIn acc
-    --     )
-    --     originalTxIns
-    --     $ mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
+-- updatedInputs =
+--   foldl
+--     ( \acc txIn ->
+--         if isSufficient acc
+--           then acc
+--           else Set.insert txIn acc
+--     )
+--     originalTxIns
+--     $ mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
 
-    isSufficient :: Set TxIn -> Bool
-    isSufficient txIns' =
-      not (Set.null txIns') && txInsValue txIns' `Value.geq` value
-
-    txInsValue :: Set TxIn -> Value
-    txInsValue txIns' =
-      mconcat $ map Tx.txOutValue $ mapMaybe ((`Map.lookup` utxos) . Tx.txInRef) $ Set.toList txIns'
-
--- Converting a chain index transaction output to a transaction input type
-txOutToTxIn :: (TxOutRef, TxOut) -> Either Text TxIn
-txOutToTxIn (txOutRef, txOut) =
-  case addressCredential (txOutAddress txOut) of
-    PubKeyCredential _ -> Right $ Tx.pubKeyTxIn txOutRef
-    ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
+-- isSufficient :: Set TxIn -> Bool
+-- isSufficient txIns' =
+--   not (Set.null txIns') && txInsValue txIns' `Value.geq` value
+--
+-- txInsValue :: Set TxIn -> Value
+-- txInsValue txIns' =
+--   mconcat $ map Tx.txOutValue $ mapMaybe ((`Map.lookup` utxos) . Tx.txInRef) $ Set.toList txIns'
 
 -- | Add min lovelaces to each tx output
 addLovelaces :: [(TxOut, Integer)] -> Tx -> Tx
@@ -403,7 +394,7 @@ balanceTxIns utxos tx = do
           [ txFee tx
           , nonMintedValue
           ]
-  txIns <- collectTxIns (txInputs tx) utxos minSpending
+  txIns <- selectTxIns (txInputs tx) utxos minSpending
   pure $ tx {txInputs = txIns <> txInputs tx}
 
 -- | Set collateral or fail in case it's required but not available
@@ -518,9 +509,6 @@ modifyFirst ::
   [a]
 modifyFirst _ m [] = m Nothing `consJust` []
 modifyFirst p m (x : xs) = if p x then m (Just x) `consJust` xs else x : modifyFirst p m xs
-
-showText :: forall (a :: Type). Show a => a -> Text
-showText = Text.pack . show
 
 minus :: Value -> Value -> Value
 minus x y =

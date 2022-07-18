@@ -7,8 +7,8 @@ import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (newTVarIO, readTVarIO)
 import Control.Monad (void)
 import Data.Aeson (decodeFileStrict)
-import Data.Text (Text)
 import Data.String (fromString)
+import Data.Text (Text)
 
 import Data.Text qualified as Text
 import Data.UUID.V4 qualified as UUID
@@ -47,7 +47,6 @@ testnetRun = do
   getEnv "PATH" >>= \p -> setEnv "PATH" (p ++ ":" ++ cliDir)
 
   let netMagic' = read netMagic
-
 
   cEnv <- mkContractEnv netMagic' bpiDir
 
