@@ -134,10 +134,10 @@ balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
 
       let utxoIndex :: Map TxOutRef TxOut
           utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
-          
+
           requiredSigs :: [PubKeyHash]
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
-          
+
           txType :: BalanceTxConstraint a
           txType = knownConstraint @a Proxy
 
