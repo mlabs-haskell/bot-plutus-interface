@@ -91,7 +91,8 @@ selectTxIns originalTxIns utxosIndex outValue =
     return $ originalTxIns <> Set.fromList selectedTxIns
   where
     isSufficient :: Vector Integer -> Vector Integer -> Bool
-    isSufficient outVec = Vec.all (== True) . Vec.zipWith (<=) outVec
+    isSufficient outVec txInsVec = Vec.all (== True) (Vec.zipWith (<=) outVec txInsVec)
+                                && txInsVec /= zeroVec (toInteger $ length txInsVec)
 
 selectTxIns' ::
   Search ->

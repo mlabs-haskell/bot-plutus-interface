@@ -6,7 +6,6 @@ import BotPlutusInterface.Effects (PABEffect)
 import Data.Default (Default (def))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
@@ -67,7 +66,7 @@ addUtxosForFees = do
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
-      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @[Text] @'[PABEffect [Text]] minUtxo utxoIndex ownAddr tx
+      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @() @'[PABEffect ()] minUtxo utxoIndex ownAddr tx
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
@@ -80,7 +79,7 @@ addUtxosForNativeTokens = do
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       ownAddr = addr1
-      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @[Text] @'[PABEffect [Text]] minUtxo utxoIndex ownAddr tx
+      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @() @'[PABEffect ()] minUtxo utxoIndex ownAddr tx
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
@@ -93,7 +92,7 @@ addUtxosForChange = do
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
-      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @[Text] @'[PABEffect [Text]] minUtxo utxoIndex ownAddr tx
+      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @() @'[PABEffect ()] minUtxo utxoIndex ownAddr tx
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
