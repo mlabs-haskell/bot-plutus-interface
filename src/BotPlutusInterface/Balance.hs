@@ -2,7 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Balance (
-  BalanceTxConstraint(..),
+  BalanceTxConstraint (TxWithScript, TxWithoutScript, TxWithSeparateChange),
   balanceTxStep,
   balanceTxIO,
   balanceTxIO',
@@ -32,11 +32,12 @@ import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List (uncons, (\\))
+import Data.List ((\\))
+import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Proxy (Proxy(Proxy))
+import Data.Proxy (Proxy (Proxy))
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -81,8 +82,8 @@ data TxWithScript
 data TxWithoutScript
 
 data BalanceTxConstraint a where
-  TxWithScript        :: BalanceTxConstraint TxWithScript
-  TxWithoutScript     :: BalanceTxConstraint TxWithoutScript
+  TxWithScript :: BalanceTxConstraint TxWithScript
+  TxWithoutScript :: BalanceTxConstraint TxWithoutScript
   TxWithSeparateChange :: BalanceTxConstraint a
 
 instance Eq (BalanceTxConstraint a) where
@@ -91,15 +92,20 @@ instance Eq (BalanceTxConstraint a) where
   TxWithSeparateChange == TxWithSeparateChange = True
   _ == _ = False
 
-class KnowBalanceConstraint (a :: Type) where
-  constraint :: proxy a -> BalanceTxConstraint a
+class KnownBalanceConstraint (a :: Type) where
+  knownConstraint :: proxy a -> BalanceTxConstraint a
 
-instance KnowBalanceConstraint TxWithScript where
-  constraint _ = TxWithScript
+instance KnownBalanceConstraint TxWithScript where
+  knownConstraint _ = TxWithScript
 
-instance KnowBalanceConstraint TxWithoutScript where
-  constraint _ = TxWithoutScript
+instance KnownBalanceConstraint TxWithoutScript where
+  knownConstraint _ = TxWithoutScript
 
+{- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
+ assets. `balanceTxIO` assumes that the `Tx` we are balancing is of type `TxWithoutScript`.
+ If you want to add custom constraints while balancing the `Tx` like, saying that `Tx` contains
+ scripts refer to `balanceTxIO'`.
+-}
 balanceTxIO ::
   forall (w :: Type) (effs :: [Type -> Type]).
   (Member (PABEffect w) effs) =>
@@ -107,14 +113,14 @@ balanceTxIO ::
   PubKeyHash ->
   UnbalancedTx ->
   Eff effs (Either Text Tx)
-balanceTxIO = balanceTxIO' @w [TxWithScript]
+balanceTxIO = balanceTxIO' @w [TxWithoutScript]
 
-{- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
-     assets
+{- | This is just a more flexible version of `balanceTxIO` which let's specify the `BalanceTxConstraint`
+ -   for the `Tx` that we are balancing.
 -}
 balanceTxIO' ::
-  forall (w :: Type) (effs :: [Type -> Type]) (a :: Type) .
-  (Member (PABEffect w) effs, KnowBalanceConstraint a) =>
+  forall (w :: Type) (effs :: [Type -> Type]) (a :: Type).
+  (Member (PABEffect w) effs, KnownBalanceConstraint a) =>
   [BalanceTxConstraint a] ->
   PABConfig ->
   PubKeyHash ->
@@ -128,6 +134,7 @@ balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
 
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
+          txType = knownConstraint @a Proxy
 
       lift $ printBpiLog @w Debug $ viaShow utxoIndex
 
@@ -140,41 +147,33 @@ balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
-      -- Adds required collaterals in the `Tx`, if the `Tx` is of type `BalanceTxWithScripts`.
+      -- Adds required collaterals in the `Tx`, if the `Tx` is of type `TxWithScript`.
       -- Also adds signatures for fee calculation
-
-      preBalancedTx <- case constraint @a Proxy of
-                        TxWithScript -> maybe
-                              (throwE "Tx uses script but no collateral was provided.")
-                              (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
-                              mcollateral
-                        _           -> hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
+      preBalancedTx <- case txType of
+        TxWithScript ->
+          maybe
+            (throwE "Tx uses script but no collateral was provided.")
+            (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
+            mcollateral
+        _ -> hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
       -- Balance the tx
       (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
-          -- This represents the collateral TxOut, in cases of `BalanceTxWithoutScripts` & `BalanceTxWithScripts`
-          -- we don't create any collateral TxOut, hence the result is Nothing.
-          ownTxOut = if TxWithSeparateChange `elem` balanceTxconstraints
-                      then fmap fst . uncons $ filter ((== changeAddr) . txOutAddress) $ txOutputs $ unBalancedTxTx unbalancedTx
-                      else Nothing
           bTx = fst <$> balanceTxLoop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
-
-      -- If we have change but no change UTxO, we need to add an output for it
-      -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
 
       balancedTxWithChange <-
         case adaChange /= 0 of
           True | TxWithSeparateChange `elem` balanceTxconstraints -> bTx
           True | not (hasChangeUTxO changeAddr balancedTx) -> bTx
-          True   -> pure balancedTx
-          False  -> pure balancedTx
-          
+          True -> pure balancedTx
+          False -> pure balancedTx
+
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
-          fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange ownTxOut
+          fullyBalancedTx = addAdaChange balanceTxconstraints changeAddr finalAdaChange balancedTxWithChange
 
       -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
@@ -217,9 +216,13 @@ balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
         then pure (balancedTx, minUtxos)
         else balanceTxLoop utxoIndex privKeys minUtxos balancedTx
 
+-- `utxosAndCollateralAtAddress` returns all the utxos that can be used as input of a `Tx`,
+-- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
+-- This function throws error if the `Tx` type is of `BalanceTxWithScripts` but there's not `CollateralUtxo`
+-- in the environment.
 utxosAndCollateralAtAddress ::
   forall (w :: Type) (effs :: [Type -> Type]) (a :: Type).
-  (Member (PABEffect w) effs, KnowBalanceConstraint a) =>
+  (Member (PABEffect w) effs, KnownBalanceConstraint a) =>
   [BalanceTxConstraint a] ->
   PABConfig ->
   Address ->
@@ -229,14 +232,16 @@ utxosAndCollateralAtAddress _ pabConf changeAddr =
     utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
     inMemCollateral <- lift $ getInMemCollateral @w
 
-    case constraint @a Proxy of
-      TxWithScript -> 
-        case inMemCollateral of
-          Nothing -> throwE "The given transaction uses script, but there's no collateral provided. This usually means that, we failed to create Tx and update our ContractEnvironment."
-          Just _ -> pure (removeCollateralFromMap inMemCollateral utxos, inMemCollateral)
-      
+    case knownConstraint @a Proxy of
+      TxWithScript ->
+        maybe
+          ( throwE $
+              "The given transaction uses script, but there's no collateral provided."
+                <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
+          )
+          (const $ pure (removeCollateralFromMap inMemCollateral utxos, inMemCollateral))
+          inMemCollateral
       TxWithoutScript -> pure (removeCollateralFromMap inMemCollateral utxos, Nothing)
-      
       _ -> pure (utxos, Nothing)
 
 hasChangeUTxO :: Address -> Tx -> Bool
@@ -404,22 +409,30 @@ handleNonAdaChange changeAddr utxos tx =
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
 
--- | Adds ada change to a transaction, assuming there is already an output going to ownPkh. Otherwise, this is identity
-addAdaChange :: Address -> Integer -> Tx -> Maybe TxOut -> Tx
-addAdaChange _ 0 tx _ = tx
-addAdaChange changeAddr change tx collateralOut =
-  tx
-    { txOutputs =
-        modifyFirst
-          check
-          (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
-          (txOutputs tx)
-    }
-  where
-    check :: TxOut -> Bool
-    check txOut =
-      Tx.txOutAddress txOut == changeAddr
-        && Just txOut /= collateralOut
+{- | `addAdaChange` checks if `TxWithSeparateChange` is the present in the provided balancing
+  constraints, if it is then we add the ada change to seperate `TxOut`, else we add it to
+  any `TxOut` present at changeAddr.
+-}
+addAdaChange :: forall (a :: Type). [BalanceTxConstraint a] -> Address -> Integer -> Tx -> Tx
+addAdaChange _ _ 0 tx = tx
+addAdaChange balanceTxconstraints changeAddr change tx
+  | TxWithSeparateChange `elem` balanceTxconstraints =
+    tx
+      { txOutputs =
+          List.reverse $
+            modifyFirst
+              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (txOutValue txout))
+              (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
+              (List.reverse $ txOutputs tx)
+      }
+  | otherwise =
+    tx
+      { txOutputs =
+          modifyFirst
+            ((== changeAddr) . Tx.txOutAddress)
+            (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
+            (txOutputs tx)
+      }
 
 addValueToTxOut :: Value -> TxOut -> TxOut
 addValueToTxOut val txOut = txOut {txOutValue = txOutValue txOut <> val}
@@ -500,6 +513,9 @@ unflattenValue (curSymbol, tokenName, amount) =
 isValueNat :: Value -> Bool
 isValueNat =
   all (\(_, _, a) -> a >= 0) . Value.flattenValue
+
+justLovelace :: Value -> Bool
+justLovelace value = length (Value.flattenValue value) == 1 && lovelaceValue value /= 0
 
 consJust :: forall (a :: Type). Maybe a -> [a] -> [a]
 consJust (Just x) = (x :)

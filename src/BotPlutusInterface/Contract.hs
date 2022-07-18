@@ -287,11 +287,6 @@ balanceTx ::
   Eff effs BalanceTxResponse
 balanceTx contractEnv unbalancedTx = do
   let pabConf = contractEnv.cePABConfig
-      -- balanceTxconstaints =
-      --   if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
-      --     then [PreBalance.TxWithScript]
-      --     else [PreBalance.TxWithoutScript]
-                            
 
   result <- handleCollateral @w contractEnv
 
@@ -300,10 +295,18 @@ balanceTx contractEnv unbalancedTx = do
     _ -> do
       uploadDir @w pabConf.pcSigningKeyFileDir
       eitherPreBalancedTx <-
-        PreBalance.balanceTxIO @w
-          pabConf
-          pabConf.pcOwnPubKeyHash
-          unbalancedTx
+        if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
+          then
+            PreBalance.balanceTxIO' @w
+              [PreBalance.TxWithScript]
+              pabConf
+              pabConf.pcOwnPubKeyHash
+              unbalancedTx
+          else
+            PreBalance.balanceTxIO @w
+              pabConf
+              pabConf.pcOwnPubKeyHash
+              unbalancedTx
 
       pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
 
@@ -502,10 +505,12 @@ makeCollateral cEnv = runEitherT $ do
     firstEitherT (T.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
 
-  balancedTx <- newEitherT
-              $ PreBalance.balanceTxIO' @w
-                 [PreBalance.TxWithoutScript, PreBalance.TxWithSeparateChange]
-                 pabConf pabConf.pcOwnPubKeyHash unbalancedTx
+  balancedTx <-
+    newEitherT $
+      PreBalance.balanceTxIO' @w
+        [PreBalance.TxWithoutScript, PreBalance.TxWithSeparateChange]
+        pabConf
+        pabConf.pcOwnPubKeyHash unbalancedTx
 
   wbr <- lift $ writeBalancedTx cEnv (Right balancedTx)
   case wbr of
