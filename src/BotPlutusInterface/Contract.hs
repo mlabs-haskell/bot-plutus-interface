@@ -195,13 +195,11 @@ handlePABReq contractEnv req = do
     ------------------------
     -- Unhandled requests --
     ------------------------
-    -- AwaitTimeReq t -> pure $ AwaitTimeResp t
-    -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
-    -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
-    -- AwaitTxOutStatusChangeReq TxOutRef
-    -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
-    -- YieldUnbalancedTxReq UnbalancedTx
-    unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
+    AwaitUtxoSpentReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    AwaitUtxoProducedReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    AwaitTxOutStatusChangeReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
 
   printBpiLog @w Debug $ pretty resp
   pure resp
