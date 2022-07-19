@@ -24,6 +24,7 @@ module BotPlutusInterface.Types (
   ContractStats (..),
   TxStatusPolling (..),
   LogsList (..),
+  LogType (..),
   CollateralUtxo (..),
   CollateralVar (..),
   addBudget,
@@ -245,12 +246,27 @@ data ContractState w = ContractState
 data CLILocation = Local | Remote Text
   deriving stock (Show, Eq)
 
-data LogLevel = Error | Warn | Notice | Info | Debug
-  deriving stock (Bounded, Enum, Eq, Ord, Show)
+data LogType
+  = CoinSelectionLog
+  | TxBalancingLog
+  | CollateralLog
+  | PABLog
+  | AnyLog
+  deriving stock (Eq, Ord, Show)
+
+instance Pretty LogType where
+  pretty CoinSelectionLog = "CoinSelection"
+  pretty TxBalancingLog = "TxBalancing"
+  pretty CollateralLog = "Collateral"
+  pretty PABLog = "Contract"
+  pretty AnyLog = "Any"
+
+data LogLevel = Error | Warn | Notice | Info | Debug LogType
+  deriving stock (Eq, Ord, Show)
 
 instance Pretty LogLevel where
   pretty = \case
-    Debug -> "[DEBUG]"
+    Debug a -> "[DEBUG " <> pretty a <> "]"
     Info -> "[INFO]"
     Notice -> "[NOTICE]"
     Warn -> "[WARNING]"

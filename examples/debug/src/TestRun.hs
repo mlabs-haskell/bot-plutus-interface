@@ -7,14 +7,12 @@ import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (newTVarIO, readTVarIO)
 import Control.Monad (void)
 import Data.Aeson (decodeFileStrict)
-import Data.String (fromString)
 import Data.Text (Text)
 
 import Data.Text qualified as Text
 import Data.UUID.V4 qualified as UUID
 import GHC.IO.Encoding
 import Ledger (PubKeyHash)
-import Ledger.Value qualified as Value
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import SomeDebugContract qualified
@@ -26,6 +24,7 @@ import Tools
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 
+main :: IO ()
 main = testnetRun
 
 testnetRun :: IO ()
@@ -127,7 +126,7 @@ mkPabConf _ pparams pparamsFile bpiDir ownPkh =
     , pcSigningKeyFileDir = Text.pack $ bpiDir </> "signing-keys"
     , pcTxFileDir = Text.pack $ bpiDir </> "txs"
     , pcDryRun = False
-    , pcLogLevel = Debug
+    , pcLogLevel = Debug CoinSelectionLog
     , pcProtocolParamsFile = pparamsFile
     , pcEnableTxEndpoint = False
     , pcCollectStats = False

@@ -44,6 +44,7 @@ import BotPlutusInterface.Types (
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
+  LogType (AnyLog),
   LogsList (LogsList),
   TxBudget,
   TxFile,
@@ -217,7 +218,7 @@ handleContractLogInternal = reinterpret $ \case
         msgPretty = pretty msgContent
      in printLog @w ContractLog msgLogLevel msgPretty
   where
-    toNativeLogLevel Freer.Debug = Debug
+    toNativeLogLevel Freer.Debug = Debug AnyLog
     toNativeLogLevel Freer.Info = Info
     toNativeLogLevel Freer.Notice = Notice
     toNativeLogLevel Freer.Warning = Warn

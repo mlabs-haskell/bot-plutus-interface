@@ -35,6 +35,7 @@ import BotPlutusInterface.Types (
   CollateralUtxo (CollateralUtxo),
   ContractEnvironment (..),
   LogLevel (Debug, Notice, Warn),
+  LogType (PABLog, CollateralLog),
   Tip (block, slot),
   TxFile (Signed),
   collateralValue,
@@ -174,7 +175,7 @@ handlePABReq ::
   PABReq ->
   Eff effs PABResp
 handlePABReq contractEnv req = do
-  printBpiLog @w Debug $ pretty req
+  printBpiLog @w (Debug PABLog) $ pretty req
   resp <- case req of
     ----------------------
     -- Handled requests --
@@ -208,7 +209,7 @@ handlePABReq contractEnv req = do
     -- YieldUnbalancedTxReq UnbalancedTx
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
-  printBpiLog @w Debug $ pretty resp
+  printBpiLog @w (Debug PABLog) $ pretty resp
   pure resp
 
 {- | Await till transaction status change to something from `Unknown`.
@@ -227,7 +228,7 @@ awaitTxStatusChange ::
   Eff effs TxStatus
 awaitTxStatusChange contractEnv txId = do
   checkStartedBlock <- currentBlock contractEnv
-  printBpiLog @w Debug $ pretty $ "Awaiting status change for " ++ show txId
+  printBpiLog @w (Debug PABLog) $ pretty $ "Awaiting status change for " ++ show txId
 
   let txStatusPolling = contractEnv.cePABConfig.pcTxStatusPolling
       pollInterval = fromIntegral $ txStatusPolling.spInterval
@@ -239,7 +240,7 @@ awaitTxStatusChange contractEnv txId = do
     txStatus <- getStatus
     case (txStatus, currBlock > cutOffBlock) of
       (status, True) -> do
-        logDebug . mconcat . fmap mconcat $
+        helperLog (Debug PABLog) . mconcat . fmap mconcat $
           [ ["Timeout for waiting `TxId ", show txId, "` status change reached"]
           , [" - waited ", show pollTimeout, " blocks."]
           , [" Current status: ", show status]
@@ -254,17 +255,17 @@ awaitTxStatusChange contractEnv txId = do
       mTx <- queryChainIndexForTxState
       case mTx of
         Nothing -> do
-          logDebug $ "TxId " ++ show txId ++ " not found in index"
+          helperLog (Debug PABLog) $ "TxId " ++ show txId ++ " not found in index"
           pure Unknown
         Just txState -> do
-          logDebug $ "TxId " ++ show txId ++ " found in index, checking status"
+          helperLog (Debug PABLog) $ "TxId " ++ show txId ++ " found in index, checking status"
           blk <- fromInteger <$> currentBlock contractEnv
           case transactionStatus blk txState txId of
             Left e -> do
-              logDebug $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
+              helperLog (Debug PABLog) $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
               pure Unknown
             Right st -> do
-              logDebug $ "Status for TxId " ++ show txId ++ " is " ++ show st
+              helperLog (Debug PABLog) $ "Status for TxId " ++ show txId ++ " is " ++ show st
               pure st
 
     queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
@@ -276,7 +277,8 @@ awaitTxStatusChange contractEnv txId = do
           pure . Just $ fromTx blk tx
         Nothing -> pure Nothing
 
-    logDebug = printBpiLog @w Debug . pretty
+    helperLog :: LogLevel -> String -> Eff effs ()
+    helperLog (Debug a) = printBpiLog @w (Debug a) . pretty
 
 -- | This will FULLY balance a transaction
 balanceTx ::
@@ -400,7 +402,8 @@ awaitSlot contractEnv s@(Slot n) = do
     _ -> awaitSlot contractEnv s
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
- are applying here as well.
+ are applying here as well.                                                 PubKeyCredential: 8cf10ef973d90f42c386cbdbceb1d731c9af1ec71b
+47329f8be130cf (no staking crede
 -}
 awaitTime ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -474,12 +477,12 @@ handleCollateral cEnv = do
   case result of
     Right collteralUtxo ->
       setInMemCollateral @w collteralUtxo
-        >> Right <$> printBpiLog @w Debug "successfully set the collateral utxo in env."
+        >> Right <$> printBpiLog @w (Debug PABLog) "successfully set the collateral utxo in env."
     Left err -> pure $ Left $ "Failed to make collateral: " <> err
   where
     --
     helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
-    helperLog msg = newEitherT $ Right <$> printBpiLog @w Debug msg
+    helperLog msg = newEitherT $ Right <$> printBpiLog @w (Debug CollateralLog) msg
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.

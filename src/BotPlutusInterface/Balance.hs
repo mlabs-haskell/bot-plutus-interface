@@ -19,7 +19,14 @@ import BotPlutusInterface.Effects (
  )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Types (CollateralUtxo, LogLevel (Debug), PABConfig, collateralTxOutRef, collateralValue)
+import BotPlutusInterface.Types (
+  CollateralUtxo,
+  LogLevel (Debug),
+  LogType (TxBalancingLog),
+  PABConfig,
+  collateralTxOutRef,
+  collateralValue,
+ )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void, zipWithM)
@@ -128,7 +135,7 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
       let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
 
-      lift $ printBpiLog @w Debug $ viaShow utxoIndex
+      lift $ printBpiLog @w (Debug TxBalancingLog) $ viaShow utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
@@ -176,7 +183,7 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
           fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange collateralTxOut
           txInfoLog =
-            printBpiLog @w Debug $
+            printBpiLog @w (Debug TxBalancingLog) $
               "UnbalancedTx TxInputs: "
                 <+> pretty (length $ txInputs preBalancedTx)
                 <+> "UnbalancedTx TxOutputs: "
@@ -208,7 +215,7 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
-      lift $ printBpiLog @w Debug $ "Min utxos:" <+> pretty minUtxos
+      lift $ printBpiLog @w (Debug TxBalancingLog) $ "Min utxos:" <+> pretty minUtxos
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
@@ -220,7 +227,7 @@ balanceTxIO' pabConf ownPkh unbalancedTx balanceTxType =
 
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
-      lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
+      lift $ printBpiLog @w (Debug TxBalancingLog) $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
       balancedTx <- newEitherT $ balanceTxStep @w minUtxos utxoIndex changeAddr $ tx `withFee` fees

@@ -2,7 +2,7 @@
 
 module BotPlutusInterface.CoinSelection (valueToVec, valuesToVecs, selectTxIns) where
 
-import Control.Lens (Cons, cons, ix, uncons, (^?))
+import Control.Lens (ix, (^?))
 import Control.Monad.Freer (Eff, Member)
 
 import Control.Monad.Trans.Class (lift)
@@ -27,7 +27,7 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.Effects (PABEffect, printBpiLog)
-import BotPlutusInterface.Types (LogLevel (Debug))
+import BotPlutusInterface.Types (LogLevel (Debug), LogType (CoinSelectionLog))
 
 import Prettyprinter (pretty, (<+>))
 import Prelude
@@ -62,7 +62,7 @@ selectTxIns originalTxIns utxosIndex outValue =
               (\k v -> k `notElem` txInRefs && isRight (txOutToTxIn (k, v)))
               utxosIndex
 
-    lift $ printBpiLog @w Debug $ "Remaining UTxOs: " <+> pretty remainingUtxos <+> "\n\n"
+    lift $ printBpiLog @w (Debug CoinSelectionLog) $ "Remaining UTxOs: " <+> pretty remainingUtxos
 
     txInsVec <-
       hoistEither $
@@ -76,14 +76,14 @@ selectTxIns originalTxIns utxosIndex outValue =
 
     selectedUtxosIdxs <- newEitherT $ selectTxIns' @w Greedy (isSufficient outVec) outVec txInsVec remainingUtxosVec
 
-    lift $ printBpiLog @w Debug $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs <+> "\n\n"
+    lift $ printBpiLog @w (Debug CoinSelectionLog) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
 
     let selectedUtxos :: [(TxOutRef, TxOut)]
         selectedUtxos = mapMaybe (\idx -> remainingUtxos ^? ix (fromInteger idx)) selectedUtxosIdxs
 
     selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
 
-    lift $ printBpiLog @w Debug $ "Selected TxIns: " <+> pretty selectedTxIns <+> "\n\n"
+    lift $ printBpiLog @w (Debug CoinSelectionLog) $ "Selected TxIns: " <+> pretty selectedTxIns
 
     return $ originalTxIns <> Set.fromList selectedTxIns
   where
@@ -103,10 +103,10 @@ selectTxIns' ::
   Eff effs (Either Text [Integer])
 selectTxIns' Greedy stopSearch outVec txInsVec utxosVec
   | null utxosVec =
-    printBpiLog @w Debug "The list of remanining UTxO vectors in null.\n\n"
+    printBpiLog @w (Debug CoinSelectionLog) "The list of remanining UTxO vectors in null."
       >> return (Right mempty)
   | stopSearch txInsVec =
-    printBpiLog @w Debug "Stopping search early.\n\n"
+    printBpiLog @w (Debug CoinSelectionLog) "Stopping search early."
       >> return (Right mempty)
   | otherwise =
     runEitherT $ do
@@ -134,11 +134,10 @@ selectTxIns' Greedy stopSearch outVec txInsVec utxosVec
           newTxInsVec' <- hoistEither $ addVec newTxInsVec selectedUtxoVec
 
           lift $
-            printBpiLog @w Debug $
+            printBpiLog @w (Debug CoinSelectionLog) $
               "Loop Info: Stop search -> " <+> pretty (stopSearch newTxInsVec')
                 <+> "Selected UTxo Idx :  "
                 <+> pretty idx
-                <+> "\n\n"
 
           (idx :) <$> newEitherT (loop remSortedDist newTxInsVec')
 
@@ -201,16 +200,3 @@ txOutToTxIn (txOutRef, txOut) =
   case addressCredential (txOutAddress txOut) of
     PubKeyCredential _ -> Right $ pubKeyTxIn txOutRef
     ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
-
-pop ::
-  forall (v :: Type -> Type) a.
-  (Cons (v a) (v a) a a) =>
-  v a ->
-  Integer ->
-  Either Text (a, v a)
-pop va idx = do
-  (a, va') <- maybeToRight "Error: Not able to uncons from empty structure." $ uncons va
-
-  if idx == 0
-    then return (a, va')
-    else pop va' (idx - 1) >>= (\(a', va'') -> return (a', cons a va''))
