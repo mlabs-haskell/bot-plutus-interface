@@ -297,13 +297,14 @@ balanceTx contractEnv unbalancedTx = do
       eitherPreBalancedTx <-
         if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
           then
-            PreBalance.balanceTxIO' @w
+            PreBalance.balanceTxIO @w
               [PreBalance.TxWithScript]
               pabConf
               pabConf.pcOwnPubKeyHash
               unbalancedTx
           else
             PreBalance.balanceTxIO @w
+              [PreBalance.TxWithoutScript]
               pabConf
               pabConf.pcOwnPubKeyHash
               unbalancedTx
@@ -507,7 +508,7 @@ makeCollateral cEnv = runEitherT $ do
 
   balancedTx <-
     newEitherT $
-      PreBalance.balanceTxIO' @w
+      PreBalance.balanceTxIO @w
         [PreBalance.TxWithoutScript, PreBalance.TxWithSeparateChange]
         pabConf
         pabConf.pcOwnPubKeyHash unbalancedTx

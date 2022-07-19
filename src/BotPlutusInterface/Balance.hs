@@ -37,7 +37,6 @@ import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Proxy (Proxy (Proxy))
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -79,11 +78,12 @@ import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
 data TxWithScript
+
 data TxWithoutScript
 
-data BalanceTxConstraint a where
-  TxWithScript :: BalanceTxConstraint TxWithScript
+data BalanceTxConstraint (a :: Type) where
   TxWithoutScript :: BalanceTxConstraint TxWithoutScript
+  TxWithScript :: BalanceTxConstraint TxWithScript
   TxWithSeparateChange :: BalanceTxConstraint a
 
 instance Eq (BalanceTxConstraint a) where
@@ -92,14 +92,21 @@ instance Eq (BalanceTxConstraint a) where
   TxWithSeparateChange == TxWithSeparateChange = True
   _ == _ = False
 
+instance Ord (BalanceTxConstraint a) where
+  _ <= TxWithSeparateChange = True
+  TxWithScript <= TxWithScript = True
+  TxWithSeparateChange <= TxWithScript = False
+  TxWithoutScript <= TxWithoutScript = True
+  _ <= TxWithoutScript = False
+
 class KnownBalanceConstraint (a :: Type) where
-  knownConstraint :: proxy a -> BalanceTxConstraint a
+  knownConstraint :: BalanceTxConstraint a
 
 instance KnownBalanceConstraint TxWithScript where
-  knownConstraint _ = TxWithScript
+  knownConstraint = TxWithScript
 
 instance KnownBalanceConstraint TxWithoutScript where
-  knownConstraint _ = TxWithoutScript
+  knownConstraint = TxWithoutScript
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
  assets. `balanceTxIO` assumes that the `Tx` we are balancing is of type `TxWithoutScript`.
@@ -107,13 +114,14 @@ instance KnownBalanceConstraint TxWithoutScript where
  scripts refer to `balanceTxIO'`.
 -}
 balanceTxIO ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  (Member (PABEffect w) effs) =>
+  forall (w :: Type) (effs :: [Type -> Type]) (a :: Type).
+  (Member (PABEffect w) effs, KnownBalanceConstraint a) =>
+  [BalanceTxConstraint a] ->
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
   Eff effs (Either Text Tx)
-balanceTxIO = balanceTxIO' @w [TxWithoutScript]
+balanceTxIO = balanceTxIO' @w . Set.fromList
 
 {- | This is just a more flexible version of `balanceTxIO` which let us specify the `BalanceTxConstraint`(s)
  -   for the `Tx` that we are balancing.
@@ -121,7 +129,7 @@ balanceTxIO = balanceTxIO' @w [TxWithoutScript]
 balanceTxIO' ::
   forall (w :: Type) (effs :: [Type -> Type]) (a :: Type).
   (Member (PABEffect w) effs, KnownBalanceConstraint a) =>
-  [BalanceTxConstraint a] ->
+  Set (BalanceTxConstraint a) ->
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
@@ -139,7 +147,7 @@ balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
 
           txType :: BalanceTxConstraint a
-          txType = knownConstraint @a Proxy
+          txType = knownConstraint @a
 
       lift $ printBpiLog @w Debug $ viaShow utxoIndex
 
@@ -173,8 +181,7 @@ balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
         case adaChange /= 0 of
           True | TxWithSeparateChange `elem` balanceTxconstraints -> bTx
           True | not (hasChangeUTxO changeAddr balancedTx) -> bTx
-          True -> pure balancedTx
-          False -> pure balancedTx
+          _ -> pure balancedTx
 
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
@@ -228,7 +235,7 @@ balanceTxIO' balanceTxconstraints pabConf ownPkh unbalancedTx =
 utxosAndCollateralAtAddress ::
   forall (w :: Type) (effs :: [Type -> Type]) (a :: Type).
   (Member (PABEffect w) effs, KnownBalanceConstraint a) =>
-  [BalanceTxConstraint a] ->
+  Set (BalanceTxConstraint a) ->
   PABConfig ->
   Address ->
   Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
@@ -237,7 +244,7 @@ utxosAndCollateralAtAddress _ pabConf changeAddr =
     utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
     inMemCollateral <- lift $ getInMemCollateral @w
 
-    case knownConstraint @a Proxy of
+    case knownConstraint @a of
       TxWithScript ->
         maybe
           ( throwE $
@@ -418,7 +425,7 @@ handleNonAdaChange changeAddr utxos tx =
   constraints, if it is then we add the ada change to seperate `TxOut`, else we add it to
   any `TxOut` present at changeAddr.
 -}
-addAdaChange :: forall (a :: Type). [BalanceTxConstraint a] -> Address -> Integer -> Tx -> Tx
+addAdaChange :: forall (a :: Type). Set (BalanceTxConstraint a) -> Address -> Integer -> Tx -> Tx
 addAdaChange _ _ 0 tx = tx
 addAdaChange balanceTxconstraints changeAddr change tx
   | TxWithSeparateChange `elem` balanceTxconstraints =
