@@ -533,11 +533,11 @@
     "iohk-nix": {
       "flake": false,
       "locked": {
-        "lastModified": 1653579289,
-        "narHash": "sha256-wveDdPsgB/3nAGAdFaxrcgLEpdi0aJ5kEVNtI+YqVfo=",
+        "lastModified": 1658222743,
+        "narHash": "sha256-yFH01psqx30y5Ws4dBElLkxYpIxxqZx4G+jCVhsXpnA=",
         "owner": "input-output-hk",
         "repo": "iohk-nix",
-        "rev": "edb2d2df2ebe42bbdf03a0711115cf6213c9d366",
+        "rev": "9a604d01bd4420ab7f396f14d1947fbe2ce7db8b",
         "type": "github"
       },
       "original": {

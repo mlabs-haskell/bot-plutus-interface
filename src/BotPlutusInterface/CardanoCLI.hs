@@ -3,7 +3,6 @@
 
 module BotPlutusInterface.CardanoCLI (
   submitTx,
-  calculateMinUtxo,
   calculateMinFee,
   buildTx,
   signTx,
@@ -123,27 +122,6 @@ utxosAt pabConf address =
             . parseOnly (UtxoParser.utxoMapParser address)
             . Text.pack
       }
-
-calculateMinUtxo ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  PABConfig ->
-  Map DatumHash Datum ->
-  TxOut ->
-  Eff effs (Either Text Integer)
-calculateMinUtxo pabConf datums txOut =
-  join
-    <$> callCommand @w
-      ShellArgs
-        { cmdName = "cardano-cli"
-        , cmdArgs =
-            mconcat
-              [ ["transaction", "calculate-min-required-utxo", "--babbage-era"]
-              , txOutOpts pabConf datums [txOut]
-              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-              ]
-        , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
-        }
 
 -- | Calculating fee for an unbalanced transaction
 calculateMinFee ::
