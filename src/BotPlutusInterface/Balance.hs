@@ -320,56 +320,6 @@ getAdaChange utxos = lovelaceValue . getChange utxos
 getNonAdaChange :: Map TxOutRef TxOut -> Tx -> Value
 getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
 
-{- | Getting the necessary utxos to cover the fees for the transaction
- collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
- collectTxIns originalTxIns utxos value = do
-   updatedInputs <- selectTxInStep originalTxIns utxos value
-   if isSufficient updatedInputs
-     then pure updatedInputs
-     else Left $
-           Text.unlines
-             [ "Insufficient tx inputs, needed: "
-             , showText (Value.flattenValue value)
-             , "got:"
-             , showText (Value.flattenValue (txInsValue updatedInputs))
-             ]
-   where
-
-     selectTxInStep ins utxoIndex outValue = do
-       let txInRefs :: [TxOutRef]
-           txInRefs = map txInRef $ Set.toList originalTxIns
-
-           diffUtxos :: [(TxOutRef, TxOut)]
-           diffUtxos = Map.toList $ Map.filterWithKey (\k _ ->  k `notElem` txInRefs) utxoIndex
-
-       case null diffUtxos of
-         True -> return ins
-         False -> do
-                    newIns <- selectTxIn ins utxoIndex outValue
-
-                    if isSufficient newIns
-                      then return newIns
-                      else selectTxInStep newIns utxoIndex outValue
--}
-
--- updatedInputs =
---   foldl
---     ( \acc txIn ->
---         if isSufficient acc
---           then acc
---           else Set.insert txIn acc
---     )
---     originalTxIns
---     $ mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
-
--- isSufficient :: Set TxIn -> Bool
--- isSufficient txIns' =
---   not (Set.null txIns') && txInsValue txIns' `Value.geq` value
---
--- txInsValue :: Set TxIn -> Value
--- txInsValue txIns' =
---   mconcat $ map Tx.txOutValue $ mapMaybe ((`Map.lookup` utxos) . Tx.txInRef) $ Set.toList txIns'
-
 -- | Add min lovelaces to each tx output
 addLovelaces :: [(TxOut, Integer)] -> Tx -> Tx
 addLovelaces minLovelaces tx =

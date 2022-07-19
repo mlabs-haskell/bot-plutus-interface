@@ -6,9 +6,10 @@ import Control.Lens (Cons, cons, ix, uncons, (^?))
 import Control.Monad.Freer (Eff, Member)
 
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (hoistEither, runEitherT)
+import Control.Monad.Trans.Either (hoistEither, runEitherT, newEitherT)
 import Data.Either.Combinators (isRight, maybeToRight)
 import Data.Kind (Type)
+import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
@@ -26,7 +27,7 @@ import Plutus.V1.Ledger.Api (
  )
 
 import BotPlutusInterface.Effects (PABEffect, printBpiLog)
-import BotPlutusInterface.Types (LogLevel (Notice))
+import BotPlutusInterface.Types (LogLevel (Debug))
 
 import Prettyprinter (pretty, (<+>))
 import Prelude
@@ -43,8 +44,7 @@ selectTxIns ::
   Eff effs (Either Text (Set TxIn))
 selectTxIns originalTxIns utxosIndex outValue =
   runEitherT $ do
-    lift $ printBpiLog @w Notice $ pretty (Map.toList utxosIndex)
-
+    
     let txInsValue :: Value
         txInsValue =
           mconcat $ map txOutValue $ mapMaybe ((`Map.lookup` utxosIndex) . txInRef) $ Set.toList originalTxIns
@@ -63,7 +63,7 @@ selectTxIns originalTxIns utxosIndex outValue =
               (\k v -> k `notElem` txInRefs && isRight (txOutToTxIn (k, v)))
               utxosIndex
 
-    lift $ printBpiLog @w Notice $ "\n\n Remaining UTxOs: " <+> pretty remainingUtxos <+> "\n\n"
+    lift $ printBpiLog @w Debug $ "Remaining UTxOs: " <+> pretty remainingUtxos <+> "\n\n"
 
     txInsVec <-
       hoistEither $
@@ -73,20 +73,18 @@ selectTxIns originalTxIns utxosIndex outValue =
 
     outVec <- hoistEither $ valueToVec allAssetClasses outValue
 
-    lift $ printBpiLog @w Notice $ "IsSufficient: " <+> pretty (isSufficient outVec txInsVec) <+> "\n\n"
-
     remainingUtxosVec <- hoistEither $ mapM (valueToVec allAssetClasses . txOutValue . snd) remainingUtxos
 
-    selectedUtxosIdxs <- hoistEither $ selectTxIns' Greedy (isSufficient outVec) outVec txInsVec remainingUtxosVec
+    selectedUtxosIdxs <- newEitherT $ selectTxIns' @w Greedy (isSufficient outVec) outVec txInsVec remainingUtxosVec
 
-    lift $ printBpiLog @w Notice $ "\n\n" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs <+> "\n\n"
+    lift $ printBpiLog @w Debug $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs <+> "\n\n"
 
     let selectedUtxos :: [(TxOutRef, TxOut)]
         selectedUtxos = mapMaybe (\idx -> remainingUtxos ^? ix (fromInteger idx)) selectedUtxosIdxs
 
     selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
 
-    lift $ printBpiLog @w Notice $ "Selected TxIns: " <+> pretty selectedTxIns <+> "\n\n"
+    lift $ printBpiLog @w Debug $ "Selected TxIns: " <+> pretty selectedTxIns <+> "\n\n"
 
     return $ originalTxIns <> Set.fromList selectedTxIns
   where
@@ -95,26 +93,51 @@ selectTxIns originalTxIns utxosIndex outValue =
                                 && txInsVec /= zeroVec (toInteger $ length txInsVec)
 
 selectTxIns' ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
   Search ->
   (Vector Integer -> Bool) ->
   Vector Integer ->
   Vector Integer ->
   [Vector Integer] ->
-  Either Text [Integer]
+  Eff effs (Either Text [Integer])
 selectTxIns' Greedy stopSearch outVec txInsVec utxosVec
-  | null utxosVec || stopSearch txInsVec = Right mempty
+  | null utxosVec  = printBpiLog @w Debug "The list of remanining UTxO vectors in null.\n\n"
+                  >> return (Right mempty)
+  
+  | stopSearch txInsVec = printBpiLog @w Debug "Stopping search early.\n\n" >>
+                          return (Right mempty)
   | otherwise =
-    do
-      utxosDist <- Vec.fromList . map (l2norm outVec) <$> mapM (addVec txInsVec) utxosVec
-      let minIndex = toInteger $ Vec.minIndex utxosDist
+    runEitherT $ do
+      
+      x <- hoistEither $ mapM (addVec txInsVec) utxosVec
+      utxosDist <- hoistEither $ mapM (l2norm outVec) x
+      
+      let sortedDist :: [(Integer, Float)]
+          sortedDist = List.sortBy (\a b -> compare (snd a) (snd b))
+                    $ zip [0 .. toInteger (length utxosVec) - 1] utxosDist
 
-      (selectedUtxoVec, remainingUtxosVec) <- pop utxosVec minIndex
+      newEitherT $ loop sortedDist txInsVec
 
-      newTxInsVec <- addVec txInsVec selectedUtxoVec
-
+  where
+    
+    loop :: [(Integer, Float)] -> Vector Integer -> Eff effs (Either Text [Integer])
+    loop [] _  = return $ Right mempty
+    loop ((idx,_):remSortedDist) newTxInsVec =
       if stopSearch newTxInsVec
-        then return [minIndex]
-        else (minIndex :) <$> selectTxIns' Greedy stopSearch outVec newTxInsVec remainingUtxosVec
+        then return $ Right mempty
+        else
+         runEitherT $  do
+            selectedUtxoVec <- hoistEither $ maybeToRight "Out of bounds"
+                                (utxosVec ^? ix (fromInteger idx))
+            newTxInsVec' <- hoistEither $ addVec newTxInsVec selectedUtxoVec
+
+            lift $ printBpiLog @w Debug
+              $ "Loop Info: Stop search -> " <+> pretty (stopSearch newTxInsVec')
+              <+> "Selected UTxo Idx :  " <+> pretty idx
+              <+> "\n\n"
+
+            (idx:) <$> newEitherT (loop remSortedDist newTxInsVec')
 
 l2norm :: Vector Integer -> Vector Integer -> Either Text Float
 l2norm v1 v2
