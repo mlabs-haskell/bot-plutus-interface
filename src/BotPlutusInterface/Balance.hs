@@ -80,8 +80,10 @@ import Prelude
 
 -- Config for balancing a `Tx`.
 data BalanceConfig = BalanceConfig
-  { bcHasScripts :: Bool -- ^ This field represents whether the current `Tx` that needs to be balanced uses scripts.
-  , bcSeparateChange :: Bool -- ^ This field represents whether the ada change should be in separate UTxO.
+  { -- | This field represents whether the current `Tx` that needs to be balanced uses scripts.
+    bcHasScripts :: Bool
+  , -- | This field represents whether the ada change should be in separate UTxO.
+    bcSeparateChange :: Bool
   }
   deriving stock (Show, Eq)
 
