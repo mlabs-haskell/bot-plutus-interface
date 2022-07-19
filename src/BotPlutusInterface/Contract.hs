@@ -56,8 +56,10 @@ import Data.Vector qualified as V
 import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
-import Ledger.Constraints.OffChain (UnbalancedTx (..))
+import Ledger.Constraints.OffChain (UnbalancedTx (..), adjustUnbalancedTx)
+import Ledger.Params (Params (Params))
 import Ledger.Slot (Slot (Slot))
+import Ledger.TimeSlot (SlotConfig (..))
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx))
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
@@ -189,19 +191,31 @@ handlePABReq contractEnv req = do
       either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
         <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
+    AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w contractEnv unbalancedTx
     ------------------------
     -- Unhandled requests --
     ------------------------
-    -- AwaitTimeReq t -> pure $ AwaitTimeResp t
-    -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
-    -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
-    -- AwaitTxOutStatusChangeReq TxOutRef
-    -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
-    -- YieldUnbalancedTxReq UnbalancedTx
-    unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
+    AwaitUtxoSpentReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    AwaitUtxoProducedReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    AwaitTxOutStatusChangeReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
 
   printBpiLog @w Debug $ pretty resp
   pure resp
+
+adjustUnbalancedTx' ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  ContractEnvironment w ->
+  UnbalancedTx ->
+  Eff effs (Either Tx.ToCardanoError UnbalancedTx)
+adjustUnbalancedTx' contractEnv unbalancedTx = do
+  let slotConfig = SlotConfig 20000 1654524000
+      networkId = contractEnv.cePABConfig.pcNetwork
+      maybeParams = contractEnv.cePABConfig.pcProtocolParams >>= \pparams -> pure $ Params slotConfig pparams networkId
+  case maybeParams of
+    Just params -> pure $ snd <$> adjustUnbalancedTx params unbalancedTx
+    _ -> pure . Left $ Tx.TxBodyError "no protocol params"
 
 {- | Await till transaction status change to something from `Unknown`.
  Uses `chain-index` to query transaction by id.

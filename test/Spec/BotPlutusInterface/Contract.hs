@@ -51,6 +51,11 @@ import Plutus.Contract (
 import Plutus.Script.Utils.V1.Scripts qualified as ScriptUtils
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
+import Pretty.Diff (
+  MultilineContext (FullContext),
+  Wrapping (Wrap),
+ )
+import Pretty.Diff qualified as Diff
 import Spec.MockContract (
   MockContractState (..),
   addr1,
@@ -128,14 +133,6 @@ sendAda = do
       ,
         ( 1
         , [text|
-          cardano-cli transaction calculate-min-required-utxo --babbage-era
-          --tx-out ${addr2}+1000
-          --protocol-params-file ./protocol.json
-          |]
-        )
-      ,
-        ( 2
-        , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-out ${addr2}+1000
@@ -145,7 +142,7 @@ sendAda = do
           |]
         )
       ,
-        ( 4
+        ( 3
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -156,9 +153,9 @@ sendAda = do
           --mainnet
           |]
         )
-      , -- Steps 4 to 11 are near repeats of 1, 2 and 3, to ensure min utxo values are met, and change is dispursed
+      , -- Steps 3 to 10 are near repeats of 1, 2 and 3, to ensure min utxo values are met, and change is dispursed
 
-        ( 17
+        ( 14
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -170,7 +167,7 @@ sendAda = do
         |]
         )
       ,
-        ( 18
+        ( 15
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
@@ -197,7 +194,7 @@ sendAdaNoChange = do
     assertCommandHistory
       state
       [
-        ( 8
+        ( 7
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -239,14 +236,6 @@ sendAdaStaking = do
       ,
         ( 1
         , [text|
-          cardano-cli transaction calculate-min-required-utxo --babbage-era
-          --tx-out ${addr2Staking}+1000
-          --protocol-params-file ./protocol.json
-          |]
-        )
-      ,
-        ( 2
-        , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-out ${addr2Staking}+1000
@@ -256,7 +245,7 @@ sendAdaStaking = do
           |]
         )
       ,
-        ( 4
+        ( 3
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -268,7 +257,7 @@ sendAdaStaking = do
           |]
         )
       ,
-        ( 9
+        ( 8
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -279,7 +268,7 @@ sendAdaStaking = do
         |]
         )
       ,
-        ( 10
+        ( 9
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
@@ -308,19 +297,7 @@ multisigSupport = do
     assertCommandHistory
       state
       [
-        ( 4
-        , [text|
-          cardano-cli transaction calculate-min-fee
-          --tx-body-file ./txs/tx-?
-          --tx-in-count 1
-          --tx-out-count 1
-          --witness-count 2
-          --protocol-params-file ./protocol.json
-          --mainnet
-          |]
-        )
-      ,
-        ( 9
+        ( 8
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -332,7 +309,7 @@ multisigSupport = do
           |]
         )
       ,
-        ( 10
+        ( 9
         , [text| 
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
@@ -370,7 +347,7 @@ withoutSigning = do
     assertCommandHistory
       state
       [
-        ( 9
+        ( 8
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -409,7 +386,7 @@ sendTokens = do
     assertCommandHistory
       state
       [
-        ( 13
+        ( 7
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId1}#0
@@ -445,7 +422,7 @@ sendTokensWithoutName = do
     assertCommandHistory
       state
       [
-        ( 13
+        ( 7
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId1}#0
@@ -495,7 +472,7 @@ mintTokens = do
     assertCommandHistory
       state
       [
-        ( 3
+        ( 2
         , [text| 
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -511,7 +488,7 @@ mintTokens = do
           |]
         )
       ,
-        ( 17
+        ( 14
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -601,7 +578,7 @@ spendToValidator = do
           |]
         )
       ,
-        ( 17
+        ( 14
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -683,7 +660,7 @@ redeemFromValidator = do
     assertCommandHistory
       state
       [
-        ( 3
+        ( 2
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#1
@@ -698,7 +675,7 @@ redeemFromValidator = do
           |]
         )
       ,
-        ( 17
+        ( 14
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#1
@@ -773,7 +750,7 @@ withValidRange = do
     assertCommandHistory
       state
       [
-        ( 2
+        ( 1
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -786,7 +763,7 @@ withValidRange = do
           |]
         )
       ,
-        ( 9
+        ( 8
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -898,7 +875,16 @@ assertCommandHistory state =
 assertCommandEqual :: String -> Text -> Text -> Assertion
 assertCommandEqual err expected actual
   | commandEqual expected actual = return ()
-  | otherwise = assertFailure $ err ++ "\nExpected:\n" ++ show expected ++ "\nGot:\n" ++ show actual
+  | otherwise =
+    assertFailure $
+      err ++ "\n" ++ prettyPrintDiff expected actual
+
+prettyPrintDiff :: Text -> Text -> String
+prettyPrintDiff expected actual =
+  "\nExpected:\n"
+    ++ Text.unpack (Diff.above (Wrap 80) FullContext (Text.replace "\n" " " expected) actual)
+    ++ "\nGot:\n"
+    ++ Text.unpack (Diff.below (Wrap 80) FullContext (Text.replace "\n" " " expected) actual)
 
 {- | Checks if a command matches an expected command pattern
  Where a command pattern may use new lines in place of spaces, and use the wildcard `?` to match up to the next space
