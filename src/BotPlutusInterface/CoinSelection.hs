@@ -6,7 +6,7 @@ import Control.Lens (Cons, cons, ix, uncons, (^?))
 import Control.Monad.Freer (Eff, Member)
 
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (hoistEither, runEitherT, newEitherT)
+import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
 import Data.Either.Combinators (isRight, maybeToRight)
 import Data.Kind (Type)
 import Data.List qualified as List
@@ -44,7 +44,6 @@ selectTxIns ::
   Eff effs (Either Text (Set TxIn))
 selectTxIns originalTxIns utxosIndex outValue =
   runEitherT $ do
-    
     let txInsValue :: Value
         txInsValue =
           mconcat $ map txOutValue $ mapMaybe ((`Map.lookup` utxosIndex) . txInRef) $ Set.toList originalTxIns
@@ -89,8 +88,9 @@ selectTxIns originalTxIns utxosIndex outValue =
     return $ originalTxIns <> Set.fromList selectedTxIns
   where
     isSufficient :: Vector Integer -> Vector Integer -> Bool
-    isSufficient outVec txInsVec = Vec.all (== True) (Vec.zipWith (<=) outVec txInsVec)
-                                && txInsVec /= zeroVec (toInteger $ length txInsVec)
+    isSufficient outVec txInsVec =
+      Vec.all (== True) (Vec.zipWith (<=) outVec txInsVec)
+        && txInsVec /= zeroVec (toInteger $ length txInsVec)
 
 selectTxIns' ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -102,42 +102,45 @@ selectTxIns' ::
   [Vector Integer] ->
   Eff effs (Either Text [Integer])
 selectTxIns' Greedy stopSearch outVec txInsVec utxosVec
-  | null utxosVec  = printBpiLog @w Debug "The list of remanining UTxO vectors in null.\n\n"
-                  >> return (Right mempty)
-  
-  | stopSearch txInsVec = printBpiLog @w Debug "Stopping search early.\n\n" >>
-                          return (Right mempty)
+  | null utxosVec =
+    printBpiLog @w Debug "The list of remanining UTxO vectors in null.\n\n"
+      >> return (Right mempty)
+  | stopSearch txInsVec =
+    printBpiLog @w Debug "Stopping search early.\n\n"
+      >> return (Right mempty)
   | otherwise =
     runEitherT $ do
-      
       x <- hoistEither $ mapM (addVec txInsVec) utxosVec
       utxosDist <- hoistEither $ mapM (l2norm outVec) x
-      
+
       let sortedDist :: [(Integer, Float)]
-          sortedDist = List.sortBy (\a b -> compare (snd a) (snd b))
-                    $ zip [0 .. toInteger (length utxosVec) - 1] utxosDist
+          sortedDist =
+            List.sortBy (\a b -> compare (snd a) (snd b)) $
+              zip [0 .. toInteger (length utxosVec) - 1] utxosDist
 
       newEitherT $ loop sortedDist txInsVec
-
   where
-    
     loop :: [(Integer, Float)] -> Vector Integer -> Eff effs (Either Text [Integer])
-    loop [] _  = return $ Right mempty
-    loop ((idx,_):remSortedDist) newTxInsVec =
+    loop [] _ = return $ Right mempty
+    loop ((idx, _) : remSortedDist) newTxInsVec =
       if stopSearch newTxInsVec
         then return $ Right mempty
-        else
-         runEitherT $  do
-            selectedUtxoVec <- hoistEither $ maybeToRight "Out of bounds"
-                                (utxosVec ^? ix (fromInteger idx))
-            newTxInsVec' <- hoistEither $ addVec newTxInsVec selectedUtxoVec
+        else runEitherT $ do
+          selectedUtxoVec <-
+            hoistEither $
+              maybeToRight
+                "Out of bounds"
+                (utxosVec ^? ix (fromInteger idx))
+          newTxInsVec' <- hoistEither $ addVec newTxInsVec selectedUtxoVec
 
-            lift $ printBpiLog @w Debug
-              $ "Loop Info: Stop search -> " <+> pretty (stopSearch newTxInsVec')
-              <+> "Selected UTxo Idx :  " <+> pretty idx
-              <+> "\n\n"
+          lift $
+            printBpiLog @w Debug $
+              "Loop Info: Stop search -> " <+> pretty (stopSearch newTxInsVec')
+                <+> "Selected UTxo Idx :  "
+                <+> pretty idx
+                <+> "\n\n"
 
-            (idx:) <$> newEitherT (loop remSortedDist newTxInsVec')
+          (idx :) <$> newEitherT (loop remSortedDist newTxInsVec')
 
 l2norm :: Vector Integer -> Vector Integer -> Either Text Float
 l2norm v1 v2
