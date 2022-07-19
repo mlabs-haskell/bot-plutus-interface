@@ -7,6 +7,7 @@ module BotPlutusInterface.Balance (
   withFee,
 ) where
 
+import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (
   PABEffect,
@@ -19,14 +20,14 @@ import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
-import Control.Monad (foldM, void, zipWithM)
+import Control.Monad (foldM, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
+import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
-import Data.List ((\\))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -46,7 +47,6 @@ import Ledger.Interval (
   LowerBound (LowerBound),
   UpperBound (UpperBound),
  )
-import Ledger.Scripts (Datum, DatumHash)
 import Ledger.Time (POSIXTimeRange)
 import Ledger.Tx (
   Tx (..),
@@ -63,9 +63,6 @@ import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   TokenName (..),
  )
-
-import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
-import Data.Bifunctor (bimap)
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
@@ -103,7 +100,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       preBalancedTx <- hoistEither $ addTxCollaterals utxoIndex tx >>= addSignatories ownPkh privKeys requiredSigs
 
       -- Balance the tx
-      (balancedTx, minUtxos) <- loop utxoIndex privKeys [] preBalancedTx
+      balancedTx <- loop utxoIndex privKeys preBalancedTx
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
@@ -111,7 +108,7 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
       balancedTxWithChange <-
         if adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx)
-          then fst <$> loop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
+          then loop utxoIndex privKeys (addOutput changeAddr balancedTx)
           else pure balancedTx
 
       -- Get the updated change, add it to the tx
@@ -122,26 +119,18 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
     changeAddr :: Address
-    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) (pabConf.pcOwnStakePubKeyHash)
+    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) pabConf.pcOwnStakePubKeyHash
     loop ::
       Map TxOutRef TxOut ->
       Map PubKeyHash DummyPrivKey ->
-      [(TxOut, Integer)] ->
       Tx ->
-      EitherT Text (Eff effs) (Tx, [(TxOut, Integer)])
-    loop utxoIndex privKeys prevMinUtxos tx = do
+      EitherT Text (Eff effs) Tx
+    loop utxoIndex privKeys tx = do
       void $ lift $ Files.writeAll @w pabConf tx
-      nextMinUtxos <-
-        newEitherT $
-          calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
-
-      let minUtxos = prevMinUtxos ++ nextMinUtxos
-
-      lift $ printBpiLog @w Debug $ "Min utxos:" <+> pretty minUtxos
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
-        hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` 0
+        hoistEither $ balanceTxStep utxoIndex changeAddr $ tx `withFee` 0
 
       exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
 
@@ -152,11 +141,11 @@ balanceTxIO pabConf ownPkh unbalancedTx =
       lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
-      balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
+      balancedTx <- hoistEither $ balanceTxStep utxoIndex changeAddr $ tx `withFee` fees
 
       if balancedTx == tx
-        then pure (balancedTx, minUtxos)
-        else loop utxoIndex privKeys minUtxos balancedTx
+        then pure balancedTx
+        else loop utxoIndex privKeys balancedTx
 
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
 getExecutionUnitPrices pabConf =
@@ -176,24 +165,13 @@ multRational (num :% denom) s = (s * num) :% denom
 withFee :: Tx -> Integer -> Tx
 withFee tx fee = tx {txFee = Ada.lovelaceValueOf fee}
 
-calculateMinUtxos ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  PABConfig ->
-  Map DatumHash Datum ->
-  [TxOut] ->
-  Eff effs (Either Text [(TxOut, Integer)])
-calculateMinUtxos pabConf datums txOuts =
-  zipWithM (fmap . (,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo @w pabConf datums) txOuts
-
 balanceTxStep ::
-  [(TxOut, Integer)] ->
   Map TxOutRef TxOut ->
   Address ->
   Tx ->
   Either Text Tx
-balanceTxStep minUtxos utxos changeAddr tx =
-  Right (addLovelaces minUtxos tx)
+balanceTxStep utxos changeAddr tx =
+  Right tx
     >>= balanceTxIns utxos
     >>= handleNonAdaChange changeAddr utxos
 
@@ -255,23 +233,6 @@ txOutToTxIn (txOutRef, txOut) =
   case addressCredential (txOutAddress txOut) of
     PubKeyCredential _ -> Right $ Tx.pubKeyTxIn txOutRef
     ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
-
--- | Add min lovelaces to each tx output
-addLovelaces :: [(TxOut, Integer)] -> Tx -> Tx
-addLovelaces minLovelaces tx =
-  let lovelacesAdded =
-        map
-          ( \txOut ->
-              let outValue = txOutValue txOut
-                  lovelaces = Ada.getLovelace $ Ada.fromValue outValue
-                  minUtxo = fromMaybe 0 $ lookup txOut minLovelaces
-               in txOut
-                    { txOutValue =
-                        outValue <> Ada.lovelaceValueOf (max 0 (minUtxo - lovelaces))
-                    }
-          )
-          $ txOutputs tx
-   in tx {txOutputs = lovelacesAdded}
 
 balanceTxIns :: Map TxOutRef TxOut -> Tx -> Either Text Tx
 balanceTxIns utxos tx = do

@@ -57,7 +57,7 @@ import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..), adjustUnbalancedTx)
-import Ledger.Params (Params(Params))
+import Ledger.Params (Params (Params))
 import Ledger.Slot (Slot (Slot))
 import Ledger.TimeSlot (SlotConfig (..))
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx))
@@ -206,27 +206,18 @@ handlePABReq contractEnv req = do
   printBpiLog @w Debug $ pretty resp
   pure resp
 
-
 adjustUnbalancedTx' ::
   forall (w :: Type) (effs :: [Type -> Type]).
-  -- Member (PABEffect w) effs =>
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs (Either Tx.ToCardanoError UnbalancedTx)
 adjustUnbalancedTx' contractEnv unbalancedTx = do
-  let slotConfig = SlotConfig 20000 1654524000 
-      maybeProtocolParams = contractEnv.cePABConfig.pcProtocolParams
-      networkId  = contractEnv.cePABConfig.pcNetwork
-      maybeParams = do {pparams <- maybeProtocolParams; return $ Params slotConfig pparams networkId}
-  case maybeParams of  
+  let slotConfig = SlotConfig 20000 1654524000
+      networkId = contractEnv.cePABConfig.pcNetwork
+      maybeParams = contractEnv.cePABConfig.pcProtocolParams >>= \pparams -> pure $ Params slotConfig pparams networkId
+  case maybeParams of
     Just params -> pure $ snd <$> adjustUnbalancedTx params unbalancedTx
-    _           -> pure . Left $ Tx.TxBodyError "no protocol params"
-
-
-
-
-
-
+    _ -> pure . Left $ Tx.TxBodyError "no protocol params"
 
 {- | Await till transaction status change to something from `Unknown`.
  Uses `chain-index` to query transaction by id.
