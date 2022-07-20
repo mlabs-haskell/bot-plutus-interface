@@ -28,7 +28,7 @@ module BotPlutusInterface.Types (
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
-import Cardano.Api.ProtocolParameters (ProtocolParameters)
+import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (TVar)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
@@ -66,7 +66,7 @@ data PABConfig = PABConfig
     pcCliLocation :: !CLILocation
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
-  , pcProtocolParams :: !ProtocolParameters
+  , pcProtocolParams :: !(Maybe ProtocolParameters)
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -240,7 +240,7 @@ instance Default PABConfig where
       { pcCliLocation = Local
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
-      , pcProtocolParams = def
+      , pcProtocolParams = Nothing
       , pcTipPollingInterval = 10_000_000
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"

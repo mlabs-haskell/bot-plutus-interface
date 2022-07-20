@@ -6,7 +6,7 @@ module BotPlutusInterface.UtxoParser (
   tokenNameParser,
 ) where
 
-import Control.Applicative (many, optional)
+import Control.Applicative (many, optional, (<|>))
 import Control.Monad (mzero, void)
 import Data.Aeson.Extras (tryDecode)
 import Data.Attoparsec.ByteString.Char8 (isSpace)
@@ -31,11 +31,7 @@ import Data.Text (Text)
 import Ledger (Address (addressCredential))
 import Ledger.Ada qualified as Ada
 import Ledger.Scripts (DatumHash (..))
-import Ledger.Tx (
-  ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
-  TxOutRef (..),
- )
-import Ledger.TxId (TxId (..))
+import Ledger.Tx (ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut), TxId (..), TxOutRef (..))
 import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
@@ -118,7 +114,7 @@ datumHashParser :: Parser DatumHash
 datumHashParser = do
   void "TxOutDatumHash"
   skipSpace
-  void "ScriptDataInAlonzoEra"
+  void $ "ScriptDataInAlonzoEra" <|> "ScriptDataInBabbageEra"
   skipSpace
   char '\"' *> (DatumHash <$> decodeHash (takeWhile (/= '\"'))) <* char '\"'
 

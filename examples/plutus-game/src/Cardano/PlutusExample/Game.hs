@@ -16,7 +16,7 @@ import Data.Text (Text)
 import GHC.Generics (Generic)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Constraints as Constraints
+import Ledger.Constraints qualified as Constraints
 import Ledger.Scripts qualified as Scripts
 import Ledger.Typed.Scripts (
   TypedValidator,
@@ -24,7 +24,7 @@ import Ledger.Typed.Scripts (
   validatorAddress,
   validatorHash,
  )
-import Ledger.Typed.Scripts qualified as Scripts
+import Ledger.Typed.Scripts qualified as TypedScripts
 import Plutus.Contract (Contract, Endpoint, submitTxConstraints, submitTxConstraintsWith, utxosAt, type (.\/))
 import Plutus.V1.Ledger.Scripts (Datum (Datum), Redeemer (Redeemer))
 import PlutusTx qualified
@@ -41,19 +41,19 @@ mkValidator _ datum redeemer _ =
 
 gameValidator :: Integer -> TypedValidator Game
 gameValidator gameId =
-  Scripts.mkTypedValidator @Game
+  TypedScripts.mkTypedValidator @Game
     ($$(PlutusTx.compile [||mkValidator||]) `PlutusTx.applyCode` PlutusTx.liftCode gameId)
     $$(PlutusTx.compile [||wrap||])
   where
-    wrap = Scripts.wrapValidator @BuiltinByteString @BuiltinByteString
+    wrap = TypedScripts.mkUntypedValidator @BuiltinByteString @BuiltinByteString
 
 data Game
 instance ValidatorTypes Game where
   type RedeemerType Game = BuiltinByteString
   type DatumType Game = BuiltinByteString
 
-script :: Integer -> Ledger.Script
-script = Scripts.unValidatorScript . Scripts.validatorScript . gameValidator
+script :: Integer -> Scripts.Script
+script = Scripts.unValidatorScript . TypedScripts.validatorScript . gameValidator
 
 lockScriptSBS :: Integer -> SBS.ShortByteString
 lockScriptSBS gameId = SBS.toShort . LBS.toStrict $ serialise $ script gameId
@@ -99,7 +99,7 @@ guess GuessParams {guessGameId = gameId, guessSecret = secret} = do
 
   utxos <- utxosAt valAddr
   let lookups =
-        Constraints.otherScript (Scripts.validatorScript validator)
+        Constraints.otherScript (TypedScripts.validatorScript validator)
           <> Constraints.unspentOutputs utxos
       tx = mconcat $ map (`Constraints.mustSpendScriptOutput` redeemer) $ Map.keys utxos
 

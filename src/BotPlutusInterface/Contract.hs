@@ -45,9 +45,10 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
+import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Function (fix)
-import Data.HashMap.Strict qualified as HM
 import Data.Kind (Type)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
@@ -56,9 +57,11 @@ import Data.Vector qualified as V
 import Ledger (POSIXTime)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
-import Ledger.Constraints.OffChain (UnbalancedTx (..))
+import Ledger.Constraints.OffChain (UnbalancedTx (..), adjustUnbalancedTx)
+import Ledger.Params (Params (Params))
 import Ledger.Slot (Slot (Slot))
-import Ledger.Tx (CardanoTx)
+import Ledger.TimeSlot (SlotConfig (..))
+import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx))
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
 import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
@@ -115,11 +118,11 @@ instance Pretty Value where
         ( \(k, v) ->
             PP.hang 2 $
               PP.sep
-                [ pretty k <+> ": "
+                [ pretty (show k) <+> ": "
                 , pretty v
                 ]
         )
-      $ HM.toList obj
+      $ KeyMap.toList obj
   pretty Null = "null"
 
 handleWriter ::
@@ -171,8 +174,13 @@ handlePABReq contractEnv req = do
     ----------------------
     -- Handled requests --
     ----------------------
-    OwnPaymentPublicKeyHashReq ->
-      pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash
+    OwnAddressesReq ->
+      pure
+        . OwnAddressesResp
+        . nonEmptySingleton
+        $ Ledger.pubKeyHashAddress
+          (PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash)
+          contractEnv.cePABConfig.pcOwnStakePubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
@@ -189,19 +197,31 @@ handlePABReq contractEnv req = do
       either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
         <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
+    AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w contractEnv unbalancedTx
     ------------------------
     -- Unhandled requests --
     ------------------------
-    -- AwaitTimeReq t -> pure $ AwaitTimeResp t
-    -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
-    -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
-    -- AwaitTxOutStatusChangeReq TxOutRef
-    -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
-    -- YieldUnbalancedTxReq UnbalancedTx
-    unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
+    AwaitUtxoSpentReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    AwaitUtxoProducedReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    AwaitTxOutStatusChangeReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
 
   printBpiLog @w Debug $ pretty resp
   pure resp
+
+adjustUnbalancedTx' ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  ContractEnvironment w ->
+  UnbalancedTx ->
+  Eff effs (Either Tx.ToCardanoError UnbalancedTx)
+adjustUnbalancedTx' contractEnv unbalancedTx = do
+  let slotConfig = SlotConfig 20000 1654524000
+      networkId = contractEnv.cePABConfig.pcNetwork
+      maybeParams = contractEnv.cePABConfig.pcProtocolParams >>= \pparams -> pure $ Params slotConfig pparams networkId
+  case maybeParams of
+    Just params -> pure $ snd <$> adjustUnbalancedTx params unbalancedTx
+    _ -> pure . Left $ Tx.TxBodyError "no protocol params"
 
 {- | Await till transaction status change to something from `Unknown`.
  Uses `chain-index` to query transaction by id.
@@ -286,7 +306,12 @@ balanceTx contractEnv unbalancedTx = do
       pabConf.pcOwnPubKeyHash
       unbalancedTx
 
-  pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
+  pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . EmulatorTx) eitherPreBalancedTx
+
+fromCardanoTx :: CardanoTx -> Tx.Tx
+fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
+fromCardanoTx (EmulatorTx tx) = tx
+fromCardanoTx (Tx.Both tx _) = tx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -295,13 +320,13 @@ writeBalancedTx ::
   ContractEnvironment w ->
   CardanoTx ->
   Eff effs WriteBalancedTxResponse
-writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
-writeBalancedTx contractEnv (Right tx) = do
+writeBalancedTx contractEnv cardanoTx = do
   let pabConf = contractEnv.cePABConfig
+      tx = fromCardanoTx cardanoTx
   uploadDir @w pabConf.pcSigningKeyFileDir
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
 
-  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Left) $ do
+  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . CardanoApiTx) $ do
     void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
     lift $ uploadDir @w pabConf.pcScriptFileDir
 
@@ -316,8 +341,8 @@ writeBalancedTx contractEnv (Right tx) = do
     -- TODO: This whole part is hacky and we should remove it.
     let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx)
     -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
-    alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsAlonzoEra) path
-    let cardanoTx = Tx.SomeTx (Tx alonzoBody []) AlonzoEraInCardanoMode
+    alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsBabbageEra) path
+    let cardanoApiTx = Tx.SomeTx (Tx alonzoBody []) BabbageEraInCardanoMode
 
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
@@ -335,13 +360,13 @@ writeBalancedTx contractEnv (Right tx) = do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
-    let cardanoTxId = Ledger.getCardanoTxId $ Left cardanoTx
+    let cardanoTxId = Ledger.getCardanoTxId $ Tx.CardanoApiTx cardanoApiTx
         signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx)
         signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
     mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" cardanoTxId)
     when signable $ mvFiles signedSrcPath signedDstPath
 
-    pure cardanoTx
+    pure cardanoApiTx
   where
     mvFiles :: Text -> Text -> EitherT Text (Eff effs) ()
     mvFiles src dst =
@@ -354,7 +379,7 @@ writeBalancedTx contractEnv (Right tx) = do
             }
 
     collectBudgetStats txId pabConf = do
-      let path = Text.unpack (Files.txFilePath pabConf "signed" (Tx.txId tx))
+      let path = Text.unpack (Files.txFilePath pabConf "signed" txId)
       txBudget <-
         firstEitherT toBudgetSaveError $
           newEitherT $ estimateBudget @w (Signed path)
@@ -446,3 +471,9 @@ currentTime contractEnv =
   currentSlot @w contractEnv
     >>= slotToPOSIXTime @w
     >>= either (error . show) return
+
+{- | Construct a 'NonEmpty' list from a single element.
+ Should be replaced by NonEmpty.singleton after updating to base 4.15
+-}
+nonEmptySingleton :: a -> NonEmpty a
+nonEmptySingleton = (:| [])
