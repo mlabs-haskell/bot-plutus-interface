@@ -51,7 +51,6 @@ import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, hoistEither, 
 import Control.Monad.Trans.Except (ExceptT, throwE)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
-import Data.Default (def)
 import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Function (fix)
 import Data.HashMap.Strict qualified as HM
@@ -299,7 +298,7 @@ balanceTx contractEnv unbalancedTx = do
         if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
           then
             PreBalance.balanceTxIO' @w
-              def {PreBalance.bcHasScripts = True}
+              PreBalance.defaultBalanceConfig {PreBalance.bcHasScripts = True}
               pabConf
               pabConf.pcOwnPubKeyHash
               unbalancedTx
@@ -509,7 +508,7 @@ makeCollateral cEnv = runEitherT $ do
   balancedTx <-
     newEitherT $
       PreBalance.balanceTxIO' @w
-        def {PreBalance.bcHasScripts = False, PreBalance.bcSeparateChange = True}
+        PreBalance.defaultBalanceConfig {PreBalance.bcHasScripts = False, PreBalance.bcSeparateChange = True}
         pabConf
         pabConf.pcOwnPubKeyHash unbalancedTx
 

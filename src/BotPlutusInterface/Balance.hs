@@ -6,6 +6,7 @@ module BotPlutusInterface.Balance (
   balanceTxStep,
   balanceTxIO,
   balanceTxIO',
+  defaultBalanceConfig,
   txUsesScripts,
   withFee,
 ) where
@@ -32,7 +33,6 @@ import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
-import Data.Default (Default (def))
 import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
 import Data.List ((\\))
@@ -85,8 +85,8 @@ data BalanceConfig = BalanceConfig
   }
   deriving stock (Show, Eq)
 
-instance Default BalanceConfig where
-  def = BalanceConfig {bcHasScripts = False, bcSeparateChange = False}
+defaultBalanceConfig :: BalanceConfig
+defaultBalanceConfig = BalanceConfig {bcHasScripts = False, bcSeparateChange = False}
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
      assets. `balanceTxIO` calls `balanceTxIO' with default `BalanceConfig`.
@@ -98,7 +98,7 @@ balanceTxIO ::
   PubKeyHash ->
   UnbalancedTx ->
   Eff effs (Either Text Tx)
-balanceTxIO = balanceTxIO' @w def
+balanceTxIO = balanceTxIO' @w defaultBalanceConfig
 
 -- | `balanceTxIO'` is more flexible version of `balanceTxIO`, this let us specify custom `BalanceConfig`.
 balanceTxIO' ::

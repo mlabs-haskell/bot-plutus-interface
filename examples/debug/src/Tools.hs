@@ -1,8 +1,7 @@
 module Tools where
 
 import Cardano.Api qualified as CAPI
-import Data.Aeson ((.=))
-import Data.Aeson qualified as JSON
+import Data.String (fromString)
 import Data.Text (Text)
 import GHC.Word (Word32)
 import Ledger (Address (Address), PubKeyHash)
@@ -11,11 +10,7 @@ import Plutus.V1.Ledger.Api (Credential (PubKeyCredential))
 import Prelude
 
 pkhFromHash :: String -> PubKeyHash
-pkhFromHash key =
-  let res = JSON.fromJSON $ JSON.object ["getPubKeyHash" .= key]
-   in case res of
-        JSON.Success pkh -> pkh
-        _ -> error "failed to parse pkh"
+pkhFromHash = fromString
 
 pkToAddr :: PubKeyHash -> Address
 pkToAddr = flip Address Nothing . PubKeyCredential
