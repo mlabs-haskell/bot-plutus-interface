@@ -10,7 +10,9 @@ module BotPlutusInterface.Balance (
   withFee,
 ) where
 
+import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissingCLI,
@@ -21,7 +23,7 @@ import BotPlutusInterface.Effects (
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (CollateralUtxo, LogLevel (Debug), PABConfig, collateralTxOutRef)
-import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices), UTxO (UTxO))
+import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
@@ -71,10 +73,6 @@ import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   TokenName (..),
  )
-
-import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
-
-import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
@@ -157,8 +155,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       -- the changeAddr.
       balancedTxWithChange <-
         case adaChange /= 0 of
-          True | bcSeparateChange balanceCfg -> bTx
-          True | not (hasChangeUTxO changeAddr balancedTx) -> bTx
+          True | bcSeparateChange balanceCfg || not (hasChangeUTxO changeAddr balancedTx) -> bTx
           _ -> pure balancedTx
 
       -- Get the updated change, add it to the tx
@@ -189,7 +186,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
-        hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` 0
+        hoistEither $ balanceTxStep balanceCfg minUtxos utxoIndex changeAddr $ tx `withFee` 0
 
       exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
 
@@ -200,7 +197,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
-      balancedTx <- hoistEither $ balanceTxStep minUtxos utxoIndex changeAddr $ tx `withFee` fees
+      balancedTx <- hoistEither $ balanceTxStep balanceCfg minUtxos utxoIndex changeAddr $ tx `withFee` fees
 
       if balancedTx == tx
         then pure (balancedTx, minUtxos)
@@ -268,15 +265,16 @@ calculateMinUtxos pabConf datums txOuts =
   zipWithM (fmap . (,)) txOuts <$> mapM (CardanoCLI.calculateMinUtxo @w pabConf datums) txOuts
 
 balanceTxStep ::
+  BalanceConfig ->
   [(TxOut, Integer)] ->
   Map TxOutRef TxOut ->
   Address ->
   Tx ->
   Either Text Tx
-balanceTxStep minUtxos utxos changeAddr tx =
+balanceTxStep balanceCfg minUtxos utxos changeAddr tx =
   Right (addLovelaces minUtxos tx)
     >>= balanceTxIns utxos
-    >>= handleNonAdaChange changeAddr utxos
+    >>= handleNonAdaChange balanceCfg changeAddr utxos
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
 getChange :: Map TxOutRef TxOut -> Tx -> Value
@@ -380,9 +378,17 @@ txUsesScripts Tx {txInputs, txMintScripts} =
       (Set.toList txInputs)
 
 -- | Ensures all non ada change goes back to user
-handleNonAdaChange :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
-handleNonAdaChange changeAddr utxos tx =
+handleNonAdaChange :: BalanceConfig -> Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+handleNonAdaChange balanceCfg changeAddr utxos tx =
   let nonAdaChange = getNonAdaChange utxos tx
+      predicate =
+        if bcSeparateChange balanceCfg
+          then
+            ( \txout ->
+                Tx.txOutAddress txout == changeAddr
+                  && not (justLovelace $ Tx.txOutValue txout)
+            )
+          else (\txout -> Tx.txOutAddress txout == changeAddr)
       newOutput =
         TxOut
           { txOutAddress = changeAddr
@@ -391,7 +397,7 @@ handleNonAdaChange changeAddr utxos tx =
           }
       outputs =
         modifyFirst
-          ((==) changeAddr . Tx.txOutAddress)
+          predicate
           (Just . maybe newOutput (addValueToTxOut nonAdaChange))
           (txOutputs tx)
    in if isValueNat nonAdaChange

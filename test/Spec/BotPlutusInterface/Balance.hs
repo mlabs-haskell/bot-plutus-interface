@@ -2,6 +2,7 @@ module Spec.BotPlutusInterface.Balance (tests) where
 
 import BotPlutusInterface.Balance (withFee)
 import BotPlutusInterface.Balance qualified as Balance
+import Data.Default (def)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Ledger qualified
@@ -63,7 +64,7 @@ addUtxosForFees = do
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
       balancedTx =
-        Balance.balanceTxStep minUtxo utxoIndex ownAddr tx
+        Balance.balanceTxStep def minUtxo utxoIndex ownAddr tx
 
   txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])
 
@@ -75,7 +76,7 @@ addUtxosForNativeTokens = do
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       ownAddr = addr1
       balancedTx =
-        Balance.balanceTxStep minUtxo utxoIndex ownAddr tx
+        Balance.balanceTxStep def minUtxo utxoIndex ownAddr tx
 
   txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
 
@@ -87,6 +88,6 @@ addUtxosForChange = do
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
       balancedTx =
-        Balance.balanceTxStep minUtxo utxoIndex ownAddr tx
+        Balance.balanceTxStep def minUtxo utxoIndex ownAddr tx
 
   txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])

@@ -1,9 +1,8 @@
 module SomeDebugContract where
 
-import Data.Text (Text)
-
 import Data.Map (size)
 import Data.Map qualified as M
+import Data.Text (Text)
 import Debug.Trace (traceM)
 import Ledger (Address (Address), PaymentPubKeyHash (PaymentPubKeyHash), getCardanoTxId)
 import Ledger.Constraints qualified as Constraints
