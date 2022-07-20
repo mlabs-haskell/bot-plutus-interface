@@ -74,7 +74,7 @@ import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (ChainIndexTxOut, RedeemerPtr (..), Redeemers, ScriptTag (..), Tx (..), TxId (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..), txId)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
-import Plutus.Contract.CardanoAPI (toCardanoAddress)
+import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   ExBudget (..),
@@ -377,7 +377,7 @@ valueToCliArg val =
 
 unsafeSerialiseAddress :: NetworkId -> Address -> Text
 unsafeSerialiseAddress network address =
-  case serialiseAddress <$> toCardanoAddress network address of
+  case serialiseAddress <$> toCardanoAddressInEra network address of
     Right a -> a
     Left _ -> error "Couldn't create address"
 

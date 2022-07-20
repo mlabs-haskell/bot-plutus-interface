@@ -48,6 +48,7 @@ import Data.Aeson.Extras (encodeByteString)
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Function (fix)
 import Data.Kind (Type)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
@@ -173,8 +174,13 @@ handlePABReq contractEnv req = do
     ----------------------
     -- Handled requests --
     ----------------------
-    OwnPaymentPublicKeyHashReq ->
-      pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash
+    OwnAddressesReq ->
+      pure
+        . OwnAddressesResp
+        . nonEmptySingleton
+        $ Ledger.pubKeyHashAddress
+          (PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash)
+          contractEnv.cePABConfig.pcOwnStakePubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
@@ -465,3 +471,9 @@ currentTime contractEnv =
   currentSlot @w contractEnv
     >>= slotToPOSIXTime @w
     >>= either (error . show) return
+
+{- | Construct a 'NonEmpty' list from a single element.
+ Should be replaced by NonEmpty.singleton after updating to base 4.15
+-}
+nonEmptySingleton :: a -> NonEmpty a
+nonEmptySingleton = (:| [])

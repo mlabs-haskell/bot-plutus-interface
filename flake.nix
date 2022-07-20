@@ -37,12 +37,12 @@
     };
     cardano-ledger = {
       url =
-        "github:input-output-hk/cardano-ledger/ce3057e0863304ccb3f79d78c77136219dc786c6";
+        "github:input-output-hk/cardano-ledger/3be8a19083fc13d9261b1640e27dd389b51bb08e";
       flake = false;
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/1.35.0";
+        "github:input-output-hk/cardano-node/c75451f0ffd7a60b5ad6c4263891e6c8acac105a";
       flake = false; # we need it to be available in shell
     };
     cardano-prelude = {
@@ -51,7 +51,7 @@
       flake = false;
     };
     cardano-wallet = {
-      url = "github:input-output-hk/cardano-wallet/a73d8c9717dc4e174745f8568d6f3fe84f0f9d76";
+      url = "github:input-output-hk/cardano-wallet/2ac308b00d9d4a3435f6b9594ded9495e2b217eb";
       flake = false;
     };
     ekg-forward = {
@@ -78,7 +78,7 @@
       flake = false;
     };
     hysterical-screams = {
-      url = "github:raduom/hysterical-screams/f3bbd38a19f99de5c8ddc650c94330b2d09a865b";
+      url = "github:raduom/hysterical-screams/4c523469e9efd3f0d10d17da3304923b7b0e0674";
       flake = false;
     };
     hw-aeson = {
@@ -107,17 +107,21 @@
     };
     plutus = {
       url =
-        "github:input-output-hk/plutus/f680ac6979e069fcc013e4389ee607ff5fa6672f";
+        "github:input-output-hk/plutus/69ab98c384703172f898eb5bcad1078ded521426";
       flake = false;
     };
     plutus-apps = {
       url =
-        "github:input-output-hk/plutus-apps/c2b310968d0915e2af0ea4680186b41ad88ffbe9";
+        "github:gege251/plutus-apps/62342808fa7422ebea3233a7e031d3aa00c04672";
       flake = false;
     };
     purescript-bridge = {
       url =
         "github:input-output-hk/purescript-bridge/47a1f11825a0f9445e0f98792f79172efef66c00";
+      flake = false;
+    };
+    quickcheck-dynamic = {
+      url = "github:input-output-hk/quickcheck-dynamic/c272906361471d684440f76c297e29ab760f6a1e";
       flake = false;
     };
     servant-purescript = {
@@ -206,6 +210,7 @@
           src = inputs.cardano-ledger;
           subdirs = [
             "eras/alonzo/impl"
+            "eras/alonzo/test-suite"
             "eras/babbage/impl"
             "eras/byron/chain/executable-spec"
             "eras/byron/crypto"
@@ -216,6 +221,7 @@
             "eras/shelley/impl"
             "eras/shelley/test-suite"
             "eras/shelley-ma/impl"
+            "eras/shelley-ma/test-suite"
             "libs/cardano-data"
             "libs/cardano-ledger-core"
             "libs/cardano-ledger-pretty"
@@ -359,13 +365,18 @@
             "plutus-pab"
             "plutus-playground-server"
             "plutus-script-utils"
+            "plutus-streaming"
+            "plutus-tx-constraints"
             "plutus-use-cases"
-            "quickcheck-dynamic"
             "web-ghc"
           ];
         }
         {
           src = inputs.purescript-bridge;
+          subdirs = [ "." ];
+        }
+        {
+          src = inputs.quickcheck-dynamic;
           subdirs = [ "." ];
         }
         {

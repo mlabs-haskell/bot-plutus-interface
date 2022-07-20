@@ -56,6 +56,7 @@ import Ledger.Tx (
   TxOutRef (..),
  )
 import Ledger.Tx qualified as Tx
+import Ledger.Tx.CardanoAPI (CardanoBuildTx)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
@@ -355,9 +356,10 @@ addValidRange ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   POSIXTimeRange ->
-  Tx ->
+  Either CardanoBuildTx Tx ->
   Eff effs (Either Text Tx)
-addValidRange timeRange tx =
+addValidRange _ (Left _) = pure $ Left "BPI is not using CardanoBuildTx"
+addValidRange timeRange (Right tx) =
   if validateRange timeRange
     then
       bimap (Text.pack . show) (setRange tx)
