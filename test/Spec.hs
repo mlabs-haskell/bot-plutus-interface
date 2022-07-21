@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Spec.BotPlutusInterface.Balance qualified
+import Spec.BotPlutusInterface.Collateral qualified
 import Spec.BotPlutusInterface.Contract qualified
 import Spec.BotPlutusInterface.ContractStats qualified
 import Spec.BotPlutusInterface.Server qualified
@@ -27,4 +28,5 @@ tests =
     , Spec.BotPlutusInterface.Server.tests
     , Spec.BotPlutusInterface.ContractStats.tests
     , Spec.BotPlutusInterface.TxStatusChange.tests
+    , Spec.BotPlutusInterface.Collateral.tests
     ]

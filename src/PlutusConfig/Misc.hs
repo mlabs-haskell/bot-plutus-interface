@@ -24,4 +24,4 @@ isLoadSaveIdentity save load x = withSystemTempDirectory "Config-test" $ \path -
   let confFile = path </> "conf.value"
   save confFile x
   Right x' <- load confFile
-  return $ x == x'
+  pure $ x == x'

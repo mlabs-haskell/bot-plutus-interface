@@ -25,9 +25,11 @@ source-repository head
 common common-lang
   ghc-options:
     -Wall -Wcompat -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wredundant-constraints -Werror
-    -fobject-code -fno-ignore-interface-pragmas
-    -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
+    -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
+    -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+    -fplugin=RecordDotPreprocessor
+
+  -- -Werror
 
   build-depends:
     , base                     ^>=4.14
@@ -80,6 +82,7 @@ library
     BotPlutusInterface.BodyBuilder
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
+    BotPlutusInterface.Collateral
     BotPlutusInterface.Config
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
@@ -173,6 +176,7 @@ test-suite bot-plutus-interface-test
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
     Spec.BotPlutusInterface.Balance
+    Spec.BotPlutusInterface.Collateral
     Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.ContractStats

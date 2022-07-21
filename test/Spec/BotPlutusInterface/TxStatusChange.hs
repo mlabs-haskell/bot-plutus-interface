@@ -82,7 +82,7 @@ testStopWaitingByTimeout = do
           TipAtGenesis -> throwError "Should not happen: TipAtGenesis"
           tip' -> do
             txStatus <- awaitTxStatusChange nonExistingTxId
-            return (tip', txStatus)
+            pure (tip', txStatus)
 
   case runContractPure contract initState of
     (Left err, _) -> assertFailure $ Text.unpack err
