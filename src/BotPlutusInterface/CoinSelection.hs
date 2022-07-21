@@ -65,7 +65,7 @@ selectTxIns originalTxIns utxosIndex outValue =
               (\k v -> k `notElem` txInRefs && isRight (txOutToTxIn (k, v)))
               utxosIndex
 
-    lift $ printBpiLog @w (Debug CoinSelectionLog) $ "Remaining UTxOs: " <+> pretty remainingUtxos
+    lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "Remaining UTxOs: " <+> pretty remainingUtxos
 
     txInsVec <-
       hoistEither $
@@ -79,14 +79,14 @@ selectTxIns originalTxIns utxosIndex outValue =
 
     selectedUtxosIdxs <- newEitherT $ selectTxIns' @w GreedyPruning (isSufficient outVec) outVec txInsVec remainingUtxosVec
 
-    lift $ printBpiLog @w (Debug CoinSelectionLog) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
+    lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
 
     let selectedUtxos :: [(TxOutRef, TxOut)]
         selectedUtxos = mapMaybe (\idx -> remainingUtxos ^? ix idx) selectedUtxosIdxs
 
     selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
 
-    lift $ printBpiLog @w (Debug CoinSelectionLog) $ "Selected TxIns: " <+> pretty selectedTxIns
+    lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "Selected TxIns: " <+> pretty selectedTxIns
 
     return $ originalTxIns <> Set.fromList selectedTxIns
   where
@@ -117,10 +117,10 @@ greedySearch ::
   Eff effs (Either Text [Int])
 greedySearch stopSearch outVec txInsVec utxosVec
   | null utxosVec =
-    printBpiLog @w (Debug CoinSelectionLog) "The list of remanining UTxO vectors in null."
+    printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: The list of remanining UTxO vectors in null."
       >> return (Right mempty)
   | stopSearch txInsVec =
-    printBpiLog @w (Debug CoinSelectionLog) "Stopping search early."
+    printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: Stopping search early."
       >> return (Right mempty)
   | otherwise =
     runEitherT $ do
@@ -150,7 +150,7 @@ greedySearch stopSearch outVec txInsVec utxosVec
           newTxInsVec' <- hoistEither $ addVec newTxInsVec selectedUtxoVec
 
           lift $
-            printBpiLog @w (Debug CoinSelectionLog) $
+            printBpiLog @w (Debug [CoinSelectionLog]) $
               "Loop Info: Stop search -> " <+> pretty (stopSearch newTxInsVec')
                 <+> "Selected UTxo Idx :  "
                 <+> pretty idx
@@ -167,10 +167,10 @@ greedyPruning ::
   Eff effs (Either Text [Int])
 greedyPruning stopSearch outVec txInsVec utxosVec
   | null utxosVec =
-    printBpiLog @w (Debug CoinSelectionLog) "The list of remanining UTxO vectors in null."
+    printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: The list of remanining UTxO vectors in null."
       >> return (Right mempty)
   | stopSearch txInsVec =
-    printBpiLog @w (Debug CoinSelectionLog) "Stopping search early."
+    printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: Stopping search early."
       >> return (Right mempty)
   | otherwise =
     runEitherT $ do

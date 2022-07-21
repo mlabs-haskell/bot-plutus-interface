@@ -4,6 +4,8 @@ module SomeDebugContract where
 
 import Data.Map (size)
 import Data.Map qualified as M
+import Data.Void (Void)
+import Data.Aeson.Extras (encodeByteString)
 import Data.Text (Text)
 import Debug.Trace (traceM)
 import Ledger (Address (Address), PaymentPubKeyHash (PaymentPubKeyHash), getCardanoTxId)

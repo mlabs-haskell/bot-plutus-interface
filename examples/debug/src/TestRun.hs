@@ -7,7 +7,8 @@ import BotPlutusInterface.Types (
   ContractEnvironment (..),
   ContractState (ContractState),
   ContractStats (ContractStats),
-  LogLevel (Notice),
+  LogLevel (Debug),
+  LogType(..),
   LogsList (LogsList),
   PABConfig (..),
   TxStatusPolling (TxStatusPolling),
@@ -136,7 +137,7 @@ mkPabConf _ pparams pparamsFile bpiDir ownPkh =
     , pcSigningKeyFileDir = Text.pack $ bpiDir </> "signing-keys"
     , pcTxFileDir = Text.pack $ bpiDir </> "txs"
     , pcDryRun = False
-    , pcLogLevel = Debug CoinSelectionLog
+    , pcLogLevel = Debug [CoinSelectionLog, PABLog]
     , pcProtocolParamsFile = pparamsFile
     , pcEnableTxEndpoint = False
     , pcCollectStats = False

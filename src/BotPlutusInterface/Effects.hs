@@ -64,6 +64,7 @@ import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
+import Data.List (intersect)
 import Data.Kind (Type)
 import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
@@ -192,11 +193,17 @@ handlePABEffect contractEnv =
 
 printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
 printLog' logLevelSetting msgCtx msgLogLvl msg =
-  when (logLevelSetting >= msgLogLvl) $ putStrLn target
+  when
+    (logLevelSetting {ltLogTypes = mempty} >= msgLogLvl {ltLogTypes = mempty}
+      && not (null intersectLogTypes))
+    $ putStrLn target
   where
     target =
       Render.renderString . layoutPretty defaultLayoutOptions $
         prettyLog msgCtx msgLogLvl msg
+
+    intersectLogTypes = ltLogTypes logLevelSetting `intersect` (ltLogTypes msgLogLvl <> [AnyLog])
+    
 
 prettyLog :: LogContext -> LogLevel -> PP.Doc () -> PP.Doc ()
 prettyLog msgCtx msgLogLvl msg = pretty msgCtx <+> pretty msgLogLvl <+> msg
@@ -218,14 +225,14 @@ handleContractLogInternal = reinterpret $ \case
         msgPretty = pretty msgContent
      in printLog @w ContractLog msgLogLevel msgPretty
   where
-    toNativeLogLevel Freer.Debug = Debug AnyLog
-    toNativeLogLevel Freer.Info = Info
-    toNativeLogLevel Freer.Notice = Notice
-    toNativeLogLevel Freer.Warning = Warn
-    toNativeLogLevel Freer.Error = Error
-    toNativeLogLevel Freer.Critical = Error
-    toNativeLogLevel Freer.Alert = Error
-    toNativeLogLevel Freer.Emergency = Error
+    toNativeLogLevel Freer.Debug = Debug [AnyLog]
+    toNativeLogLevel Freer.Info = Info [AnyLog]
+    toNativeLogLevel Freer.Notice = Notice [AnyLog]
+    toNativeLogLevel Freer.Warning = Warn [AnyLog]
+    toNativeLogLevel Freer.Error = Error [AnyLog]
+    toNativeLogLevel Freer.Critical = Error [AnyLog]
+    toNativeLogLevel Freer.Alert = Error [AnyLog]
+    toNativeLogLevel Freer.Emergency = Error [AnyLog]
 
 callLocalCommand :: forall (a :: Type). ShellArgs a -> IO (Either Text a)
 callLocalCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} =

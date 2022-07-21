@@ -125,7 +125,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
           requiredSigs :: [PubKeyHash]
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
 
-      lift $ printBpiLog @w (Debug TxBalancingLog) $ viaShow utxoIndex
+      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
@@ -166,7 +166,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
           fullyBalancedTx = addAdaChange balanceCfg changeAddr finalAdaChange balancedTxWithChange
           txInfoLog =
-            printBpiLog @w (Debug TxBalancingLog) $
+            printBpiLog @w (Debug [TxBalancingLog]) $
               "UnbalancedTx TxInputs: "
                 <+> pretty (length $ txInputs preBalancedTx)
                 <+> "UnbalancedTx TxOutputs: "
@@ -198,7 +198,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
-      lift $ printBpiLog @w (Debug TxBalancingLog) $ "Min utxos:" <+> pretty minUtxos
+      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Min utxos:" <+> pretty minUtxos
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
@@ -210,7 +210,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
-      lift $ printBpiLog @w (Debug TxBalancingLog) $ "Fees:" <+> pretty fees
+      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
       balancedTx <- newEitherT $ balanceTxStep @w balanceCfg minUtxos utxoIndex changeAddr $ tx `withFee` fees

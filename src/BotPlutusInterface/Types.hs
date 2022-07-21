@@ -258,19 +258,23 @@ instance Pretty LogType where
   pretty CoinSelectionLog = "CoinSelection"
   pretty TxBalancingLog = "TxBalancing"
   pretty CollateralLog = "Collateral"
-  pretty PABLog = "Contract"
+  pretty PABLog = "PABLog"
   pretty AnyLog = "Any"
 
-data LogLevel = Error | Warn | Notice | Info | Debug LogType
+data LogLevel = Error { ltLogTypes :: [LogType] }
+              | Warn { ltLogTypes :: [LogType] }
+              | Notice { ltLogTypes :: [LogType] } 
+              | Info { ltLogTypes :: [LogType] }
+              | Debug { ltLogTypes :: [LogType] }
   deriving stock (Eq, Ord, Show)
 
 instance Pretty LogLevel where
   pretty = \case
     Debug a -> "[DEBUG " <> pretty a <> "]"
-    Info -> "[INFO]"
-    Notice -> "[NOTICE]"
-    Warn -> "[WARNING]"
-    Error -> "[ERROR]"
+    Info a -> "[INFO " <> pretty a <> "]"
+    Notice a -> "[NOTICE " <> pretty a <> "]"
+    Warn a -> "[WARNING " <> pretty a <> "]"
+    Error a -> "[ERROR " <> pretty a <> "]"
 
 data LogContext = BpiLog | ContractLog
   deriving stock (Bounded, Enum, Eq, Ord, Show)
@@ -294,7 +298,7 @@ instance Default PABConfig where
       , pcMetadataDir = "/metadata"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
-      , pcLogLevel = Info
+      , pcLogLevel = Info [AnyLog]
       , pcOwnPubKeyHash = ""
       , pcOwnStakePubKeyHash = Nothing
       , pcPort = 9080

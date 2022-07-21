@@ -175,7 +175,7 @@ handlePABReq ::
   PABReq ->
   Eff effs PABResp
 handlePABReq contractEnv req = do
-  printBpiLog @w (Debug PABLog) $ pretty req
+  printBpiLog @w (Debug [PABLog]) $ pretty req
   resp <- case req of
     ----------------------
     -- Handled requests --
@@ -209,7 +209,7 @@ handlePABReq contractEnv req = do
     -- YieldUnbalancedTxReq UnbalancedTx
     unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
 
-  printBpiLog @w (Debug PABLog) $ pretty resp
+  printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
 
 {- | Await till transaction status change to something from `Unknown`.
@@ -228,7 +228,7 @@ awaitTxStatusChange ::
   Eff effs TxStatus
 awaitTxStatusChange contractEnv txId = do
   checkStartedBlock <- currentBlock contractEnv
-  printBpiLog @w (Debug PABLog) $ pretty $ "Awaiting status change for " ++ show txId
+  printBpiLog @w (Debug [PABLog]) $ pretty $ "Awaiting status change for " ++ show txId
 
   let txStatusPolling = contractEnv.cePABConfig.pcTxStatusPolling
       pollInterval = fromIntegral $ txStatusPolling.spInterval
@@ -240,7 +240,7 @@ awaitTxStatusChange contractEnv txId = do
     txStatus <- getStatus
     case (txStatus, currBlock > cutOffBlock) of
       (status, True) -> do
-        helperLog (Debug PABLog) . mconcat . fmap mconcat $
+        helperLog (Debug [PABLog]) . mconcat . fmap mconcat $
           [ ["Timeout for waiting `TxId ", show txId, "` status change reached"]
           , [" - waited ", show pollTimeout, " blocks."]
           , [" Current status: ", show status]
@@ -255,17 +255,17 @@ awaitTxStatusChange contractEnv txId = do
       mTx <- queryChainIndexForTxState
       case mTx of
         Nothing -> do
-          helperLog (Debug PABLog) $ "TxId " ++ show txId ++ " not found in index"
+          helperLog (Debug [PABLog]) $ "TxId " ++ show txId ++ " not found in index"
           pure Unknown
         Just txState -> do
-          helperLog (Debug PABLog) $ "TxId " ++ show txId ++ " found in index, checking status"
+          helperLog (Debug [PABLog]) $ "TxId " ++ show txId ++ " found in index, checking status"
           blk <- fromInteger <$> currentBlock contractEnv
           case transactionStatus blk txState txId of
             Left e -> do
-              helperLog (Debug PABLog) $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
+              helperLog (Debug [PABLog]) $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
               pure Unknown
             Right st -> do
-              helperLog (Debug PABLog) $ "Status for TxId " ++ show txId ++ " is " ++ show st
+              helperLog (Debug [PABLog]) $ "Status for TxId " ++ show txId ++ " is " ++ show st
               pure st
 
     queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
@@ -346,7 +346,7 @@ writeBalancedTx contractEnv (Right tx) = do
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
       else
-        lift . printBpiLog @w Warn . PP.vsep $
+        lift . printBpiLog @w (Warn [PABLog]) . PP.vsep $
           [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
           , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx))
           , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
@@ -485,12 +485,12 @@ handleCollateral cEnv = do
   case result of
     Right collteralUtxo ->
       setInMemCollateral @w collteralUtxo
-        >> Right <$> printBpiLog @w (Debug PABLog) "successfully set the collateral utxo in env."
+        >> Right <$> printBpiLog @w (Debug [PABLog]) "successfully set the collateral utxo in env."
     Left err -> pure $ Left $ "Failed to make collateral: " <> err
   where
     --
     helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
-    helperLog msg = newEitherT $ Right <$> printBpiLog @w (Debug CollateralLog) msg
+    helperLog msg = newEitherT $ Right <$> printBpiLog @w (Debug [CollateralLog]) msg
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.
@@ -501,7 +501,7 @@ makeCollateral ::
   ContractEnvironment w ->
   Eff effs (Either Text CollateralUtxo)
 makeCollateral cEnv = runEitherT $ do
-  lift $ printBpiLog @w Notice "Making collateral"
+  lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
   let pabConf = cEnv.cePABConfig
   unbalancedTx <-
@@ -520,7 +520,7 @@ makeCollateral cEnv = runEitherT $ do
     WriteBalancedTxFailed e -> throwE . T.pack $ "Failed to create collateral output: " <> show e
     WriteBalancedTxSuccess cTx -> do
       status <- lift $ awaitTxStatusChange cEnv (getCardanoTxId cTx)
-      lift $ printBpiLog @w Notice $ "Collateral Tx Status: " <> pretty status
+      lift $ printBpiLog @w (Notice [CollateralLog]) $ "Collateral Tx Status: " <> pretty status
       newEitherT $ findCollateralAtOwnPKH cEnv
 
 -- | Finds a collateral present at user's address
