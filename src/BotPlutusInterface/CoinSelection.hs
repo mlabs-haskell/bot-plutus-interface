@@ -33,6 +33,7 @@ import Prettyprinter (pretty, (<+>))
 import Prelude
 
 data Search = Greedy
+            | GreedyPruning
   deriving stock (Show)
 
 selectTxIns ::
@@ -67,7 +68,7 @@ selectTxIns originalTxIns utxosIndex outValue =
     txInsVec <-
       hoistEither $
         if Value.isZero txInsValue
-          then Right $ zeroVec (toInteger $ length allAssetClasses)
+          then Right $ zeroVec (length allAssetClasses)
           else valueToVec allAssetClasses txInsValue
 
     outVec <- hoistEither $ valueToVec allAssetClasses outValue
@@ -79,7 +80,7 @@ selectTxIns originalTxIns utxosIndex outValue =
     lift $ printBpiLog @w (Debug CoinSelectionLog) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
 
     let selectedUtxos :: [(TxOutRef, TxOut)]
-        selectedUtxos = mapMaybe (\idx -> remainingUtxos ^? ix (fromInteger idx)) selectedUtxosIdxs
+        selectedUtxos = mapMaybe (\idx -> remainingUtxos ^? ix idx) selectedUtxosIdxs
 
     selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
 
@@ -90,7 +91,7 @@ selectTxIns originalTxIns utxosIndex outValue =
     isSufficient :: Vector Integer -> Vector Integer -> Bool
     isSufficient outVec txInsVec =
       Vec.all (== True) (Vec.zipWith (<=) outVec txInsVec)
-        && txInsVec /= zeroVec (toInteger $ length txInsVec)
+        && txInsVec /= zeroVec (length txInsVec)
 
 selectTxIns' ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -100,8 +101,19 @@ selectTxIns' ::
   Vector Integer ->
   Vector Integer ->
   [Vector Integer] ->
-  Eff effs (Either Text [Integer])
-selectTxIns' Greedy stopSearch outVec txInsVec utxosVec
+  Eff effs (Either Text [Int])
+selectTxIns' Greedy = greedySearch @w
+selectTxIns' GreedyPruning = undefined
+
+greedySearch ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  (Vector Integer -> Bool) ->
+  Vector Integer ->
+  Vector Integer ->
+  [Vector Integer] ->
+  Eff effs (Either Text [Int])
+greedySearch stopSearch outVec txInsVec utxosVec
   | null utxosVec =
     printBpiLog @w (Debug CoinSelectionLog) "The list of remanining UTxO vectors in null."
       >> return (Right mempty)
@@ -113,14 +125,15 @@ selectTxIns' Greedy stopSearch outVec txInsVec utxosVec
       x <- hoistEither $ mapM (addVec txInsVec) utxosVec
       utxosDist <- hoistEither $ mapM (l2norm outVec) x
 
-      let sortedDist :: [(Integer, Float)]
+      let sortedDist :: [(Int, Float)]
           sortedDist =
             List.sortBy (\a b -> compare (snd a) (snd b)) $
-              zip [0 .. toInteger (length utxosVec) - 1] utxosDist
+              zip [0 .. length utxosVec - 1] utxosDist
 
       newEitherT $ loop sortedDist txInsVec
+
   where
-    loop :: [(Integer, Float)] -> Vector Integer -> Eff effs (Either Text [Integer])
+    loop :: [(Int, Float)] -> Vector Integer -> Eff effs (Either Text [Int])
     loop [] _ = return $ Right mempty
     loop ((idx, _) : remSortedDist) newTxInsVec =
       if stopSearch newTxInsVec
@@ -130,7 +143,7 @@ selectTxIns' Greedy stopSearch outVec txInsVec utxosVec
             hoistEither $
               maybeToRight
                 "Out of bounds"
-                (utxosVec ^? ix (fromInteger idx))
+                (utxosVec ^? ix idx)
           newTxInsVec' <- hoistEither $ addVec newTxInsVec selectedUtxoVec
 
           lift $
@@ -140,6 +153,31 @@ selectTxIns' Greedy stopSearch outVec txInsVec utxosVec
                 <+> pretty idx
 
           (idx :) <$> newEitherT (loop remSortedDist newTxInsVec')
+
+greedyPruning ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  (Vector Integer -> Bool) ->
+  Vector Integer ->
+  Vector Integer ->
+  [Vector Integer] ->
+  Eff effs (Either Text [Int])
+greedyPruning stopSearch outVec txInsVec utxosVec
+  | null utxosVec =
+      printBpiLog @w (Debug CoinSelectionLog) "The list of remanining UTxO vectors in null."
+        >> return (Right mempty)
+  | stopSearch txInsVec =
+      printBpiLog @w (Debug CoinSelectionLog) "Stopping search early."
+        >> return (Right mempty)
+  | otherwise = 
+      runEitherT $ do
+      selectedUtxosIdxs <- newEitherT $ greedySearch @w stopSearch outVec txInsVec utxosVec
+      return undefined
+    
+
+combinations :: Set Int -> Set (Set Int)
+combinations = undefined
+
 
 l2norm :: Vector Integer -> Vector Integer -> Either Text Float
 l2norm v1 v2
@@ -172,8 +210,8 @@ addVec v1 v2
           <> show (length v2)
           <> "."
 
-zeroVec :: Integer -> Vector Integer
-zeroVec n = Vec.fromList $ replicate (fromInteger n) 0
+zeroVec :: Int -> Vector Integer
+zeroVec n = Vec.fromList $ replicate n 0
 
 valueToVec :: Set AssetClass -> Value -> Either Text (Vector Integer)
 valueToVec allAssetClasses v =
