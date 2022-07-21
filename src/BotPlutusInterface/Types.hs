@@ -6,8 +6,9 @@ module BotPlutusInterface.Types (
   PABConfig (..),
   CLILocation (..),
   AppState (AppState),
-  LogLevel (..),
   LogContext (..),
+  LogLevel (..),
+  LogType (..),
   ContractEnvironment (..),
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
@@ -245,16 +246,36 @@ data ContractState w = ContractState
 data CLILocation = Local | Remote Text
   deriving stock (Show, Eq)
 
-data LogLevel = Error | Warn | Notice | Info | Debug
-  deriving stock (Bounded, Enum, Eq, Ord, Show)
+data LogType
+  = CoinSelectionLog
+  | TxBalancingLog
+  | CollateralLog
+  | PABLog
+  | AnyLog
+  deriving stock (Eq, Ord, Show)
+
+instance Pretty LogType where
+  pretty CoinSelectionLog = "CoinSelection"
+  pretty TxBalancingLog = "TxBalancing"
+  pretty CollateralLog = "Collateral"
+  pretty PABLog = "PABLog"
+  pretty AnyLog = "Any"
+
+data LogLevel
+  = Error {ltLogTypes :: [LogType]}
+  | Warn {ltLogTypes :: [LogType]}
+  | Notice {ltLogTypes :: [LogType]}
+  | Info {ltLogTypes :: [LogType]}
+  | Debug {ltLogTypes :: [LogType]}
+  deriving stock (Eq, Ord, Show)
 
 instance Pretty LogLevel where
   pretty = \case
-    Debug -> "[DEBUG]"
-    Info -> "[INFO]"
-    Notice -> "[NOTICE]"
-    Warn -> "[WARNING]"
-    Error -> "[ERROR]"
+    Debug a -> "[DEBUG " <> pretty a <> "]"
+    Info a -> "[INFO " <> pretty a <> "]"
+    Notice a -> "[NOTICE " <> pretty a <> "]"
+    Warn a -> "[WARNING " <> pretty a <> "]"
+    Error a -> "[ERROR " <> pretty a <> "]"
 
 data LogContext = BpiLog | ContractLog
   deriving stock (Bounded, Enum, Eq, Ord, Show)
@@ -278,7 +299,7 @@ instance Default PABConfig where
       , pcMetadataDir = "/metadata"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
-      , pcLogLevel = Info
+      , pcLogLevel = Info [AnyLog]
       , pcOwnPubKeyHash = ""
       , pcOwnStakePubKeyHash = Nothing
       , pcPort = 9080

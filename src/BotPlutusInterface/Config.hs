@@ -17,6 +17,7 @@ import BotPlutusInterface.Effects (
 import BotPlutusInterface.Types (
   CLILocation (..),
   LogLevel (..),
+  LogType (AnyLog),
   PABConfig (..),
   TxStatusPolling (TxStatusPolling, spBlocksTimeOut, spInterval),
  )
@@ -75,11 +76,11 @@ instance ToValue LogLevel where
 
 logLevelSpec :: ValueSpec LogLevel
 logLevelSpec =
-  Error <$ atomSpec "error"
-    <!> Warn <$ atomSpec "warn"
-    <!> Notice <$ atomSpec "notice"
-    <!> Info <$ atomSpec "info"
-    <!> Debug <$ atomSpec "debug"
+  Error [AnyLog] <$ atomSpec "error"
+    <!> Warn [AnyLog] <$ atomSpec "warn"
+    <!> Notice [AnyLog] <$ atomSpec "notice"
+    <!> Info [AnyLog] <$ atomSpec "info"
+    <!> Debug [AnyLog] <$ atomSpec "debug"
 
 instance ToValue TxStatusPolling where
   toValue (TxStatusPolling interval timeout) =
