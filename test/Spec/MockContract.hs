@@ -35,6 +35,7 @@ module Spec.MockContract (
   runContractPure,
   runContractPure',
   MockContractState (..),
+  collateralUtxo,
   commandHistory,
   statsUpdates,
   instanceUpdateHistory,
@@ -46,15 +47,20 @@ module Spec.MockContract (
   utxos,
   mockBudget,
   nonExistingTxId,
+  theCollateralUtxo,
+  theCollateralTxId,
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
+import BotPlutusInterface.Collateral (removeCollateralFromPage)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
   BudgetEstimationError,
+  CollateralUtxo (CollateralUtxo, collateralTxOutRef),
+  CollateralVar (CollateralVar),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   LogContext,
@@ -82,7 +88,7 @@ import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Lens (at, (%~), (&), (<|), (?~), (^.), (^..), _1)
+import Control.Lens (at, set, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, reinterpret2, run)
@@ -189,6 +195,12 @@ addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Not
 nonExistingTxId :: TxId
 nonExistingTxId = TxId "ff"
 
+theCollateralUtxo :: CollateralUtxo
+theCollateralUtxo = CollateralUtxo $ TxOutRef "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" 0
+
+theCollateralTxId :: TxId
+theCollateralTxId = Tx.txOutRefId $ collateralTxOutRef theCollateralUtxo
+
 skeyToPubKey :: SigningKey PaymentKey -> PubKey
 skeyToPubKey =
   Ledger.toPublicKey
@@ -231,6 +243,7 @@ data MockContractState w = MockContractState
   , _contractEnv :: ContractEnvironment w
   , _utxos :: [(TxOutRef, TxOut)]
   , _tip :: Tip
+  , _collateralUtxo :: Maybe CollateralUtxo
   }
   deriving stock (Show)
 
@@ -250,8 +263,15 @@ instance Monoid w => Default (MockContractState w) where
       , _observableState = mempty
       , _logHistory = mempty
       , _contractEnv = def
-      , _utxos = []
+      , -- This is the collateral UTxO in the wallet, with lovelace value specified in `PABConfig`.
+        _utxos =
+          [
+            ( collateralTxOutRef theCollateralUtxo
+            , TxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing
+            )
+          ]
       , _tip = Tip 1000 (BlockId "ab12") 4
+      , _collateralUtxo = Just theCollateralUtxo
       }
 
 instance Monoid w => Default (ContractEnvironment w) where
@@ -262,6 +282,7 @@ instance Monoid w => Default (ContractEnvironment w) where
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
       , ceContractLogs = unsafePerformIO $ newTVarIO mempty
+      , ceCollateral = CollateralVar $ unsafePerformIO $ newTVarIO (Just theCollateralUtxo)
       }
 
 instance Monoid w => Default (ContractState w) where
@@ -329,6 +350,8 @@ runPABEffectPure initState req =
     go (SlotToPOSIXTime _) = pure $ Right 1506203091
     go (POSIXTimeToSlot _) = pure $ Right 1
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
+    go GetInMemCollateral = _collateralUtxo <$> get @(MockContractState w)
+    go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -594,14 +617,14 @@ mockQueryChainIndex = \case
       UtxoSetAtResponse $
         UtxosResponse
           (state ^. tip)
-          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+          (removeCollateralFromPage (_collateralUtxo state) $ pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   UtxoSetWithCurrency pageQuery _ -> do
     state <- get @(MockContractState w)
     pure $
       UtxoSetAtResponse $
         UtxosResponse
           (state ^. tip)
-          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+          (removeCollateralFromPage (_collateralUtxo state) (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))))
   TxsFromTxIds ids -> do
     -- TODO: Track some kind of state here, add tests to ensure this works correctly
     -- For now, empty txs

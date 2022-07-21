@@ -47,7 +47,7 @@ estimateBudget pabConf txFile = do
       (getExUnits debugNodeInf)
       txBody
 
-  return $
+  pure $
     do
       body <- txBody
       budget <- budgetRes
@@ -93,7 +93,7 @@ addBudgets (CAPI.ExecutionUnits steps mem) (CAPI.ExecutionUnits steps' mem') = C
 deserialiseSigned :: FilePath -> IO (Either BudgetEstimationError (CAPI.Tx CAPI.AlonzoEra))
 deserialiseSigned txFile = do
   envlp <- readEnvelope
-  return $ envlp >>= parseTx
+  pure $ envlp >>= parseTx
   where
     readEnvelope =
       left toBudgetError
@@ -107,7 +107,7 @@ deserialiseSigned txFile = do
 deserialiseRaw :: FilePath -> IO (Either BudgetEstimationError (CAPI.TxBody CAPI.AlonzoEra))
 deserialiseRaw txFile = do
   envlp <- readEnvelope
-  return $ envlp >>= parseTx
+  pure $ envlp >>= parseTx
   where
     readEnvelope =
       left toBudgetError
@@ -131,7 +131,7 @@ getExUnits nodeInf txBody = do
   eraHist <- QueryNode.queryEraHistory nodeInf
   pparams <- QueryNode.queryProtocolParams nodeInf
   utxo <- QueryNode.queryOutsByInputs nodeInf capiIns
-  return $
+  pure $
     flattenEvalResult $
       CAPI.evaluateTransactionExecutionUnits CAPI.AlonzoEraInCardanoMode
         <$> sysStart

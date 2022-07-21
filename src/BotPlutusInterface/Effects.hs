@@ -28,14 +28,18 @@ module BotPlutusInterface.Effects (
   slotToPOSIXTime,
   posixTimeToSlot,
   posixTimeRangeToContainedSlotRange,
+  getInMemCollateral,
+  setInMemCollateral,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
+import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.ExBudget qualified as ExBudget
 import BotPlutusInterface.TimeSlot qualified as TimeSlot
 import BotPlutusInterface.Types (
   BudgetEstimationError,
   CLILocation (..),
+  CollateralUtxo,
   ContractEnvironment,
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
@@ -119,6 +123,8 @@ data PABEffect (w :: Type) (r :: Type) where
   POSIXTimeRangeToSlotRange ::
     Ledger.POSIXTimeRange ->
     PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
+  GetInMemCollateral :: PABEffect w (Maybe CollateralUtxo)
+  SetInMemCollateral :: CollateralUtxo -> PABEffect w ()
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -169,7 +175,7 @@ handlePABEffect contractEnv =
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
-          handleChainIndexReq contractEnv.cePABConfig query
+          handleChainIndexReq contractEnv query
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
@@ -179,6 +185,8 @@ handlePABEffect contractEnv =
           TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
         POSIXTimeRangeToSlotRange pTimeRange ->
           TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
+        GetInMemCollateral -> Collateral.getInMemCollateral contractEnv
+        SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
     )
 
 printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
@@ -398,3 +406,16 @@ posixTimeRangeToContainedSlotRange ::
   Ledger.POSIXTimeRange ->
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
 posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange
+
+getInMemCollateral ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Eff effs (Maybe CollateralUtxo)
+getInMemCollateral = send @(PABEffect w) GetInMemCollateral
+
+setInMemCollateral ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  CollateralUtxo ->
+  Eff effs ()
+setInMemCollateral = send @(PABEffect w) . SetInMemCollateral

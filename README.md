@@ -77,7 +77,7 @@ main = do
   BotPlutusInterface.runPAB @MyContracts pabConf
 ```
 
-Configuration format (example: <examples/plutus-game/pabConfig.value>): 
+Configuration format (example: <examples/plutus-game/pabConfig.value>):
 
 ``` console
 $ cabal repl --disable-optimisation --repl-options -Wwarn
