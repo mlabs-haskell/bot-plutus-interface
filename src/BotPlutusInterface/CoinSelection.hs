@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE RankNTypes #-}
 
 module BotPlutusInterface.CoinSelection (valueToVec, valuesToVecs, selectTxIns) where
 
@@ -32,8 +33,9 @@ import BotPlutusInterface.Types (LogLevel (Debug), LogType (CoinSelectionLog))
 import Prettyprinter (pretty, (<+>))
 import Prelude
 
-data Search = Greedy
-            | GreedyPruning
+data Search
+  = Greedy
+  | GreedyPruning
   deriving stock (Show)
 
 selectTxIns ::
@@ -75,7 +77,7 @@ selectTxIns originalTxIns utxosIndex outValue =
 
     remainingUtxosVec <- hoistEither $ mapM (valueToVec allAssetClasses . txOutValue . snd) remainingUtxos
 
-    selectedUtxosIdxs <- newEitherT $ selectTxIns' @w Greedy (isSufficient outVec) outVec txInsVec remainingUtxosVec
+    selectedUtxosIdxs <- newEitherT $ selectTxIns' @w GreedyPruning (isSufficient outVec) outVec txInsVec remainingUtxosVec
 
     lift $ printBpiLog @w (Debug CoinSelectionLog) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
 
@@ -103,7 +105,7 @@ selectTxIns' ::
   [Vector Integer] ->
   Eff effs (Either Text [Int])
 selectTxIns' Greedy = greedySearch @w
-selectTxIns' GreedyPruning = undefined
+selectTxIns' GreedyPruning = greedyPruning @w
 
 greedySearch ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -131,8 +133,9 @@ greedySearch stopSearch outVec txInsVec utxosVec
               zip [0 .. length utxosVec - 1] utxosDist
 
       newEitherT $ loop sortedDist txInsVec
-
+  
   where
+    
     loop :: [(Int, Float)] -> Vector Integer -> Eff effs (Either Text [Int])
     loop [] _ = return $ Right mempty
     loop ((idx, _) : remSortedDist) newTxInsVec =
@@ -164,20 +167,38 @@ greedyPruning ::
   Eff effs (Either Text [Int])
 greedyPruning stopSearch outVec txInsVec utxosVec
   | null utxosVec =
-      printBpiLog @w (Debug CoinSelectionLog) "The list of remanining UTxO vectors in null."
-        >> return (Right mempty)
+    printBpiLog @w (Debug CoinSelectionLog) "The list of remanining UTxO vectors in null."
+      >> return (Right mempty)
   | stopSearch txInsVec =
-      printBpiLog @w (Debug CoinSelectionLog) "Stopping search early."
-        >> return (Right mempty)
-  | otherwise = 
-      runEitherT $ do
-      selectedUtxosIdxs <- newEitherT $ greedySearch @w stopSearch outVec txInsVec utxosVec
-      return undefined
+    printBpiLog @w (Debug CoinSelectionLog) "Stopping search early."
+      >> return (Right mempty)
+  | otherwise =
+    runEitherT $ do
+      selectedUtxosIdx <- newEitherT $ greedySearch @w stopSearch outVec txInsVec utxosVec
+
+      let revSelectedUtxosVec :: [Vector Integer] 
+          revSelectedUtxosVec = List.reverse $ mapMaybe (\idx -> utxosVec ^? ix idx) selectedUtxosIdx
+
+          revSelectedUtxosIdx :: [Int]
+          revSelectedUtxosIdx = List.reverse selectedUtxosIdx
+
+      hoistEither $ loop txInsVec revSelectedUtxosIdx revSelectedUtxosVec
+     
+  where
     
+    loop :: Vector Integer -> [Int] -> [Vector Integer] -> Either Text [Int]
+    loop newTxInsVec (idx:idxs) (vec:vecs) = do
+     newTxInsVec' <- addVec newTxInsVec vec
+     changeVec  <- subVec outVec newTxInsVec
+     changeVec' <- subVec outVec newTxInsVec'
 
-combinations :: Set Int -> Set (Set Int)
-combinations = undefined
+     case l2norm outVec changeVec' < l2norm outVec changeVec of
+       True   -> (idx :) <$> loop newTxInsVec' idxs vecs
+       False | stopSearch newTxInsVec -> Right mempty
+       False -> (idx :) <$> loop newTxInsVec' idxs vecs
 
+    loop _newTxInsVec [] [] = pure mempty
+    loop _newTxInsVec _idxs _vecs = Left "Length of idxs and list of vecs are not same."
 
 l2norm :: Vector Integer -> Vector Integer -> Either Text Float
 l2norm v1 v2
@@ -196,9 +217,15 @@ l2norm v1 v2
     formula :: Integer -> Integer -> Integer
     formula n1 n2 = (n1 - n2) ^ (2 :: Integer)
 
-addVec :: Vector Integer -> Vector Integer -> Either Text (Vector Integer)
-addVec v1 v2
-  | length v1 == length v2 = Right $ Vec.zipWith (+) v1 v2
+addVec :: Num n => Vector n -> Vector n -> Either Text (Vector n)
+addVec = opVec (+)
+
+subVec :: Num n => Vector n -> Vector n -> Either Text (Vector n)
+subVec = opVec (-)
+
+opVec :: Num n => (forall a. Num a => a -> a -> a) -> Vector n -> Vector n -> Either Text (Vector n)
+opVec f v1 v2
+  | length v1 == length v2 = Right $ Vec.zipWith f v1 v2
   | otherwise =
     Left $
       pack $

@@ -1,7 +1,17 @@
 module TestRun (testnetRun, main) where
 
 import BotPlutusInterface.Contract qualified as BPI
-import BotPlutusInterface.Types
+import BotPlutusInterface.Types (
+  CLILocation (Local),
+  CollateralVar (CollateralVar, unCollateralVar),
+  ContractEnvironment (..),
+  ContractState (ContractState),
+  ContractStats (ContractStats),
+  LogLevel (Notice),
+  LogsList (LogsList),
+  PABConfig (..),
+  TxStatusPolling (TxStatusPolling),
+ )
 import Cardano.Api (NetworkId (Mainnet))
 import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (newTVarIO, readTVarIO)
@@ -11,7 +21,7 @@ import Data.Text (Text)
 
 import Data.Text qualified as Text
 import Data.UUID.V4 qualified as UUID
-import GHC.IO.Encoding
+import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Ledger (PubKeyHash)
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
@@ -20,7 +30,7 @@ import System.Directory (listDirectory)
 import System.Environment (getArgs, getEnv, setEnv)
 import System.FilePath ((</>))
 import TimeDebugContract qualified
-import Tools
+import Tools (pkhFromHash)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 

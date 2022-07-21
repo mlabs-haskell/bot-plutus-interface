@@ -1,6 +1,6 @@
 module Spec.BotPlutusInterface.Balance (tests) where
 
-import BotPlutusInterface.Balance (withFee)
+import BotPlutusInterface.Balance (defaultBalanceConfig, withFee)
 import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.Effects (PABEffect)
 import Data.Default (Default (def))
@@ -21,7 +21,6 @@ import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
 import Prelude
 
 {- | Tests for 'cardano-cli query utxo' result parsers
-
  @since 0.1
 -}
 tests :: TestTree
@@ -66,7 +65,10 @@ addUtxosForFees = do
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
-      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @() @'[PABEffect ()] minUtxo utxoIndex ownAddr tx
+      ebalancedTx =
+        fst $
+          runPABEffectPure def $
+            Balance.balanceTxStep @() @'[PABEffect ()] defaultBalanceConfig minUtxo utxoIndex ownAddr tx
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
@@ -79,7 +81,10 @@ addUtxosForNativeTokens = do
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       ownAddr = addr1
-      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @() @'[PABEffect ()] minUtxo utxoIndex ownAddr tx
+      ebalancedTx =
+        fst $
+          runPABEffectPure def $
+            Balance.balanceTxStep @() @'[PABEffect ()] defaultBalanceConfig minUtxo utxoIndex ownAddr tx
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
@@ -92,7 +97,10 @@ addUtxosForChange = do
       minUtxo = [(txout, 1_000_000)]
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
-      ebalancedTx = fst $ runPABEffectPure def $ Balance.balanceTxStep @() @'[PABEffect ()] minUtxo utxoIndex ownAddr tx
+      ebalancedTx =
+        fst $
+          runPABEffectPure def $
+            Balance.balanceTxStep @() @'[PABEffect ()] defaultBalanceConfig minUtxo utxoIndex ownAddr tx
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)

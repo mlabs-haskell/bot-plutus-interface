@@ -35,7 +35,7 @@ import BotPlutusInterface.Types (
   CollateralUtxo (CollateralUtxo),
   ContractEnvironment (..),
   LogLevel (Debug, Notice, Warn),
-  LogType (PABLog, CollateralLog),
+  LogType (CollateralLog, PABLog),
   Tip (block, slot),
   TxFile (Signed),
   collateralValue,
@@ -52,7 +52,7 @@ import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, hoistEither, 
 import Control.Monad.Trans.Except (ExceptT, throwE)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
-import Data.Either.Combinators (maybeToRight, swapEither)
+import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Function (fix)
 import Data.HashMap.Strict qualified as HM
 import Data.Kind (Type)
@@ -297,10 +297,18 @@ balanceTx contractEnv unbalancedTx = do
     _ -> do
       uploadDir @w pabConf.pcSigningKeyFileDir
       eitherPreBalancedTx <-
-        PreBalance.balanceTxIO @w
-          pabConf
-          pabConf.pcOwnPubKeyHash
-          unbalancedTx
+        if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
+          then
+            PreBalance.balanceTxIO' @w
+              PreBalance.defaultBalanceConfig {PreBalance.bcHasScripts = True}
+              pabConf
+              pabConf.pcOwnPubKeyHash
+              unbalancedTx
+          else
+            PreBalance.balanceTxIO @w
+              pabConf
+              pabConf.pcOwnPubKeyHash
+              unbalancedTx
 
       pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
 
@@ -455,7 +463,7 @@ handleCollateral cEnv = do
     do
       collateralNotInMem <-
         newEitherT $
-          swapEither . maybeToRight "Collateral UTxO not found in contract env."
+          maybeToLeft "Collateral UTxO not found in contract env."
             <$> getInMemCollateral @w
 
       helperLog collateralNotInMem
@@ -466,7 +474,7 @@ handleCollateral cEnv = do
         ("Collateral UTxO not found or failed to be found in wallet: " <> pretty collateralNotInWallet)
 
       helperLog "Creating collateral UTxO."
-      --
+
       notCreatedCollateral <- newEitherT $ swapEither <$> makeCollateral @w cEnv
 
       helperLog
@@ -500,7 +508,12 @@ makeCollateral cEnv = runEitherT $ do
     firstEitherT (T.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
 
-  balancedTx <- newEitherT $ PreBalance.balanceTxIO @w pabConf pabConf.pcOwnPubKeyHash unbalancedTx
+  balancedTx <-
+    newEitherT $
+      PreBalance.balanceTxIO' @w
+        PreBalance.defaultBalanceConfig {PreBalance.bcHasScripts = False, PreBalance.bcSeparateChange = True}
+        pabConf
+        pabConf.pcOwnPubKeyHash unbalancedTx
 
   wbr <- lift $ writeBalancedTx cEnv (Right balancedTx)
   case wbr of
@@ -523,12 +536,12 @@ findCollateralAtOwnPKH cEnv =
           changeAddr =
             Ledger.pubKeyHashAddress
               (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
-              (pabConf.pcOwnStakePubKeyHash)
+              pabConf.pcOwnStakePubKeyHash
 
       r <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
       let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
       hoistEither $ case filter check refsAndOuts of
-        [] -> Left "Couldn't find colalteral UTxO"
+        [] -> Left "Couldn't find collateral UTxO"
         ((oref, _) : _) -> Right oref
   where
     check (_, txOut) = Tx.txOutValue txOut == collateralValue (cePABConfig cEnv)

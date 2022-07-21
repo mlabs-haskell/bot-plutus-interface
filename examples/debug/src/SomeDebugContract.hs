@@ -2,11 +2,9 @@
 
 module SomeDebugContract where
 
-import Data.Aeson.Extras (encodeByteString)
 import Data.Map (size)
 import Data.Map qualified as M
 import Data.Text (Text)
-import Data.Void (Void)
 import Debug.Trace (traceM)
 import Ledger (Address (Address), PaymentPubKeyHash (PaymentPubKeyHash), getCardanoTxId)
 import Ledger qualified

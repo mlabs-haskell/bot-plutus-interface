@@ -18,7 +18,7 @@ import Ledger.TxId qualified as TxId
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
 import Plutus.Contract (
-  Contract (..),
+  Contract,
   Endpoint,
   submitTxConstraintsWith,
  )

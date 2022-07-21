@@ -5,9 +5,18 @@ module BotPlutusInterface.ChainIndex (
 ) where
 
 import BotPlutusInterface.Collateral (removeCollateralFromPage)
-import BotPlutusInterface.Types (ContractEnvironment, PABConfig, readCollateralUtxo)
+import BotPlutusInterface.Types (
+  ContractEnvironment (ContractEnvironment, cePABConfig),
+  PABConfig,
+  readCollateralUtxo,
+ )
 import Data.Kind (Type)
-import Network.HTTP.Client (ManagerSettings (managerResponseTimeout), defaultManagerSettings, newManager, responseTimeoutNone)
+import Network.HTTP.Client (
+  ManagerSettings (managerResponseTimeout),
+  defaultManagerSettings,
+  newManager,
+  responseTimeoutNone,
+ )
 import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Api (
   TxoAtAddressRequest (TxoAtAddressRequest),
@@ -28,47 +37,46 @@ import Servant.Client (
 import Prelude
 
 handleChainIndexReq :: forall (w :: Type). ContractEnvironment w -> ChainIndexQuery -> IO ChainIndexResponse
-handleChainIndexReq contractEnv =
-  let pabConf = contractEnv.cePABConfig
-   in \case
-        DatumFromHash datumHash ->
-          DatumHashResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getDatum datumHash)
-        ValidatorFromHash validatorHash ->
-          ValidatorHashResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getValidator validatorHash)
-        MintingPolicyFromHash mintingPolicyHash ->
-          MintingPolicyHashResponse
-            <$> chainIndexQueryOne pabConf (ChainIndexClient.getMintingPolicy mintingPolicyHash)
-        StakeValidatorFromHash stakeValidatorHash ->
-          StakeValidatorHashResponse
-            <$> chainIndexQueryOne pabConf (ChainIndexClient.getStakeValidator stakeValidatorHash)
-        RedeemerFromHash _ ->
-          pure $ RedeemerHashResponse Nothing
-        -- RedeemerFromHash redeemerHash ->
-        --   pure $ RedeemerHashResponse (Maybe Redeemer)
-        TxOutFromRef txOutRef ->
-          TxOutRefResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTxOut txOutRef)
-        TxFromTxId txId ->
-          TxIdResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTx txId)
-        UtxoSetMembership txOutRef ->
-          UtxoSetMembershipResponse <$> chainIndexQueryMany pabConf (ChainIndexClient.getIsUtxo txOutRef)
-        UtxoSetAtAddress page credential ->
-          UtxoSetAtResponse
-            <$> chainIndexUtxoQuery
-              contractEnv
-              (ChainIndexClient.getUtxoSetAtAddress (UtxoAtAddressRequest (Just page) credential))
-        UtxoSetWithCurrency page assetClass ->
-          UtxoSetAtResponse
-            <$> chainIndexUtxoQuery
-              contractEnv
-              (ChainIndexClient.getUtxoSetWithCurrency (UtxoWithCurrencyRequest (Just page) assetClass))
-        GetTip ->
-          GetTipResponse <$> chainIndexQueryMany pabConf ChainIndexClient.getTip
-        TxsFromTxIds txIds -> TxIdsResponse <$> chainIndexQueryMany pabConf (ChainIndexClient.getTxs txIds)
-        TxoSetAtAddress page credential ->
-          TxoSetAtResponse
-            <$> chainIndexTxoQuery
-              contractEnv
-              (ChainIndexClient.getTxoSetAtAddress (TxoAtAddressRequest (Just page) credential))
+handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
+  \case
+    DatumFromHash datumHash ->
+      DatumHashResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getDatum datumHash)
+    ValidatorFromHash validatorHash ->
+      ValidatorHashResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getValidator validatorHash)
+    MintingPolicyFromHash mintingPolicyHash ->
+      MintingPolicyHashResponse
+        <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getMintingPolicy mintingPolicyHash)
+    StakeValidatorFromHash stakeValidatorHash ->
+      StakeValidatorHashResponse
+        <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getStakeValidator stakeValidatorHash)
+    RedeemerFromHash _ ->
+      pure $ RedeemerHashResponse Nothing
+    -- RedeemerFromHash redeemerHash ->
+    --   pure $ RedeemerHashResponse (Maybe Redeemer)
+    TxOutFromRef txOutRef ->
+      TxOutRefResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getTxOut txOutRef)
+    TxFromTxId txId ->
+      TxIdResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getTx txId)
+    UtxoSetMembership txOutRef ->
+      UtxoSetMembershipResponse <$> chainIndexQueryMany cePABConfig (ChainIndexClient.getIsUtxo txOutRef)
+    UtxoSetAtAddress page credential ->
+      UtxoSetAtResponse
+        <$> chainIndexUtxoQuery
+          contractEnv
+          (ChainIndexClient.getUtxoSetAtAddress (UtxoAtAddressRequest (Just page) credential))
+    UtxoSetWithCurrency page assetClass ->
+      UtxoSetAtResponse
+        <$> chainIndexUtxoQuery
+          contractEnv
+          (ChainIndexClient.getUtxoSetWithCurrency (UtxoWithCurrencyRequest (Just page) assetClass))
+    GetTip ->
+      GetTipResponse <$> chainIndexQueryMany cePABConfig ChainIndexClient.getTip
+    TxsFromTxIds txIds -> TxIdsResponse <$> chainIndexQueryMany cePABConfig (ChainIndexClient.getTxs txIds)
+    TxoSetAtAddress page credential ->
+      TxoSetAtResponse
+        <$> chainIndexTxoQuery
+          contractEnv
+          (ChainIndexClient.getTxoSetAtAddress (TxoAtAddressRequest (Just page) credential))
 
 chainIndexQuery' :: forall (a :: Type). PABConfig -> ClientM a -> IO (Either ClientError a)
 chainIndexQuery' pabConf endpoint = do
@@ -93,7 +101,8 @@ chainIndexQueryOne pabConf endpoint = do
 chainIndexUtxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM UtxosResponse -> IO UtxosResponse
 chainIndexUtxoQuery contractEnv query = do
   collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral (UtxosResponse tip page) = UtxosResponse tip (removeCollateralFromPage collateralUtxo page)
+  let removeCollateral :: UtxosResponse -> UtxosResponse
+      removeCollateral (UtxosResponse tip page) = UtxosResponse tip (removeCollateralFromPage collateralUtxo page)
   removeCollateral
     <$> chainIndexQueryMany
       contractEnv.cePABConfig
@@ -103,7 +112,8 @@ chainIndexUtxoQuery contractEnv query = do
 chainIndexTxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM TxosResponse -> IO TxosResponse
 chainIndexTxoQuery contractEnv query = do
   collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral (TxosResponse page) = TxosResponse (removeCollateralFromPage collateralUtxo page)
+  let removeCollateral :: TxosResponse -> TxosResponse
+      removeCollateral (TxosResponse page) = TxosResponse (removeCollateralFromPage collateralUtxo page)
   removeCollateral
     <$> chainIndexQueryMany
       contractEnv.cePABConfig
