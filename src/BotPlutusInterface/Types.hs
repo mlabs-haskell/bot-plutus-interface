@@ -24,12 +24,16 @@ module BotPlutusInterface.Types (
   ContractStats (..),
   TxStatusPolling (..),
   LogsList (..),
+  CollateralUtxo (..),
+  CollateralVar (..),
   addBudget,
+  readCollateralUtxo,
+  collateralValue,
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.ProtocolParameters (ProtocolParameters)
-import Control.Concurrent.STM (TVar)
+import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
@@ -47,6 +51,7 @@ import Ledger (
   TxId,
   TxOutRef,
  )
+import Ledger qualified
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -55,7 +60,8 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
-import Prettyprinter (Pretty (pretty))
+import Plutus.V1.Ledger.Ada qualified as Ada
+import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
@@ -91,8 +97,13 @@ data PABConfig = PABConfig
     pcCollectLogs :: !Bool
   , pcBudgetMultiplier :: !Rational
   , pcTxStatusPolling :: !TxStatusPolling
+  , -- | User defined size of collateral, in Lovelaces
+    pcCollateralSize :: !Natural
   }
   deriving stock (Show, Eq)
+
+collateralValue :: PABConfig -> Ledger.Value
+collateralValue = Ada.lovelaceValueOf . toInteger . pcCollateralSize
 
 {- | Settings for `Contract.awaitTxStatusChange` implementation.
  See also `BotPlutusInterface.Contract.awaitTxStatusChange`
@@ -175,14 +186,33 @@ newtype LogsList = LogsList
 instance Show (TVar LogsList) where
   show _ = "<ContractLogs>"
 
+newtype CollateralUtxo = CollateralUtxo
+  { collateralTxOutRef :: TxOutRef
+  }
+  deriving stock (Show)
+  deriving newtype (Eq)
+
+instance Pretty CollateralUtxo where
+  pretty (CollateralUtxo txOutRef) = "Collateral" <+> pretty txOutRef
+
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
   , ceContractInstanceId :: ContractInstanceId
   , ceContractState :: TVar (ContractState w)
   , ceContractStats :: TVar ContractStats
   , ceContractLogs :: TVar LogsList
+  , ceCollateral :: CollateralVar
   }
   deriving stock (Show)
+
+newtype CollateralVar = CollateralVar
+  { unCollateralVar :: TVar (Maybe CollateralUtxo)
+  }
+instance Show CollateralVar where
+  show _ = "<Collateral TxOutRef>"
+
+readCollateralUtxo :: forall (w :: Type). ContractEnvironment w -> IO (Maybe CollateralUtxo)
+readCollateralUtxo = readTVarIO . unCollateralVar . ceCollateral
 
 data Tip = Tip
   { epoch :: Integer
@@ -257,6 +287,7 @@ instance Default PABConfig where
       , pcCollectLogs = False
       , pcBudgetMultiplier = 1
       , pcTxStatusPolling = TxStatusPolling 1_000_000 8
+      , pcCollateralSize = 10_000_000
       }
 
 data RawTx = RawTx

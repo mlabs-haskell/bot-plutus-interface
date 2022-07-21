@@ -116,4 +116,5 @@ pabConfigExample =
     , pcCollectLogs = False
     , pcBudgetMultiplier = 1
     , pcTxStatusPolling = TxStatusPolling 1_000_000 8
+    , pcCollateralSize = 10_000_000
     }
