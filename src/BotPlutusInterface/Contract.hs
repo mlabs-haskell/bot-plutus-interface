@@ -4,7 +4,7 @@
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
-import BotPlutusInterface.Balance qualified as PreBalance
+import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Collateral qualified as Collateral
@@ -295,21 +295,16 @@ balanceTx contractEnv unbalancedTx = do
     Left e -> pure $ BalanceTxFailed (OtherError e)
     _ -> do
       uploadDir @w pabConf.pcSigningKeyFileDir
-      eitherPreBalancedTx <-
-        if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
-          then
-            PreBalance.balanceTxIO' @w
-              PreBalance.defaultBalanceConfig {PreBalance.bcHasScripts = True}
-              pabConf
-              pabConf.pcOwnPubKeyHash
-              unbalancedTx
-          else
-            PreBalance.balanceTxIO @w
-              pabConf
-              pabConf.pcOwnPubKeyHash
-              unbalancedTx
+      eitherBalancedTx <-
+        Balance.balanceTxIO' @w
+          Balance.defaultBalanceConfig
+            { Balance.bcHasScripts = Balance.txUsesScripts (unBalancedTxTx unbalancedTx)
+            }
+          pabConf
+          pabConf.pcOwnPubKeyHash
+          unbalancedTx
 
-      pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
+      pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherBalancedTx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -508,8 +503,8 @@ makeCollateral cEnv = runEitherT $ do
 
   balancedTx <-
     newEitherT $
-      PreBalance.balanceTxIO' @w
-        PreBalance.defaultBalanceConfig {PreBalance.bcHasScripts = False, PreBalance.bcSeparateChange = True}
+      Balance.balanceTxIO' @w
+        Balance.defaultBalanceConfig {Balance.bcHasScripts = False, Balance.bcSeparateChange = True}
         pabConf
         pabConf.pcOwnPubKeyHash unbalancedTx
 

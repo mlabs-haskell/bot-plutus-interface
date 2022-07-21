@@ -219,6 +219,7 @@ test-suite bot-plutus-interface-test
     , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
+    , pretty-diff
     , prettyprinter
     , QuickCheck
     , quickcheck-instances
