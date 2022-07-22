@@ -3,7 +3,13 @@
 module Spec.BotPlutusInterface.Config (tests) where
 
 import BotPlutusInterface.Config (loadPABConfig, savePABConfig)
-import BotPlutusInterface.Types (CLILocation (..), LogLevel (..), PABConfig (..), TxStatusPolling (TxStatusPolling))
+import BotPlutusInterface.Types (
+  CLILocation (..),
+  LogLevel (..),
+  LogType (AnyLog),
+  PABConfig (..),
+  TxStatusPolling (TxStatusPolling),
+ )
 import Cardano.Api (
   AnyPlutusScriptVersion (..),
   CostModel (..),
@@ -107,7 +113,7 @@ pabConfigExample =
     , pcMetadataDir = "path"
     , pcDryRun = False
     , pcProtocolParamsFile = "./protocol.json3"
-    , pcLogLevel = Debug
+    , pcLogLevel = Debug [AnyLog]
     , pcOwnPubKeyHash = "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546"
     , pcOwnStakePubKeyHash = Just $ StakePubKeyHash "0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97547"
     , pcPort = 1021
