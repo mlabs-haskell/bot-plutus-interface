@@ -6,8 +6,9 @@ module BotPlutusInterface.Types (
   PABConfig (..),
   CLILocation (..),
   AppState (AppState),
-  LogLevel (..),
   LogContext (..),
+  LogLevel (..),
+  LogType (..),
   ContractEnvironment (..),
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
@@ -261,11 +262,12 @@ instance Pretty LogType where
   pretty PABLog = "PABLog"
   pretty AnyLog = "Any"
 
-data LogLevel = Error { ltLogTypes :: [LogType] }
-              | Warn { ltLogTypes :: [LogType] }
-              | Notice { ltLogTypes :: [LogType] } 
-              | Info { ltLogTypes :: [LogType] }
-              | Debug { ltLogTypes :: [LogType] }
+data LogLevel
+  = Error {ltLogTypes :: [LogType]}
+  | Warn {ltLogTypes :: [LogType]}
+  | Notice {ltLogTypes :: [LogType]}
+  | Info {ltLogTypes :: [LogType]}
+  | Debug {ltLogTypes :: [LogType]}
   deriving stock (Eq, Ord, Show)
 
 instance Pretty LogLevel where

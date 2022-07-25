@@ -45,6 +45,11 @@ import Plutus.Contract (
  )
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
+import Pretty.Diff (
+  MultilineContext (FullContext),
+  Wrapping (Wrap),
+ )
+import Pretty.Diff qualified as Diff
 import Spec.MockContract (
   MockContractState (..),
   addr1,
@@ -903,7 +908,14 @@ assertCommandHistory state =
 assertCommandEqual :: String -> Text -> Text -> Assertion
 assertCommandEqual err expected actual
   | commandEqual expected actual = pure ()
-  | otherwise = assertFailure $ err ++ "\nExpected:\n" ++ show expected ++ "\nGot:\n" ++ show actual
+  | otherwise = assertFailure $ err ++ "\n" ++ prettyPrintDiff expected actual
+
+prettyPrintDiff :: Text -> Text -> String
+prettyPrintDiff expected actual =
+  "\nExpected:\n"
+    ++ Text.unpack (Diff.above (Wrap 80) FullContext (Text.replace "\n" " " expected) actual)
+    ++ "\nGot:\n"
+    ++ Text.unpack (Diff.below (Wrap 80) FullContext (Text.replace "\n" " " expected) actual)
 
 {- | Checks if a command matches an expected command pattern
  Where a command pattern may use new lines in place of spaces, and use the wildcard `?` to match up to the next space

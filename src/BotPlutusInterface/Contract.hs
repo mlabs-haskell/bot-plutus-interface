@@ -4,7 +4,7 @@
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
-import BotPlutusInterface.Balance qualified as PreBalance
+import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Collateral qualified as Collateral
@@ -240,7 +240,7 @@ awaitTxStatusChange contractEnv txId = do
     txStatus <- getStatus
     case (txStatus, currBlock > cutOffBlock) of
       (status, True) -> do
-        helperLog (Debug [PABLog]) . mconcat . fmap mconcat $
+        helperLog . mconcat . fmap mconcat $
           [ ["Timeout for waiting `TxId ", show txId, "` status change reached"]
           , [" - waited ", show pollTimeout, " blocks."]
           , [" Current status: ", show status]
@@ -255,17 +255,17 @@ awaitTxStatusChange contractEnv txId = do
       mTx <- queryChainIndexForTxState
       case mTx of
         Nothing -> do
-          helperLog (Debug [PABLog]) $ "TxId " ++ show txId ++ " not found in index"
+          helperLog $ "TxId " ++ show txId ++ " not found in index"
           pure Unknown
         Just txState -> do
-          helperLog (Debug [PABLog]) $ "TxId " ++ show txId ++ " found in index, checking status"
+          helperLog $ "TxId " ++ show txId ++ " found in index, checking status"
           blk <- fromInteger <$> currentBlock contractEnv
           case transactionStatus blk txState txId of
             Left e -> do
-              helperLog (Debug [PABLog]) $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
+              helperLog $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
               pure Unknown
             Right st -> do
-              helperLog (Debug [PABLog]) $ "Status for TxId " ++ show txId ++ " is " ++ show st
+              helperLog $ "Status for TxId " ++ show txId ++ " is " ++ show st
               pure st
 
     queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
@@ -277,8 +277,7 @@ awaitTxStatusChange contractEnv txId = do
           pure . Just $ fromTx blk tx
         Nothing -> pure Nothing
 
-    helperLog :: LogLevel -> String -> Eff effs ()
-    helperLog (Debug a) = printBpiLog @w (Debug a) . pretty
+    helperLog = printBpiLog @w (Debug [CollateralLog]) . pretty
 
 -- | This will FULLY balance a transaction
 balanceTx ::
@@ -296,21 +295,16 @@ balanceTx contractEnv unbalancedTx = do
     Left e -> pure $ BalanceTxFailed (OtherError e)
     _ -> do
       uploadDir @w pabConf.pcSigningKeyFileDir
-      eitherPreBalancedTx <-
-        if PreBalance.txUsesScripts (unBalancedTxTx unbalancedTx)
-          then
-            PreBalance.balanceTxIO' @w
-              PreBalance.defaultBalanceConfig {PreBalance.bcHasScripts = True}
-              pabConf
-              pabConf.pcOwnPubKeyHash
-              unbalancedTx
-          else
-            PreBalance.balanceTxIO @w
-              pabConf
-              pabConf.pcOwnPubKeyHash
-              unbalancedTx
+      eitherBalancedTx <-
+        Balance.balanceTxIO' @w
+          Balance.defaultBalanceConfig
+            { Balance.bcHasScripts = Balance.txUsesScripts (unBalancedTxTx unbalancedTx)
+            }
+          pabConf
+          pabConf.pcOwnPubKeyHash
+          unbalancedTx
 
-      pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherPreBalancedTx
+      pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherBalancedTx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -485,7 +479,7 @@ handleCollateral cEnv = do
   case result of
     Right collteralUtxo ->
       setInMemCollateral @w collteralUtxo
-        >> Right <$> printBpiLog @w (Debug [PABLog]) "successfully set the collateral utxo in env."
+        >> Right <$> printBpiLog @w (Debug [CollateralLog]) "successfully set the collateral utxo in env."
     Left err -> pure $ Left $ "Failed to make collateral: " <> err
   where
     --
@@ -510,8 +504,8 @@ makeCollateral cEnv = runEitherT $ do
 
   balancedTx <-
     newEitherT $
-      PreBalance.balanceTxIO' @w
-        PreBalance.defaultBalanceConfig {PreBalance.bcHasScripts = False, PreBalance.bcSeparateChange = True}
+      Balance.balanceTxIO' @w
+        Balance.defaultBalanceConfig {Balance.bcHasScripts = False, Balance.bcSeparateChange = True}
         pabConf
         pabConf.pcOwnPubKeyHash unbalancedTx
 

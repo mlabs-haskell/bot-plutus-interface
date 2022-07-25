@@ -44,7 +44,7 @@ import BotPlutusInterface.Types (
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
-  LogType (AnyLog),
+  LogType (..),
   LogsList (LogsList),
   TxBudget,
   TxFile,
@@ -64,8 +64,8 @@ import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
-import Data.List (intersect)
 import Data.Kind (Type)
+import Data.List (intersect)
 import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
@@ -194,8 +194,9 @@ handlePABEffect contractEnv =
 printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
 printLog' logLevelSetting msgCtx msgLogLvl msg =
   when
-    (logLevelSetting {ltLogTypes = mempty} >= msgLogLvl {ltLogTypes = mempty}
-      && not (null intersectLogTypes))
+    ( logLevelSetting {ltLogTypes = mempty} >= msgLogLvl {ltLogTypes = mempty}
+        && not (null intersectLogTypes)
+    )
     $ putStrLn target
   where
     target =
@@ -203,7 +204,6 @@ printLog' logLevelSetting msgCtx msgLogLvl msg =
         prettyLog msgCtx msgLogLvl msg
 
     intersectLogTypes = ltLogTypes logLevelSetting `intersect` (ltLogTypes msgLogLvl <> [AnyLog])
-    
 
 prettyLog :: LogContext -> LogLevel -> PP.Doc () -> PP.Doc ()
 prettyLog msgCtx msgLogLvl msg = pretty msgCtx <+> pretty msgLogLvl <+> msg

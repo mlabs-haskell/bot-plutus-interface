@@ -133,9 +133,7 @@ greedySearch stopSearch outVec txInsVec utxosVec
               zip [0 .. length utxosVec - 1] utxosDist
 
       newEitherT $ loop sortedDist txInsVec
-  
   where
-    
     loop :: [(Int, Float)] -> Vector Integer -> Eff effs (Either Text [Int])
     loop [] _ = return $ Right mempty
     loop ((idx, _) : remSortedDist) newTxInsVec =
@@ -176,27 +174,24 @@ greedyPruning stopSearch outVec txInsVec utxosVec
     runEitherT $ do
       selectedUtxosIdx <- newEitherT $ greedySearch @w stopSearch outVec txInsVec utxosVec
 
-      let revSelectedUtxosVec :: [Vector Integer] 
+      let revSelectedUtxosVec :: [Vector Integer]
           revSelectedUtxosVec = List.reverse $ mapMaybe (\idx -> utxosVec ^? ix idx) selectedUtxosIdx
 
           revSelectedUtxosIdx :: [Int]
           revSelectedUtxosIdx = List.reverse selectedUtxosIdx
 
       hoistEither $ loop txInsVec revSelectedUtxosIdx revSelectedUtxosVec
-     
   where
-    
     loop :: Vector Integer -> [Int] -> [Vector Integer] -> Either Text [Int]
-    loop newTxInsVec (idx:idxs) (vec:vecs) = do
-     newTxInsVec' <- addVec newTxInsVec vec
-     changeVec  <- subVec outVec newTxInsVec
-     changeVec' <- subVec outVec newTxInsVec'
+    loop newTxInsVec (idx : idxs) (vec : vecs) = do
+      newTxInsVec' <- addVec newTxInsVec vec
+      changeVec <- subVec outVec newTxInsVec
+      changeVec' <- subVec outVec newTxInsVec'
 
-     case l2norm outVec changeVec' < l2norm outVec changeVec of
-       True   -> (idx :) <$> loop newTxInsVec' idxs vecs
-       False | stopSearch newTxInsVec -> Right mempty
-       False -> (idx :) <$> loop newTxInsVec' idxs vecs
-
+      case l2norm outVec changeVec' < l2norm outVec changeVec of
+        True -> (idx :) <$> loop newTxInsVec' idxs vecs
+        False | stopSearch newTxInsVec -> Right mempty
+        False -> (idx :) <$> loop newTxInsVec' idxs vecs
     loop _newTxInsVec [] [] = pure mempty
     loop _newTxInsVec _idxs _vecs = Left "Length of idxs and list of vecs are not same."
 

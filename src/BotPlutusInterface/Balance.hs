@@ -25,7 +25,7 @@ import BotPlutusInterface.Effects (
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (
-  CollateralUtxo,
+  CollateralUtxo (collateralTxOutRef),
   LogLevel (Debug),
   LogType (TxBalancingLog),
   PABConfig,

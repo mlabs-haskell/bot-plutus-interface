@@ -88,7 +88,7 @@ addUtxosForNativeTokens = do
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
-    Right balancedTx -> txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2, txIn3, txIn4])
+    Right balancedTx -> txInputs <$> balancedTx @?= Right (Set.fromList [txIn3, txIn4])
 
 addUtxosForChange :: Assertion
 addUtxosForChange = do
