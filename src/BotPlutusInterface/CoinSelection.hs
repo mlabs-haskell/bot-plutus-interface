@@ -3,9 +3,8 @@
 
 module BotPlutusInterface.CoinSelection (valueToVec, valuesToVecs, selectTxIns) where
 
-import Control.Lens (ix, (^?))
+import Control.Lens (foldOf, folded, ix, over, to, uncons, (^..), (^?), _Just)
 import Control.Monad.Freer (Eff, Member)
-
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
 import Data.Either.Combinators (isRight, maybeToRight)
@@ -13,23 +12,25 @@ import Data.Kind (Type)
 import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, pack)
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
-
-import Ledger hiding (outValue)
+import Ledger qualified
+import Ledger.Tx (
+  TxIn (..),
+  TxOut (..),
+  TxOutRef (..),
+ )
+import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
 
 import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
  )
-
 import BotPlutusInterface.Effects (PABEffect, printBpiLog)
 import BotPlutusInterface.Types (LogLevel (Debug), LogType (CoinSelectionLog))
-
 import Prettyprinter (pretty, (<+>))
 import Prelude
 
@@ -49,14 +50,14 @@ selectTxIns originalTxIns utxosIndex outValue =
   runEitherT $ do
     let txInsValue :: Value
         txInsValue =
-          mconcat $ map txOutValue $ mapMaybe ((`Map.lookup` utxosIndex) . txInRef) $ Set.toList originalTxIns
+          foldOf (folded . to ((`Map.lookup` utxosIndex) . txInRef) . folded . to txOutValue) originalTxIns
 
         allAssetClasses :: Set AssetClass
         allAssetClasses =
-          uniqueAssetClasses $ txInsValue : outValue : map (txOutValue . snd) (Map.toList utxosIndex)
+          uniqueAssetClasses $ txInsValue : outValue : utxosIndex ^.. folded . to txOutValue
 
         txInRefs :: [TxOutRef]
-        txInRefs = map txInRef $ Set.toList originalTxIns
+        txInRefs = originalTxIns ^.. folded . to txInRef
 
         remainingUtxos :: [(TxOutRef, TxOut)]
         remainingUtxos =
@@ -82,7 +83,7 @@ selectTxIns originalTxIns utxosIndex outValue =
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
 
     let selectedUtxos :: [(TxOutRef, TxOut)]
-        selectedUtxos = mapMaybe (\idx -> remainingUtxos ^? ix idx) selectedUtxosIdxs
+        selectedUtxos = selectedUtxosIdxs ^.. folded . to (\idx -> remainingUtxos ^? ix idx) . folded
 
     selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
 
@@ -141,10 +142,7 @@ greedySearch stopSearch outVec txInsVec utxosVec
         then return $ Right mempty
         else runEitherT $ do
           selectedUtxoVec <-
-            hoistEither $
-              maybeToRight
-                "Out of bounds"
-                (utxosVec ^? ix idx)
+            hoistEither $ maybeToRight "Out of bounds" (utxosVec ^? ix idx)
           newTxInsVec' <- hoistEither $ addVec newTxInsVec selectedUtxoVec
 
           lift $
@@ -175,7 +173,8 @@ greedyPruning stopSearch outVec txInsVec utxosVec
       selectedUtxosIdx <- newEitherT $ greedySearch @w stopSearch outVec txInsVec utxosVec
 
       let revSelectedUtxosVec :: [Vector Integer]
-          revSelectedUtxosVec = List.reverse $ mapMaybe (\idx -> utxosVec ^? ix idx) selectedUtxosIdx
+          revSelectedUtxosVec =
+            List.reverse $ selectedUtxosIdx ^.. folded . to (\idx -> utxosVec ^? ix idx) . folded
 
           revSelectedUtxosIdx :: [Int]
           revSelectedUtxosIdx = List.reverse selectedUtxosIdx
@@ -238,7 +237,7 @@ zeroVec n = Vec.fromList $ replicate n 0
 valueToVec :: Set AssetClass -> Value -> Either Text (Vector Integer)
 valueToVec allAssetClasses v =
   maybeToRight "Error: Not able to uncons from empty vector." $
-    fmap fst $ Vec.uncons $ valuesToVecs allAssetClasses [v]
+    (over _Just fst . uncons) $ valuesToVecs allAssetClasses [v]
 
 valuesToVecs :: Set AssetClass -> [Value] -> Vector (Vector Integer)
 valuesToVecs allAssetClasses values = Vec.fromList $ map toVec values
@@ -257,6 +256,6 @@ uniqueAssetClasses = Set.fromList . concatMap valueToAssetClass
 -- Converting a chain index transaction output to a transaction input type
 txOutToTxIn :: (TxOutRef, TxOut) -> Either Text TxIn
 txOutToTxIn (txOutRef, txOut) =
-  case addressCredential (txOutAddress txOut) of
-    PubKeyCredential _ -> Right $ pubKeyTxIn txOutRef
+  case Ledger.addressCredential (txOutAddress txOut) of
+    PubKeyCredential _ -> Right $ Ledger.pubKeyTxIn txOutRef
     ScriptCredential _ -> Left "Cannot covert a script output to TxIn"

@@ -65,3 +65,5 @@ geth-node/chaindata/history
 
 # debug configs
 examples/debug/
+
+visualization/
