@@ -25,7 +25,6 @@ module BotPlutusInterface.Types (
   ContractStats (..),
   TxStatusPolling (..),
   LogsList (..),
-  LogType (..),
   CollateralUtxo (..),
   CollateralVar (..),
   addBudget,

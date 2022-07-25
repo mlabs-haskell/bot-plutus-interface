@@ -3,10 +3,28 @@
 
 module BotPlutusInterface.CoinSelection (valueToVec, valuesToVecs, selectTxIns, uniqueAssetClasses) where
 
-import Control.Lens (foldOf, folded, ix, over, to, uncons, (^..), (^?), _Just)
+import BotPlutusInterface.Effects (PABEffect, printBpiLog)
+import BotPlutusInterface.Types (LogLevel (Debug), LogType (CoinSelectionLog))
+import Control.Lens (
+  foldOf,
+  folded,
+  ifolded,
+  ix,
+  over,
+  to,
+  uncons,
+  withIndex,
+  (%~),
+  (&),
+  (^..),
+  (^?),
+  _Just,
+ )
+import Control.Monad.Except (throwError)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
+import Data.Default (Default (def))
 import Data.Either.Combinators (isRight, maybeToRight)
 import Data.Kind (Type)
 import Data.List qualified as List
@@ -25,20 +43,26 @@ import Ledger.Tx (
  )
 import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
-
 import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
  )
-import BotPlutusInterface.Effects (PABEffect, printBpiLog)
-import BotPlutusInterface.Types (LogLevel (Debug), LogType (CoinSelectionLog))
 import Prettyprinter (pretty, (<+>))
 import Prelude
 
+-- 'Search' represents the possible search strategy.
 data Search
-  = Greedy
-  | GreedyPruning
-  deriving stock (Show)
+  = -- | This is a greedy search that searches for nearest utxo using l2norm.
+    Greedy
+  | -- | This is like greedy search, but here there's
+    -- additonal goal that the change utxo should be equal to the output utxo.
+    GreedyApprox
+  deriving stock (Eq, Show)
 
+instance Default Search where
+  def = GreedyApprox
+
+-- 'selectTxIns' selects utxos using default search strategy, it also preprocesses
+-- the utxos values in to normalized vectors. So that distances between utxos can be calculated.
 selectTxIns ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -48,10 +72,12 @@ selectTxIns ::
   Eff effs (Either Text (Set TxIn))
 selectTxIns originalTxIns utxosIndex outValue =
   runEitherT $ do
-    let txInsValue :: Value
+    let -- This represents the input value.
+        txInsValue :: Value
         txInsValue =
           foldOf (folded . to ((`Map.lookup` utxosIndex) . txInRef) . folded . to txOutValue) originalTxIns
 
+        -- This is set of all the asset classes present in outValue, inputValue and all the utxos combined
         allAssetClasses :: Set AssetClass
         allAssetClasses =
           uniqueAssetClasses $ txInsValue : outValue : utxosIndex ^.. folded . to txOutValue
@@ -59,6 +85,7 @@ selectTxIns originalTxIns utxosIndex outValue =
         txInRefs :: [TxOutRef]
         txInRefs = originalTxIns ^.. folded . to txInRef
 
+        -- All the remainingUtxos that has not been used as an input to the transaction yet.
         remainingUtxos :: [(TxOutRef, TxOut)]
         remainingUtxos =
           Map.toList $
@@ -68,29 +95,42 @@ selectTxIns originalTxIns utxosIndex outValue =
 
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "Remaining UTxOs: " <+> pretty remainingUtxos
 
+    -- the input vector for the current transaction, this can be a zero vector when there are no
+    -- inputs the transaction.
     txInsVec <-
       hoistEither $
         if Value.isZero txInsValue
           then Right $ zeroVec (length allAssetClasses)
           else valueToVec allAssetClasses txInsValue
 
+    -- the output vector of the current transaction, this is all the values of TxOut combined.
     outVec <- hoistEither $ valueToVec allAssetClasses outValue
 
+    -- all the remainingUtxos converted to the vectors.
     remainingUtxosVec <- hoistEither $ mapM (valueToVec allAssetClasses . txOutValue . snd) remainingUtxos
 
-    selectedUtxosIdxs <- newEitherT $ selectTxIns' @w GreedyPruning (isSufficient outVec) outVec txInsVec remainingUtxosVec
+    -- we use the default search strategy to get indexes of optimal utxos, these indexes are for the
+    -- remainingUtxos, as we are sampling utxos from that set.
+    selectedUtxosIdxs <- newEitherT $ selectTxIns' @w def (isSufficient outVec) outVec txInsVec remainingUtxosVec
 
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
 
-    let selectedUtxos :: [(TxOutRef, TxOut)]
+    let -- These are the selected utxos that we get using `selectedUtxosIdxs`.
+        selectedUtxos :: [(TxOutRef, TxOut)]
         selectedUtxos = selectedUtxosIdxs ^.. folded . to (\idx -> remainingUtxos ^? ix idx) . folded
 
     selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
 
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "Selected TxIns: " <+> pretty selectedTxIns
 
+    -- Now we add the selected utxos to originalTxIns present in the transaction previously.
     return $ originalTxIns <> Set.fromList selectedTxIns
   where
+    -- This represents the condition when we can stop searching for utxos.
+    -- First condition is that the input vector must not be zero vector, i.e.
+    -- There must be atleast some input to the transaction.
+    -- Second condition is that all the values of input vector must be greater than
+    -- or equal to the output vector.
     isSufficient :: Vector Integer -> Vector Integer -> Bool
     isSufficient outVec txInsVec =
       Vec.all (== True) (Vec.zipWith (<=) outVec txInsVec)
@@ -105,8 +145,14 @@ selectTxIns' ::
   Vector Integer ->
   [Vector Integer] ->
   Eff effs (Either Text [Int])
-selectTxIns' Greedy = greedySearch @w
-selectTxIns' GreedyPruning = greedyPruning @w
+selectTxIns' searchStrategy stopSearch outVec txInsVec utxosVec
+  | searchStrategy == Greedy =
+    printBpiLog @w (Debug [CoinSelectionLog]) "Selecting UTxOs via greedy search"
+      >> greedySearch @w stopSearch outVec txInsVec utxosVec
+  | searchStrategy == GreedyApprox =
+    printBpiLog @w (Debug [CoinSelectionLog]) "Selecting UTxOs via greedy pruning search"
+      >> greedyApprox @w stopSearch outVec txInsVec utxosVec
+  | otherwise = return $ throwError "Not a valid search strategy."
 
 greedySearch ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -125,13 +171,12 @@ greedySearch stopSearch outVec txInsVec utxosVec
       >> return (Right mempty)
   | otherwise =
     runEitherT $ do
-      x <- hoistEither $ mapM (addVec txInsVec) utxosVec
-      utxosDist <- hoistEither $ mapM (l2norm outVec) x
+      utxosDist <- hoistEither $ mapM (addVec txInsVec) utxosVec >>= mapM (l2norm outVec)
 
       let sortedDist :: [(Int, Float)]
           sortedDist =
-            List.sortBy (\a b -> compare (snd a) (snd b)) $
-              zip [0 .. length utxosVec - 1] utxosDist
+            utxosDist ^.. ifolded . withIndex
+              & id %~ List.sortBy (\a b -> compare (snd a) (snd b))
 
       newEitherT $ loop sortedDist txInsVec
   where
@@ -153,7 +198,7 @@ greedySearch stopSearch outVec txInsVec utxosVec
 
           (idx :) <$> newEitherT (loop remSortedDist newTxInsVec')
 
-greedyPruning ::
+greedyApprox ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   (Vector Integer -> Bool) ->
@@ -161,7 +206,7 @@ greedyPruning ::
   Vector Integer ->
   [Vector Integer] ->
   Eff effs (Either Text [Int])
-greedyPruning stopSearch outVec txInsVec utxosVec
+greedyApprox stopSearch outVec txInsVec utxosVec
   | null utxosVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: The list of remanining UTxO vectors in null."
       >> return (Right mempty)
@@ -244,8 +289,8 @@ valuesToVecs allAssetClasses values = Vec.fromList $ map toVec values
   where
     toVec :: Value -> Vector Integer
     toVec v =
-      Vec.map (Value.assetClassValueOf v) $
-        Vec.fromList $ Set.toList allAssetClasses
+      fmap (Value.assetClassValueOf v) $
+        allAssetClasses & id %~ (Vec.fromList . Set.toList)
 
 uniqueAssetClasses :: [Value] -> Set AssetClass
 uniqueAssetClasses = Set.fromList . concatMap valueToAssetClass
