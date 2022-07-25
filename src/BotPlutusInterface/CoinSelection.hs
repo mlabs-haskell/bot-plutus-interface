@@ -1,7 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
 
-module BotPlutusInterface.CoinSelection (valueToVec, valuesToVecs, selectTxIns) where
+module BotPlutusInterface.CoinSelection (valueToVec, valuesToVecs, selectTxIns, uniqueAssetClasses) where
 
 import Control.Lens (foldOf, folded, ix, over, to, uncons, (^..), (^?), _Just)
 import Control.Monad.Freer (Eff, Member)
