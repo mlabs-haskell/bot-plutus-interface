@@ -112,7 +112,7 @@
     };
     plutus-apps = {
       url =
-        "github:gege251/plutus-apps/62342808fa7422ebea3233a7e031d3aa00c04672";
+        "github:gege251/plutus-apps/a538d5f62458bea9378a2834b0e82a3185c170a1";
       flake = false;
     };
     purescript-bridge = {
