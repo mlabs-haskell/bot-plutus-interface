@@ -7,6 +7,7 @@ import Data.Kind (Type)
 import Network.HTTP.Client (ManagerSettings (managerResponseTimeout), defaultManagerSettings, newManager, responseTimeoutNone)
 import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Api (
+  QueryAtAddressRequest (QueryAtAddressRequest),
   TxoAtAddressRequest (TxoAtAddressRequest),
   UtxoAtAddressRequest (UtxoAtAddressRequest),
   UtxoWithCurrencyRequest (UtxoWithCurrencyRequest),
@@ -42,6 +43,11 @@ handleChainIndexReq pabConf = \case
     TxOutRefResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTxOut txOutRef)
   UnspentTxOutFromRef txOutRef ->
     UnspentTxOutResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getUnspentTxOut txOutRef)
+  UnspentTxOutSetAtAddress page credential ->
+    UnspentTxOutsAtResponse
+      <$> chainIndexQueryMany
+        pabConf
+        (ChainIndexClient.getUnspentTxOutsAtAddress (QueryAtAddressRequest (Just page) credential))
   TxFromTxId txId ->
     TxIdResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getTx txId)
   UtxoSetMembership txOutRef ->

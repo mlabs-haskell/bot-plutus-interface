@@ -38,6 +38,7 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
+import Plutus.ChainIndex (OutputDatum (NoOutputDatum))
 import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
 import Plutus.Contract (
   Contract (..),
@@ -109,7 +110,7 @@ tests =
 sendAda :: Assertion
 sendAda = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -180,7 +181,7 @@ sendAda = do
 sendAdaNoChange :: Assertion
 sendAdaNoChange = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -209,7 +210,7 @@ sendAdaNoChange = do
 sendAdaStaking :: Assertion
 sendAdaStaking = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -281,7 +282,7 @@ sendAdaStaking = do
 multisigSupport :: Assertion
 multisigSupport = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -323,7 +324,7 @@ multisigSupport = do
 withoutSigning :: Assertion
 withoutSigning = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) NoOutputDatum Nothing
       initState =
         def
           & utxos .~ [(txOutRef, txOut)]
@@ -368,9 +369,11 @@ sendTokens = do
         PublicKeyChainIndexTxOut
           pkhAddr1
           (Ada.lovelaceValueOf 1350 <> Value.singleton "abcd1234" "testToken" 100)
+          NoOutputDatum
+          Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
-        PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1250)
+        PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1250) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef1
 
@@ -403,10 +406,10 @@ sendTokensWithoutName :: Assertion
 sendTokensWithoutName = do
   let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
       txOut1 =
-        PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350 <> Value.singleton "abcd1234" "" 100)
+        PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350 <> Value.singleton "abcd1234" "" 100) NoOutputDatum Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
-        PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1250)
+        PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1250) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef1
 
@@ -438,7 +441,7 @@ sendTokensWithoutName = do
 mintTokens :: Assertion
 mintTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -518,7 +521,7 @@ mintTokens = do
 spendToValidator :: Assertion
 spendToValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1000)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1000) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -603,14 +606,15 @@ spendToValidator = do
 redeemFromValidator :: Assertion
 redeemFromValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000) NoOutputDatum Nothing
       txOutRef' = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut' =
         ScriptChainIndexTxOut
           valAddr
-          (Right validator)
-          (Left datumHash)
           (Ada.lovelaceValueOf 1250)
+          (Left datumHash)
+          Nothing
+          (Right validator)
       initState = def & utxos .~ [(txOutRef, txOut), (txOutRef', txOut')]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -706,7 +710,7 @@ redeemFromValidator = do
 multiTx :: Assertion
 multiTx = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
 
       contract :: Contract () (Endpoint "SendAda" ()) Text [CardanoTx]
@@ -735,7 +739,7 @@ multiTx = do
 withValidRange :: Assertion
 withValidRange = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -780,7 +784,7 @@ withValidRange = do
 useWriter :: Assertion
 useWriter = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200)
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) NoOutputDatum Nothing
       initState = def & utxos .~ [(txOutRef, txOut)]
 
       contract :: Contract (Last Text) (Endpoint "SendAda" ()) Text CardanoTx

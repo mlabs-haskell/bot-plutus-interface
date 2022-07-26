@@ -18,6 +18,7 @@ import Ledger.Tx (
 import Ledger.Value (TokenName (TokenName))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
+import Plutus.V2.Ledger.Api (OutputDatum (NoOutputDatum, OutputDatumHash))
 import PlutusTx.Builtins (toBuiltin)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
@@ -39,6 +40,7 @@ tests =
     , testCase "Multiple utxos, ada only" multiAdaOnly
     , testCase "Single utxo, ada and native tokens" singleWithNativeTokens
     , testCase "Single utxo, with datum" singleWithDatum
+    , testCase "PubKeyHash address with datum" pkhAddrWithDatum
     ]
 
 withoutUtxo :: Assertion
@@ -62,7 +64,7 @@ singleAdaOnly = do
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000)
+      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) NoOutputDatum Nothing
       )
     ]
 
@@ -79,15 +81,15 @@ multiAdaOnly = do
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000)
+      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) NoOutputDatum Nothing
       )
     ,
       ( TxOutRef "52a003b3f4956433429631afe4002f82a924a5a7a891db7ae1f6434797a57dff" 1
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 89835907)
+      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 89835907) NoOutputDatum Nothing
       )
     ,
       ( TxOutRef "d8a5630a9d7e913f9d186c95e5138a239a4e79ece3414ac894dbf37280944de3" 0
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 501000123456)
+      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 501000123456) NoOutputDatum Nothing
       )
     ]
 
@@ -117,6 +119,8 @@ singleWithNativeTokens = do
               <> Value.assetClassValue tokenWithRawByteString 3456
               <> Value.assetClassValue tokenWithEmptyName 4567
           )
+          NoOutputDatum
+          Nothing
       )
     ]
 
@@ -133,9 +137,29 @@ singleWithDatum = do
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
       , ScriptChainIndexTxOut
           addr
-          (Left "0000")
-          (Left "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0")
           (Ada.lovelaceValueOf 5000000000)
+          (Left "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0")
+          Nothing
+          (Left "0000")
+      )
+    ]
+
+pkhAddrWithDatum :: Assertion
+pkhAddrWithDatum = do
+  let addr = pubKeyHashAddress "0000"
+  testUtxoParser
+    addr
+    [text|                           TxHash                                 TxIx        Amount
+          --------------------------------------------------------------------------------------
+          384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51     0        5000000000 lovelace + TxOutDatumHash ScriptDataInBabbageEra "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0"
+    |]
+    [
+      ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
+      , PublicKeyChainIndexTxOut
+          addr
+          (Ada.lovelaceValueOf 5000000000)
+          (OutputDatumHash "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0")
+          Nothing
       )
     ]
 

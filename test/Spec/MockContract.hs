@@ -70,6 +70,8 @@ import Cardano.Api (
   Key (VerificationKey, getVerificationKey),
   NetworkId (Mainnet),
   PaymentKey,
+  PlutusScriptVersion (PlutusScriptV2),
+  Script (PlutusScript),
   SigningKey (PaymentSigningKey),
   TextEnvelope (TextEnvelope, teDescription, teRawCBOR, teType),
   TextEnvelopeDescr,
@@ -77,9 +79,12 @@ import Cardano.Api (
   deserialiseFromTextEnvelope,
   getVerificationKey,
   serialiseToTextEnvelope,
+  toScriptInAnyLang,
  )
+import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
+import Codec.Serialise (serialise)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
 import Control.Lens (at, view, (%~), (&), (<|), (?~), (^.), (^..), _1)
@@ -95,6 +100,8 @@ import Data.Aeson.Extras (encodeByteString)
 import Data.Bool (bool)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as BS
+import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Short qualified as SBS
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight, mapLeft)
 import Data.Hex (hex, unhex)
@@ -136,18 +143,19 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.ChainIndex.Api (UtxosResponse (..))
+import Plutus.ChainIndex.Api (QueryResponse (QueryResponse), UtxosResponse (..))
 import Plutus.ChainIndex.Tx (
   ChainIndexTx (..),
   ChainIndexTxOutputs (ValidTx),
   OutputDatum (NoOutputDatum, OutputDatum, OutputDatumHash),
-  ReferenceScript (ReferenceScriptNone),
+  ReferenceScript (ReferenceScriptInAnyLang, ReferenceScriptNone),
  )
 import Plutus.ChainIndex.Tx qualified as CIT
 import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
+import Plutus.V1.Ledger.Api qualified as V1
 import Plutus.V1.Ledger.Credential (Credential (PubKeyCredential))
 import PlutusTx.Builtins (fromBuiltin)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
@@ -452,17 +460,26 @@ mockQueryUtxoOut utxos' =
                 let txId' = encodeByteString $ fromBuiltin txId
                     txIx' = Text.pack $ show txIx
                     amts = valueToUtxoOut $ view ciTxOutValue ciTxOut
-                    outDatum = case ciTxOut of
-                      PublicKeyChainIndexTxOut {} -> "TxOutDatumNone"
-                      ScriptChainIndexTxOut _ _ (Left (DatumHash dh)) _ ->
-                        "TxDatumHash ScriptDataInBabbageEra " <> encodeByteString (fromBuiltin dh)
-                      ScriptChainIndexTxOut _ _ (Right (Datum d)) _ ->
-                        "TxOutDatumInline ReferenceTxInsScriptsInlineDatumsInBabbageEra "
-                          <> Text.pack (show d)
+                    outDatum = txOutToDatum ciTxOut
                  in [text|${txId'}     ${txIx'}        ${amts} + ${outDatum}|]
             )
             utxos'
       ]
+
+txOutToDatum :: ChainIndexTxOut -> Text
+txOutToDatum =
+  \case
+    PublicKeyChainIndexTxOut _ _ NoOutputDatum _ -> "TxOutDatumNone"
+    PublicKeyChainIndexTxOut _ _ (OutputDatumHash (DatumHash dh)) _ -> printDatumHash dh
+    PublicKeyChainIndexTxOut _ _ (OutputDatum (Datum d)) _ -> printDatum d
+    ScriptChainIndexTxOut _ _ (Left (DatumHash dh)) _ _ -> printDatumHash dh
+    ScriptChainIndexTxOut _ _ (Right (Datum d)) _ _ -> printDatum d
+  where
+    printDatumHash dh =
+      "TxDatumHash ScriptDataInBabbageEra " <> encodeByteString (fromBuiltin dh)
+    printDatum d =
+      "TxOutDatumInline ReferenceTxInsScriptsInlineDatumsInBabbageEra "
+        <> Text.pack (show d)
 
 mockBudget :: String
 mockBudget = "Some budget"
@@ -584,6 +601,9 @@ mockQueryChainIndex = \case
   UnspentTxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
     pure $ UnspentTxOutResponse $ lookup txOutRef (state ^. utxos)
+  UnspentTxOutSetAtAddress _ _ -> do
+    state <- get @(MockContractState w)
+    pure $ UnspentTxOutsAtResponse $ QueryResponse (state ^. utxos) Nothing
   TxFromTxId txId ->
     if txId == nonExistingTxId
       then pure $ TxIdResponse Nothing
@@ -651,21 +671,35 @@ buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map converCiTxOut $ fillG
     fillGaps (out@(TxOutRef _ n', txOut) : outs) n
       | n' == n = txOut : fillGaps outs (n + 1)
       | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
-    defTxOut = PublicKeyChainIndexTxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty
+    defTxOut =
+      PublicKeyChainIndexTxOut
+        (Ledger.Address (PubKeyCredential "") Nothing)
+        mempty
+        NoOutputDatum
+        Nothing
 
-    converCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
-    converCiTxOut (PublicKeyChainIndexTxOut addr val) =
-      CIT.ChainIndexTxOut addr val NoOutputDatum ReferenceScriptNone
-    converCiTxOut (ScriptChainIndexTxOut addr _ eitherDatum val) =
-      let datum = case eitherDatum of
-            Left dh -> OutputDatumHash dh
-            Right d -> OutputDatum d
-       in -- TODO: do some better conversion
-          -- validator =
-          --   case eitherValidator of
-          --     Left _ -> ReferenceScriptNone
-          --     Right v -> ReferenceScriptInAnyLang v
-          CIT.ChainIndexTxOut addr val datum ReferenceScriptNone
+converCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
+converCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
+  CIT.ChainIndexTxOut addr val dat (convertRefScript maybeRefSc)
+converCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
+  let datum = case eitherDatum of
+        Left dh -> OutputDatumHash dh
+        Right d -> OutputDatum d
+   in CIT.ChainIndexTxOut addr val datum (convertRefScript maybeRefSc)
+
+convertRefScript :: Maybe V1.Script -> ReferenceScript
+convertRefScript =
+  \case
+    Nothing -> ReferenceScriptNone
+    Just v ->
+      ReferenceScriptInAnyLang
+        . toScriptInAnyLang
+        . PlutusScript PlutusScriptV2
+        . PlutusScriptSerialised
+        . SBS.toShort
+        . LBS.toStrict
+        . serialise
+        $ v
 
 mockExBudget ::
   forall (w :: Type).

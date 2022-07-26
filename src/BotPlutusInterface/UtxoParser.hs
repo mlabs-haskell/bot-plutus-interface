@@ -27,6 +27,7 @@ import Data.Attoparsec.Text (
   takeWhile,
   (<?>),
  )
+import Data.Functor (($>))
 import Data.Text (Text)
 import Ledger (Address (addressCredential))
 import Ledger.Ada qualified as Ada
@@ -40,6 +41,7 @@ import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   TokenName (..),
  )
+import Plutus.V2.Ledger.Api (OutputDatum (NoOutputDatum, OutputDatumHash))
 import PlutusTx.Builtins (toBuiltin)
 import Prelude hiding (takeWhile)
 
@@ -76,10 +78,10 @@ chainIndexTxOutParser address = do
   case addressCredential address of
     ScriptCredential validatorHash -> do
       datumHash <- datumHashParser <?> "DatumHash"
-      pure $ ScriptChainIndexTxOut address (Left validatorHash) (Left datumHash) value
+      pure $ ScriptChainIndexTxOut address value (Left datumHash) Nothing (Left validatorHash)
     PubKeyCredential _ -> do
-      datumHashNoneParser <?> "DatumHash"
-      pure $ PublicKeyChainIndexTxOut address value
+      outputDatum <- outputDatumParser <?> "OutputDatum"
+      pure $ PublicKeyChainIndexTxOut address value outputDatum Nothing
 
 valueParser :: Parser Value
 valueParser = do
@@ -107,8 +109,11 @@ tokenNameParser = do
       void $ optional $ string "0x"
       TokenName <$> decodeHash (takeWhile (not . isSpace))
 
-datumHashNoneParser :: Parser ()
-datumHashNoneParser = "TxOutDatumNone" >> pure ()
+-- TODO: Handle inline datums, if we need them here
+outputDatumParser :: Parser OutputDatum
+outputDatumParser =
+  OutputDatumHash <$> datumHashParser
+    <|> "TxOutDatumNone" $> NoOutputDatum
 
 datumHashParser :: Parser DatumHash
 datumHashParser = do
