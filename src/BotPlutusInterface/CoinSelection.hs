@@ -20,7 +20,7 @@ import Control.Lens (
   (^?),
   _Just,
  )
-import Control.Monad.Except (throwError)
+import Control.Monad.Except (foldM, throwError, unless)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
@@ -49,8 +49,8 @@ import Plutus.V1.Ledger.Api (
 import Prettyprinter (pretty, (<+>))
 import Prelude
 
--- 'Search' represents the possible search strategy.
-data Search
+-- 'searchStrategy' represents the possible search strategy.
+data SearchStrategy
   = -- | This is a greedy search that searches for nearest utxo using l2norm.
     Greedy
   | -- | This is like greedy search, but here there's
@@ -58,7 +58,7 @@ data Search
     GreedyApprox
   deriving stock (Eq, Show)
 
-instance Default Search where
+instance Default SearchStrategy where
   def = GreedyApprox
 
 -- 'selectTxIns' selects utxos using default search strategy, it also preprocesses
@@ -111,13 +111,19 @@ selectTxIns originalTxIns utxosIndex outValue =
 
     -- we use the default search strategy to get indexes of optimal utxos, these indexes are for the
     -- remainingUtxos, as we are sampling utxos from that set.
-    selectedUtxosIdxs <- newEitherT $ selectTxIns' @w def (isSufficient outVec) outVec txInsVec remainingUtxosVec
+    selectedUtxosIdxs <- newEitherT $ searchTxIns @w def (isSufficient outVec) outVec txInsVec remainingUtxosVec
 
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
 
     let -- These are the selected utxos that we get using `selectedUtxosIdxs`.
         selectedUtxos :: [(TxOutRef, TxOut)]
         selectedUtxos = selectedUtxosIdxs ^.. folded . to (\idx -> remainingUtxos ^? ix idx) . folded
+
+        selectedVectors :: [Vector Integer]
+        selectedVectors = selectedUtxosIdxs ^.. folded . to (\idx -> remainingUtxosVec ^? ix idx) . folded
+
+    finalTxInputVector <- hoistEither $ foldM addVec txInsVec selectedVectors
+    unless (isSufficient outVec finalTxInputVector) (throwError "Insufficient Funds")
 
     selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
 
@@ -136,16 +142,18 @@ selectTxIns originalTxIns utxosIndex outValue =
       Vec.all (== True) (Vec.zipWith (<=) outVec txInsVec)
         && txInsVec /= zeroVec (length txInsVec)
 
-selectTxIns' ::
+-- `searchTxIns` searches for optimal utxos for a transaction as input given
+-- current input vector, output vector and a list of all the remaining utxo vectors.
+searchTxIns ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  Search ->
+  SearchStrategy ->
   (Vector Integer -> Bool) ->
   Vector Integer ->
   Vector Integer ->
   [Vector Integer] ->
   Eff effs (Either Text [Int])
-selectTxIns' searchStrategy stopSearch outVec txInsVec utxosVec
+searchTxIns searchStrategy stopSearch outVec txInsVec utxosVec
   | searchStrategy == Greedy =
     printBpiLog @w (Debug [CoinSelectionLog]) "Selecting UTxOs via greedy search"
       >> greedySearch @w stopSearch outVec txInsVec utxosVec
@@ -154,6 +162,9 @@ selectTxIns' searchStrategy stopSearch outVec txInsVec utxosVec
       >> greedyApprox @w stopSearch outVec txInsVec utxosVec
   | otherwise = return $ throwError "Not a valid search strategy."
 
+-- `greedySearch` searches for utxos vectors for input to a transaction,
+-- this is achieved by selecting the utxo vector that have closest euclidean distance
+-- from output vector.
 greedySearch ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -163,16 +174,24 @@ greedySearch ::
   [Vector Integer] ->
   Eff effs (Either Text [Int])
 greedySearch stopSearch outVec txInsVec utxosVec
+  -- we stop the search if there are no utxos vectors left, as we will not be able to
+  -- select any further utxos as input to a transaction.
   | null utxosVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: The list of remanining UTxO vectors in null."
       >> return (Right mempty)
+  -- we stop the search is the predicate `stopSearch` is true.
   | stopSearch txInsVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: Stopping search early."
       >> return (Right mempty)
   | otherwise =
     runEitherT $ do
+      -- Here, we calculate the euclidean distance of the following vectors:
+      -- l2norm(inputVec + remaining UTxO vector (U1), output vector).
+      -- where U1 is just a vector from a list utxosVec.
       utxosDist <- hoistEither $ mapM (addVec txInsVec) utxosVec >>= mapM (l2norm outVec)
 
+      -- Now, we fold the distances with their current indexes, and then
+      -- sort (lowest to highest) them using the distance from output vector.
       let sortedDist :: [(Int, Float)]
           sortedDist =
             utxosDist ^.. ifolded . withIndex
@@ -183,11 +202,14 @@ greedySearch stopSearch outVec txInsVec utxosVec
     loop :: [(Int, Float)] -> Vector Integer -> Eff effs (Either Text [Int])
     loop [] _ = return $ Right mempty
     loop ((idx, _) : remSortedDist) newTxInsVec =
-      if stopSearch newTxInsVec
+      if stopSearch newTxInsVec -- we check if we should stop the search.
         then return $ Right mempty
         else runEitherT $ do
+          -- Get the selected utxo vector given the current idx.
           selectedUtxoVec <-
             hoistEither $ maybeToRight "Out of bounds" (utxosVec ^? ix idx)
+
+          -- Add the selected utxo vector to the current tx input vector.
           newTxInsVec' <- hoistEither $ addVec newTxInsVec selectedUtxoVec
 
           lift $
@@ -198,6 +220,21 @@ greedySearch stopSearch outVec txInsVec utxosVec
 
           (idx :) <$> newEitherT (loop remSortedDist newTxInsVec')
 
+-- 'greedyApprox' uses greedy search, but then it filters and add the utxo(s)
+-- such that the change vector is close to the output vector.
+--
+-- Eg: output vector: [100]
+--     input vector:  [0]
+--
+--     utxos vector: [50],[210],[500],[10]
+--
+--     so, now the greedy search will select the following utxos:
+--     -- [10], [50], [210]
+--
+--     But, if we are using utxo vector with [210] then we don't need to
+--     consume vectors like [10] and [50].
+--     So, we filter such unnecessary vectors.
+--
 greedyApprox ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -207,17 +244,26 @@ greedyApprox ::
   [Vector Integer] ->
   Eff effs (Either Text [Int])
 greedyApprox stopSearch outVec txInsVec utxosVec
+  -- we stop the search if there are no utxos vectors left, as we will not be able to
+  -- select any further utxos as input to a transaction.
   | null utxosVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: The list of remanining UTxO vectors in null."
       >> return (Right mempty)
+  -- we stop the search is the predicate `stopSearch` is true.
   | stopSearch txInsVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: Stopping search early."
       >> return (Right mempty)
   | otherwise =
     runEitherT $ do
+      -- Here, we get the selected indexes of utxo vectors using greedy search.
       selectedUtxosIdx <- newEitherT $ greedySearch @w stopSearch outVec txInsVec utxosVec
 
-      let revSelectedUtxosVec :: [Vector Integer]
+      let -- Reverse the order of the selected vectors
+          -- The Idea here is that, the vectors that are selected at
+          -- last will have greater distance from the output vector.
+          -- Hence, they may contain all the values that's required for
+          -- the output vector.
+          revSelectedUtxosVec :: [Vector Integer]
           revSelectedUtxosVec =
             List.reverse $ selectedUtxosIdx ^.. folded . to (\idx -> utxosVec ^? ix idx) . folded
 
@@ -228,17 +274,29 @@ greedyApprox stopSearch outVec txInsVec utxosVec
   where
     loop :: Vector Integer -> [Int] -> [Vector Integer] -> Either Text [Int]
     loop newTxInsVec (idx : idxs) (vec : vecs) = do
+      -- Add the selected utxo vector to the current tx input vector.
       newTxInsVec' <- addVec newTxInsVec vec
+
+      -- Get the old change vector
       changeVec <- subVec outVec newTxInsVec
+
+      -- Get the new change vector
       changeVec' <- subVec outVec newTxInsVec'
 
+      -- compare the distance between old change vector with output vector
+      -- and new change vector with the output vector.
       case l2norm outVec changeVec' < l2norm outVec changeVec of
+        -- If the distance between new change vector and output
+        -- vector is smaller then we add that utxo vector
         True -> (idx :) <$> loop newTxInsVec' idxs vecs
+        -- Else we check if we should stop the search here.
         False | stopSearch newTxInsVec -> Right mempty
+        -- We add the current utxo vector.
         False -> (idx :) <$> loop newTxInsVec' idxs vecs
     loop _newTxInsVec [] [] = pure mempty
     loop _newTxInsVec _idxs _vecs = Left "Length of idxs and list of vecs are not same."
 
+-- calculate euclidean distance of two vectors, of same length/dimension.
 l2norm :: Vector Integer -> Vector Integer -> Either Text Float
 l2norm v1 v2
   | length v1 == length v2 = Right $ sqrt $ fromInteger $ sum $ Vec.zipWith formula v1 v2
@@ -256,12 +314,48 @@ l2norm v1 v2
     formula :: Integer -> Integer -> Integer
     formula n1 n2 = (n1 - n2) ^ (2 :: Integer)
 
+-- Add two vectors of same length.
 addVec :: Num n => Vector n -> Vector n -> Either Text (Vector n)
 addVec = opVec (+)
 
+-- Substract two vectors of same length.
 subVec :: Num n => Vector n -> Vector n -> Either Text (Vector n)
 subVec = opVec (-)
 
+-- create zero vector of specified length.
+zeroVec :: Int -> Vector Integer
+zeroVec n = Vec.fromList $ replicate n 0
+
+-- convert a value to a vector.
+valueToVec :: Set AssetClass -> Value -> Either Text (Vector Integer)
+valueToVec allAssetClasses v =
+  maybeToRight "Error: Not able to uncons from empty vector." $
+    (over _Just fst . uncons) $ valuesToVecs allAssetClasses [v]
+
+-- convert values to a list of vectors.
+valuesToVecs :: Set AssetClass -> [Value] -> Vector (Vector Integer)
+valuesToVecs allAssetClasses values = Vec.fromList $ map toVec values
+  where
+    toVec :: Value -> Vector Integer
+    toVec v =
+      fmap (Value.assetClassValueOf v) $
+        allAssetClasses & id %~ (Vec.fromList . Set.toList)
+
+-- As the name suggests, we get a set of all the unique assetclass from given the lists of values.
+uniqueAssetClasses :: [Value] -> Set AssetClass
+uniqueAssetClasses = Set.fromList . concatMap valueToAssetClass
+  where
+    valueToAssetClass :: Value -> [AssetClass]
+    valueToAssetClass = map (\(cs, tn, _) -> Value.assetClass cs tn) . Value.flattenValue
+
+-- Converting a chain index transaction output to a transaction input type
+txOutToTxIn :: (TxOutRef, TxOut) -> Either Text TxIn
+txOutToTxIn (txOutRef, txOut) =
+  case Ledger.addressCredential (txOutAddress txOut) of
+    PubKeyCredential _ -> Right $ Ledger.pubKeyTxIn txOutRef
+    ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
+
+-- Apply a binary operation on two vectors of same length.
 opVec :: Num n => (forall a. Num a => a -> a -> a) -> Vector n -> Vector n -> Either Text (Vector n)
 opVec f v1 v2
   | length v1 == length v2 = Right $ Vec.zipWith f v1 v2
@@ -275,32 +369,3 @@ opVec f v1 v2
           <> "length of vector v2: "
           <> show (length v2)
           <> "."
-
-zeroVec :: Int -> Vector Integer
-zeroVec n = Vec.fromList $ replicate n 0
-
-valueToVec :: Set AssetClass -> Value -> Either Text (Vector Integer)
-valueToVec allAssetClasses v =
-  maybeToRight "Error: Not able to uncons from empty vector." $
-    (over _Just fst . uncons) $ valuesToVecs allAssetClasses [v]
-
-valuesToVecs :: Set AssetClass -> [Value] -> Vector (Vector Integer)
-valuesToVecs allAssetClasses values = Vec.fromList $ map toVec values
-  where
-    toVec :: Value -> Vector Integer
-    toVec v =
-      fmap (Value.assetClassValueOf v) $
-        allAssetClasses & id %~ (Vec.fromList . Set.toList)
-
-uniqueAssetClasses :: [Value] -> Set AssetClass
-uniqueAssetClasses = Set.fromList . concatMap valueToAssetClass
-  where
-    valueToAssetClass :: Value -> [AssetClass]
-    valueToAssetClass = map (\(cs, tn, _) -> Value.assetClass cs tn) . Value.flattenValue
-
--- Converting a chain index transaction output to a transaction input type
-txOutToTxIn :: (TxOutRef, TxOut) -> Either Text TxIn
-txOutToTxIn (txOutRef, txOut) =
-  case Ledger.addressCredential (txOutAddress txOut) of
-    PubKeyCredential _ -> Right $ Ledger.pubKeyTxIn txOutRef
-    ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
