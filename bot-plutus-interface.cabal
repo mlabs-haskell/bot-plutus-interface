@@ -82,6 +82,7 @@ library
     BotPlutusInterface.BodyBuilder
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
+    BotPlutusInterface.CoinSelection
     BotPlutusInterface.Collateral
     BotPlutusInterface.Config
     BotPlutusInterface.Contract
@@ -176,6 +177,7 @@ test-suite bot-plutus-interface-test
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
     Spec.BotPlutusInterface.Balance
+    Spec.BotPlutusInterface.CoinSelection
     Spec.BotPlutusInterface.Collateral
     Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Contract

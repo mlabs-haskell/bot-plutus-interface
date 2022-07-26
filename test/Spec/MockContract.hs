@@ -32,6 +32,7 @@ module Spec.MockContract (
   pkhAddr2,
   pkhAddr3,
   -- Test interpreter
+  runPABEffectPure,
   runContractPure,
   runContractPure',
   MockContractState (..),
