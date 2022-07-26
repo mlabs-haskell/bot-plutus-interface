@@ -72,9 +72,9 @@ import Ledger.Interval (
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (ChainIndexTxOut, RedeemerPtr (..), Redeemers, ScriptTag (..), Tx (..), TxId (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..), txId)
+import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
-import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   ExBudget (..),
