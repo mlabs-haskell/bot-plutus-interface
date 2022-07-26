@@ -404,8 +404,7 @@ awaitSlot contractEnv s@(Slot n) = do
     _ -> awaitSlot contractEnv s
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
- are applying here as well.                                                 PubKeyCredential: 8cf10ef973d90f42c386cbdbceb1d731c9af1ec71b
-47329f8be130cf (no staking crede
+     are applying here as well.
 -}
 awaitTime ::
   forall (w :: Type) (effs :: [Type -> Type]).
