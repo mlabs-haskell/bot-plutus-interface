@@ -766,13 +766,13 @@
       "locked": {
         "lastModified": 1658828135,
         "narHash": "sha256-4Fxt5QLTopthYbxc0dvW3/6nw8Zn0qcYGG6ZzSKiqSQ=",
-        "owner": "gege251",
+        "owner": "mlabs-haskell",
         "repo": "plutus-apps",
         "rev": "5cd1682b1ccf8f12c64fc0c1731d61fee41779f6",
         "type": "github"
       },
       "original": {
-        "owner": "gege251",
+        "owner": "mlabs-haskell",
         "repo": "plutus-apps",
         "rev": "5cd1682b1ccf8f12c64fc0c1731d61fee41779f6",
         "type": "github"
