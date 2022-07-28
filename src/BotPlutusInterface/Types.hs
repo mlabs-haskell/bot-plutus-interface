@@ -9,6 +9,7 @@ module BotPlutusInterface.Types (
   LogContext (..),
   LogLevel (..),
   LogType (..),
+  LogLine (..),
   ContractEnvironment (..),
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
@@ -30,6 +31,7 @@ module BotPlutusInterface.Types (
   addBudget,
   readCollateralUtxo,
   collateralValue,
+  sufficientLogLevel,
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
@@ -40,6 +42,7 @@ import Data.Aeson qualified as JSON
 import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
 import Data.Default (Default (def))
 import Data.Kind (Type)
+import Data.List (intersect)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -177,12 +180,28 @@ newtype ContractStats = ContractStats
 instance Show (TVar ContractStats) where
   show _ = "<ContractStats>"
 
--- | List of string logs.
+{- | Single log message
+ Defined for pretty instance.
+-}
+data LogLine = LogLine
+  { logLineContext :: LogContext
+  , logLineLevel :: LogLevel
+  , logLineMsg :: PP.Doc ()
+  }
+  deriving stock (Show)
+
+instance Pretty LogLine where
+  pretty (LogLine msgCtx msgLogLvl msg) = pretty msgCtx <+> pretty msgLogLvl <+> PP.unAnnotate msg
+
+-- | List of logs.
 newtype LogsList = LogsList
-  { getLogsList :: [(LogContext, LogLevel, PP.Doc ())]
+  { getLogsList :: [LogLine]
   }
   deriving stock (Show)
   deriving newtype (Semigroup, Monoid)
+
+instance Pretty LogsList where
+  pretty = PP.vcat . map pretty . getLogsList
 
 instance Show (TVar LogsList) where
   show _ = "<ContractLogs>"
@@ -267,7 +286,7 @@ data LogLevel
   | Notice {ltLogTypes :: [LogType]}
   | Info {ltLogTypes :: [LogType]}
   | Debug {ltLogTypes :: [LogType]}
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Show)
 
 instance Pretty LogLevel where
   pretty = \case
@@ -276,6 +295,23 @@ instance Pretty LogLevel where
     Notice a -> "[NOTICE " <> pretty a <> "]"
     Warn a -> "[WARNING " <> pretty a <> "]"
     Error a -> "[ERROR " <> pretty a <> "]"
+
+{- | if sufficientLogLevel settingLogLevel msgLogLvl
+ then message should be displayed with this log level setting.
+-}
+sufficientLogLevel :: LogLevel -> LogLevel -> Bool
+sufficientLogLevel logLevelSetting msgLogLvl =
+  msgLogLvl `constrLEq` logLevelSetting -- the log is important enough
+    && not (null intersectLogTypes) -- log is of type we're interested in
+  where
+    intersectLogTypes = ltLogTypes logLevelSetting `intersect` (ltLogTypes msgLogLvl <> [AnyLog])
+
+    toOrd (Error _) = 0 :: Int
+    toOrd (Warn _) = 1
+    toOrd (Notice _) = 2
+    toOrd (Info _) = 3
+    toOrd (Debug _) = 4
+    constrLEq a b = toOrd a <= toOrd b
 
 data LogContext = BpiLog | ContractLog
   deriving stock (Bounded, Enum, Eq, Ord, Show)
