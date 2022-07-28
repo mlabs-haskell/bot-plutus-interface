@@ -361,7 +361,7 @@
             additional = ps: [
               ps.plutus-pab
             ];
-            withHoogle = true;
+            withHoogle = false;
             tools.haskell-language-server = { };
             exactDeps = true;
             nativeBuildInputs = with pkgs'; [
