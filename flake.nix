@@ -348,14 +348,14 @@
         let
           pkgs = nixpkgsFor system;
           pkgs' = nixpkgsFor' system;
-          extraHackages = inputs.haskell-nix-extra-hackage.mkHackagesFor system compiler-nix-name extraHackagePackages;
+          myHackages = inputs.haskell-nix-extra-hackage.mkHackagesFor system compiler-nix-name extraHackagePackages;
         in
         pkgs.haskell-nix.cabalProject' {
           name = "bot-plutus-interface";
           src = ./.;
           inherit compiler-nix-name cabalProjectLocal;
-          inherit (extraHackages) extra-hackages extra-hackage-tarballs;
-          modules = extraHackages.modules ++ haskellModules;
+          inherit (myHackages) extra-hackages extra-hackage-tarballs;
+          modules = myHackages.modules ++ haskellModules;
 
           shell = {
             additional = ps: [
