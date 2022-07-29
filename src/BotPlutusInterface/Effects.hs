@@ -44,11 +44,13 @@ import BotPlutusInterface.Types (
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
+  LogLine (..),
   LogType (..),
   LogsList (LogsList),
   TxBudget,
   TxFile,
   addBudget,
+  sufficientLogLevel,
  )
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
@@ -65,7 +67,6 @@ import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
 import Data.Kind (Type)
-import Data.List (intersect)
 import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
@@ -74,7 +75,7 @@ import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
-import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty, (<+>))
+import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty)
 import Prettyprinter qualified as PP
 import Prettyprinter.Render.String qualified as Render
 import System.Directory qualified as Directory
@@ -147,12 +148,11 @@ handlePABEffect contractEnv =
           case contractEnv.cePABConfig.pcCliLocation of
             Local -> Directory.createDirectoryIfMissing createParents filePath
             Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
-        PrintLog logCtx logLevel txt ->
-          let logMsg = prettyLog logCtx logLevel txt
-           in do
-                printLog' contractEnv.cePABConfig.pcLogLevel logCtx logLevel logMsg
-                when contractEnv.cePABConfig.pcCollectLogs $
-                  collectLog contractEnv.ceContractLogs logCtx logLevel logMsg
+        PrintLog logCtx logLevel msg -> do
+          let logLine = LogLine logCtx logLevel msg
+          printLog' contractEnv.cePABConfig.pcLogLevel logLine
+          when contractEnv.cePABConfig.pcCollectLogs $
+            collectLog contractEnv.ceContractLogs logLine
         UpdateInstanceState s -> do
           atomically $
             modifyTVar contractEnv.ceContractState $
@@ -191,27 +191,19 @@ handlePABEffect contractEnv =
         SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
     )
 
-printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
-printLog' logLevelSetting msgCtx msgLogLvl msg =
+printLog' :: LogLevel -> LogLine -> IO ()
+printLog' logLevelSetting logLine =
   when
-    ( logLevelSetting {ltLogTypes = mempty} >= msgLogLvl {ltLogTypes = mempty}
-        && not (null intersectLogTypes)
-    )
+    (sufficientLogLevel logLevelSetting (logLineLevel logLine))
     $ putStrLn target
   where
     target =
-      Render.renderString . layoutPretty defaultLayoutOptions $
-        prettyLog msgCtx msgLogLvl msg
+      Render.renderString . layoutPretty defaultLayoutOptions . pretty $ logLine
 
-    intersectLogTypes = ltLogTypes logLevelSetting `intersect` (ltLogTypes msgLogLvl <> [AnyLog])
-
-prettyLog :: LogContext -> LogLevel -> PP.Doc () -> PP.Doc ()
-prettyLog msgCtx msgLogLvl msg = pretty msgCtx <+> pretty msgLogLvl <+> msg
-
-collectLog :: TVar LogsList -> LogContext -> LogLevel -> PP.Doc () -> IO ()
-collectLog logs logCtx logLvl msg = atomically $ modifyTVar' logs appendLog
+collectLog :: TVar LogsList -> LogLine -> IO ()
+collectLog logs logLine = atomically $ modifyTVar' logs appendLog
   where
-    appendLog (LogsList ls) = LogsList $ (logCtx, logLvl, msg) : ls
+    appendLog (LogsList ls) = LogsList $ logLine : ls
 
 -- | Reinterpret contract logs to be handled by PABEffect later down the line.
 handleContractLog :: forall w a effs. Member (PABEffect w) effs => Pretty a => Eff (LogMsg a ': effs) ~> Eff effs
