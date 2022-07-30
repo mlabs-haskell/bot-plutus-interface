@@ -71,7 +71,7 @@ import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
-import Plutus.Script.Utils.V1.Scripts qualified as Scripts
+import Plutus.Script.Utils.V2.Scripts qualified as Scripts
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),
