@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -40,6 +41,7 @@ import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
+import Data.Data (Data (toConstr), constrIndex, dataTypeOf, eqT, fromConstrB, indexConstr, type (:~:) (Refl))
 import Data.Default (Default (def))
 import Data.Kind (Type)
 import Data.List (intersect)
@@ -271,7 +273,7 @@ data LogType
   | CollateralLog
   | PABLog
   | AnyLog
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Data)
 
 instance Pretty LogType where
   pretty CoinSelectionLog = "CoinSelection"
@@ -286,7 +288,16 @@ data LogLevel
   | Notice {ltLogTypes :: [LogType]}
   | Info {ltLogTypes :: [LogType]}
   | Debug {ltLogTypes :: [LogType]}
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Data)
+
+instance Enum LogLevel where
+  fromEnum = (\a -> a - 1) . constrIndex . toConstr
+  toEnum = fromConstrB field . indexConstr (dataTypeOf $ Notice []) . (+ 1)
+    where
+      field :: forall a. Data a => a
+      field = case eqT :: Maybe (a :~: [LogType]) of
+        Just Refl -> [AnyLog]
+        Nothing -> error "Expected a value of type LogType."
 
 instance Pretty LogLevel where
   pretty = \case
@@ -306,12 +317,7 @@ sufficientLogLevel logLevelSetting msgLogLvl =
   where
     intersectLogTypes = ltLogTypes logLevelSetting `intersect` (ltLogTypes msgLogLvl <> [AnyLog])
 
-    toOrd (Error _) = 0 :: Int
-    toOrd (Warn _) = 1
-    toOrd (Notice _) = 2
-    toOrd (Info _) = 3
-    toOrd (Debug _) = 4
-    constrLEq a b = toOrd a <= toOrd b
+    constrLEq a b = fromEnum a <= fromEnum b
 
 data LogContext = BpiLog | ContractLog
   deriving stock (Bounded, Enum, Eq, Ord, Show)
