@@ -44,7 +44,6 @@ import Cardano.Api (
  )
 import Cardano.Api.Shelley (
   PlutusScript (PlutusScriptSerialised),
-  PlutusScriptV1,
   PlutusScriptV2,
   ScriptDataJsonSchema (ScriptDataJsonDetailedSchema),
   fromPlutusData,
