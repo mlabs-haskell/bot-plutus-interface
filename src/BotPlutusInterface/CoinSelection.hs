@@ -49,6 +49,114 @@ import Plutus.V1.Ledger.Api (
 import Prettyprinter (pretty, (<+>))
 import Prelude
 
+{-
+
+The coin selection algorithm works as follows:
+
+  we can think of a value with different native tokens and ada as vectors of n-dimension.
+
+    Eg:
+
+      Values:
+
+        value1: [("ScriptHash1", "TokenName1", 1), ("", "", 1)]
+        value2: [("ScriptHash1", "TokenName1", 2), ("ScriptHash2", "TokenName2", 2), ("", "", 2)]
+
+      Converting Values to vectors:
+
+        Here each column in the vector will represent the following assetClass:
+
+                       [("ScriptHash1", "TokenName1"), ("ScriptHash2", "TokenName2"), ("", "")]
+
+        value1-vector: [1,                             0,                              1      ]
+        value2-vector: [2,                             2,                              2      ]
+
+    Each element of the vector represents corresponding native tokens and ada, if a native token
+    is not present in a value then we fill it with zero.
+
+If we think of all the values as vector, then we can think of coin selection
+and balancing problem in the following way:
+
+  we have an output vector and many input vectors, and the goal is to get as close to the output vector
+  as possible using all the combinations of input vectors.
+  Now, since we think of value as vectors we can define what "close" will be,
+  which is just the euclidean distance.
+
+Now, let's see how the coin selection works by looking at an example:
+
+  Eg: consider a Tx with two outputs and three utxos at user's wallet.
+
+    output1 : [("scriptHash1", "TokenName1", 1), ("", "", 1)]
+    output2 : [("", "", 2)]
+    Fee     : [("", "", 3)]
+
+    -- These are the utxos at user's wallet
+    utxo1 : [("scriptHash1", "TokenName1", 10), ("", "", 10)]
+    utxo2 : [("", "", 5)]
+    utxo3 : [("scriptHash1", "TokenName1", 3), ("", "", 6)]
+
+  First we will convert all our values into vectors::
+
+                   [("scriptHash1", "TokenName1"), ("", "")]
+    output-vector: [1,                             6] -- Just Adding output1 + output2 + Fee
+
+    utxo1-vector: [10,                             10]
+    utxo2-vector: [0,                              5]
+    utxo3-vector: [3,                              6]
+
+  Now, as stated above our goal is to get as close to output-vector as possible,
+  but we also need to satisfiy the following condition:
+
+    1. Each column of the resultant vector must be greater than or equal to the corresponding
+       column of the output vector.
+
+       In this case this means that, the resultant vector [x , y] should be such that
+       x >= 1 and y >= 6.
+
+    2. The input vector must not be the zero vector.
+
+  Currently we don't have any inputs to the Tx, hence the input vector will be zero vector:
+
+    input-vector: [0, 0]
+
+  Now, we can start searching for utxos that can statisfy our goal and mission:
+
+    step 1. Add input vector to all the utxo vectors. In this case these vectors will be
+            utxo1-vector, utxo2-vector, utxo3-vector.
+
+            Result: [10, 10], [0, 5], [3, 6] (adding zero vector does not change the vector).
+
+    step 2. calculate distances of previously added vectors with output vector.
+
+            Result: [ 9.84 -- l2norm(output-vector, utxo1-vector)
+                    , 1.41 -- l2norm(output-vector, utxo2-vector)
+                    , 2.00 -- l2norm(output-vector, utxo3-vector)
+                    ]
+
+            As, we can see the distance between utxo1-vector and output-vector is very large
+            which is to be expected as utxo1-vector contains lots of "value" of different assetclass.
+
+    step 3. sort the distances, and select the utxos with least distances
+            until all the conditions are statisfied.
+
+            Result: [ 1.41
+                    , 2.00
+                    , 9.84
+                    ]
+
+            Since, utxo2-vector has the least distance we will select that utxo.
+
+            But, selecting utxo2-vector alone doesn't statisfy all our conditions,
+            hence we will have to continue selecting. After utxo2-vector, the vector with
+            least distance is utxo3-vector, hence we will select that vector.
+
+            Now, the input vector is: [3, 11] (which is just addition of utxo2-vector & utxo3-vector).
+
+            Since, this input vector statisfy all our conditions, we will select utxo2 & utxo3 as inputs
+            to our Tx.
+
+-}
+
 -- 'searchStrategy' represents the possible search strategy.
 data SearchStrategy
   = -- | This is a greedy search that searches for nearest utxo using l2norm.
