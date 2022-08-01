@@ -186,6 +186,7 @@ test-suite bot-plutus-interface-test
     Spec.BotPlutusInterface.TxStatusChange
     Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
+    Spec.NatLedger
 
   build-depends:
     , aeson                      ^>=1.5.0.0
