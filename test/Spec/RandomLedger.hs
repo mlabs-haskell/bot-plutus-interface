@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Spec.RandomLedger (
-  allAssetClasses,
+  randomAssetClasses,
   randomValue,
   randomTxOut,
   randomTxOuts,
@@ -19,13 +19,13 @@ import GHC.Natural (Natural)
 import Ledger.Tx (TxOut (..), TxOutRef (..))
 import Ledger.Value (AssetClass (AssetClass), Value)
 import Ledger.Value qualified as Value
-import Test.QuickCheck (Arbitrary (arbitrary), Gen, Property, elements, forAll, listOf, property, resize)
+import Test.QuickCheck (Arbitrary (arbitrary), Gen, elements)
 import Prelude
 
 deriving newtype instance Arbitrary AssetClass
 
-allAssetClasses :: Int -> Gen (Set AssetClass)
-allAssetClasses n = Set.fromList <$> resize n (listOf arbitrary)
+randomAssetClasses :: Int -> Gen (Set AssetClass)
+randomAssetClasses n = Set.fromList <$> replicateM n (arbitrary @AssetClass)
 
 randomValue :: Int -> Set AssetClass -> Gen Value
 randomValue samplesize assetclasses =

@@ -4,6 +4,7 @@ module Spec.BotPlutusInterface.CoinSelection (tests) where
 
 import BotPlutusInterface.CoinSelection (selectTxIns, uniqueAssetClasses)
 import BotPlutusInterface.Effects (PABEffect)
+import Control.Monad (replicateM)
 import Data.Default (def)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
@@ -18,15 +19,18 @@ import Ledger.Tx (TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Spec.MockContract (runPABEffectPure)
+import Spec.RandomLedger
+import Test.QuickCheck (Gen, Property, forAll)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
+import Test.Tasty.QuickCheck (testProperty)
 import Prelude
 
 tests :: TestTree
 tests =
   testGroup
     "BotPlutusInterface.CoinSelection"
-    [ testCase "Have All unique assetClasses" validAssetClasses
+    [ testProperty "Have All unique assetClasses" assertUniqueAssetClasses
     , testCase "Coin selection greedy Approx" greedyApprox
     ]
 
@@ -96,3 +100,15 @@ greedyApprox = do
   case eresult of
     Left e -> assertFailure (Text.unpack e)
     Right result -> result @?= expectedResults
+
+assertUniqueAssetClasses :: Property
+assertUniqueAssetClasses = forAll isSubsetGen id
+  where
+    isSubsetGen :: Gen Bool
+    isSubsetGen =
+      do
+        allAcs <- randomAssetClasses 30
+        values <- replicateM 10 (txOutValue <$> randomTxOut 10 allAcs)
+
+        let uniqueAcs = uniqueAssetClasses values
+        return $ Set.isSubsetOf uniqueAcs allAcs
