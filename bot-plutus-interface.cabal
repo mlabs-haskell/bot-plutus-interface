@@ -239,6 +239,7 @@ test-suite bot-plutus-interface-test
     , text                       ^>=1.2.4.0
     , utf8-string
     , uuid
+    , vector
     , warp
 
   hs-source-dirs: test

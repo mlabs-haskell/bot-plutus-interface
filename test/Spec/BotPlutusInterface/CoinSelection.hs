@@ -2,13 +2,17 @@
 
 module Spec.BotPlutusInterface.CoinSelection (tests) where
 
-import BotPlutusInterface.CoinSelection (selectTxIns, uniqueAssetClasses)
+import BotPlutusInterface.CoinSelection (selectTxIns, uniqueAssetClasses, valuesToVecs)
 import BotPlutusInterface.Effects (PABEffect)
+import Control.Lens (folded, to, (^..))
 import Control.Monad (replicateM)
 import Data.Default (def)
 import Data.Map qualified as Map
+import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as Text
+import Data.Vector (Vector)
+import Data.Vector qualified as Vec
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address, PaymentPubKeyHash (PaymentPubKeyHash))
@@ -16,11 +20,11 @@ import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Tx (TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
-import Ledger.Value (Value)
+import Ledger.Value (Value, AssetClass)
 import Ledger.Value qualified as Value
 import Spec.MockContract (runPABEffectPure)
 import Spec.RandomLedger
-import Test.QuickCheck (Gen, Property, forAll)
+import Test.QuickCheck (Gen, Property, forAll, withMaxSuccess)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
 import Test.Tasty.QuickCheck (testProperty)
@@ -31,6 +35,7 @@ tests =
   testGroup
     "BotPlutusInterface.CoinSelection"
     [ testProperty "Have All unique assetClasses" assertUniqueAssetClasses
+    , testProperty "columns of vectors represent same assetClass" validValueVectors
     , testCase "Coin selection greedy Approx" greedyApprox
     ]
 
@@ -102,7 +107,7 @@ greedyApprox = do
     Right result -> result @?= expectedResults
 
 assertUniqueAssetClasses :: Property
-assertUniqueAssetClasses = forAll isSubsetGen id
+assertUniqueAssetClasses = withMaxSuccess 1000 (forAll isSubsetGen id)
   where
     isSubsetGen :: Gen Bool
     isSubsetGen =
@@ -110,5 +115,28 @@ assertUniqueAssetClasses = forAll isSubsetGen id
         allAcs <- randomAssetClasses 30
         values <- replicateM 10 (txOutValue <$> randomTxOut 10 allAcs)
 
-        let uniqueAcs = uniqueAssetClasses values
+        let uniqueAcs :: Set AssetClass
+            uniqueAcs = uniqueAssetClasses values
+
         return $ Set.isSubsetOf uniqueAcs allAcs
+
+validValueVectors :: Property
+validValueVectors = withMaxSuccess 1000 (forAll valueVectorsGen id)
+  where
+    valueVectorsGen :: Gen Bool
+    valueVectorsGen =
+      do
+        allAcs <- randomAssetClasses 30
+        values <- replicateM 10 (txOutValue <$> randomTxOut 10 allAcs)
+
+        let uniqueAcs :: Set AssetClass
+            uniqueAcs = uniqueAssetClasses values
+
+            valueCheck :: Value -> Vector Integer -> Bool
+            valueCheck value vec =
+              Vec.fromList (uniqueAcs ^.. folded . to (Value.assetClassValueOf value)) == vec
+
+            valuesVec :: [Vector Integer]
+            valuesVec = Vec.toList $ valuesToVecs uniqueAcs values
+                        
+        return $ all (uncurry valueCheck) (zip values valuesVec)
