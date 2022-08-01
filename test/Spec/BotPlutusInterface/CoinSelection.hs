@@ -96,5 +96,3 @@ greedyApprox = do
   case eresult of
     Left e -> assertFailure (Text.unpack e)
     Right result -> result @?= expectedResults
-
-
