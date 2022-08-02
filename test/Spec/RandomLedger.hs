@@ -6,6 +6,7 @@ module Spec.RandomLedger (
   randomTxOut,
   randomTxOuts,
   randomTxOutRef,
+  randomTxOutRefs,
 ) where
 
 import Plutus.PAB.Arbitrary ()
@@ -61,3 +62,6 @@ randomTxOutRef =
     txId <- arbitrary
     txIdx <- toInteger <$> arbitrary @Natural
     return (TxOutRef txId txIdx)
+
+randomTxOutRefs :: Int -> Gen [TxOutRef]
+randomTxOutRefs n = replicateM n randomTxOutRef

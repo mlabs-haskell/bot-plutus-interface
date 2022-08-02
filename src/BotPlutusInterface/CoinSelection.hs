@@ -231,7 +231,7 @@ selectTxIns originalTxIns utxosIndex outValue =
         selectedVectors = selectedUtxosIdxs ^.. folded . to (\idx -> remainingUtxosVec ^? ix idx) . folded
 
     finalTxInputVector <- hoistEither $ foldM addVec txInsVec selectedVectors
-    unless (isSufficient outVec finalTxInputVector) (throwError "Insufficient Funds")
+    unless (isSufficient outVec finalTxInputVector) $ throwError "Insufficient Funds"
 
     selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
 

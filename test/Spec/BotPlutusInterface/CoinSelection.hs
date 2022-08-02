@@ -4,24 +4,28 @@ module Spec.BotPlutusInterface.CoinSelection (tests) where
 
 import BotPlutusInterface.CoinSelection (selectTxIns, uniqueAssetClasses, valuesToVecs)
 import BotPlutusInterface.Effects (PABEffect)
-import Control.Lens (folded, to, (^..))
-import Control.Monad (replicateM)
+import Control.Lens (filtered, foldOf, folded, to, (^..))
 import Data.Default (def)
+import Data.Either (isLeft)
+import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (fromJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Address (Address, PaymentPubKeyHash (PaymentPubKeyHash))
+import Ledger.Address (Address (Address), PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Tx (TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
-import Ledger.Value (Value, AssetClass)
+import Ledger.Value (AssetClass, Value, leq)
 import Ledger.Value qualified as Value
+import Plutus.V1.Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
 import Spec.MockContract (runPABEffectPure)
 import Spec.RandomLedger
 import Test.QuickCheck (Gen, Property, forAll, withMaxSuccess)
@@ -36,7 +40,8 @@ tests =
     "BotPlutusInterface.CoinSelection"
     [ testProperty "Have All unique assetClasses" assertUniqueAssetClasses
     , testProperty "columns of vectors represent same assetClass" validValueVectors
-    , testCase "Coin selection greedy Approx" greedyApprox
+    , testProperty "coin selection results in valid balance of Tx" validateBalancing
+    , testCase "coin selection greedy Approx" greedyApprox
     ]
 
 pkh1 :: PubKeyHash
@@ -107,36 +112,118 @@ greedyApprox = do
     Right result -> result @?= expectedResults
 
 assertUniqueAssetClasses :: Property
-assertUniqueAssetClasses = withMaxSuccess 1000 (forAll isSubsetGen id)
+assertUniqueAssetClasses = withMaxSuccess 1000 (forAll uniqueAssetClassesGen validate)
   where
-    isSubsetGen :: Gen Bool
-    isSubsetGen =
+    validate :: (Set AssetClass, [TxOut]) -> Bool
+    validate (allAssetClasses, utxos) =
+      Set.isSubsetOf (uniqueAssetClasses $ map txOutValue utxos) allAssetClasses
+
+    uniqueAssetClassesGen :: Gen (Set AssetClass, [TxOut])
+    uniqueAssetClassesGen =
       do
-        allAcs <- randomAssetClasses 30
-        values <- replicateM 10 (txOutValue <$> randomTxOut 10 allAcs)
+        let numUniqueAssetClasses :: Int
+            numUniqueAssetClasses = 30
 
-        let uniqueAcs :: Set AssetClass
-            uniqueAcs = uniqueAssetClasses values
+            assetClassSampleSize :: Int
+            assetClassSampleSize = 30
 
-        return $ Set.isSubsetOf uniqueAcs allAcs
+            numUTxOs :: Int
+            numUTxOs = 10
+
+        allAssetClasses <- randomAssetClasses numUniqueAssetClasses
+
+        utxos <- randomTxOuts numUTxOs assetClassSampleSize allAssetClasses
+
+        return (allAssetClasses, utxos)
 
 validValueVectors :: Property
-validValueVectors = withMaxSuccess 1000 (forAll valueVectorsGen id)
+validValueVectors = withMaxSuccess 1000 (forAll txOutsGen validate)
   where
-    valueVectorsGen :: Gen Bool
-    valueVectorsGen =
+    validate :: [TxOut] -> Bool
+    validate utxos =
+      let values :: [Value]
+          values = map txOutValue utxos
+
+          uniqueAcs :: Set AssetClass
+          uniqueAcs = uniqueAssetClasses values
+
+          valueCheck :: Value -> Vector Integer -> Bool
+          valueCheck value vec =
+            Vec.fromList (uniqueAcs ^.. folded . to (Value.assetClassValueOf value)) == vec
+
+          valuesVec :: [Vector Integer]
+          valuesVec = Vec.toList $ valuesToVecs uniqueAcs values
+       in all (uncurry valueCheck) (zip values valuesVec)
+
+    txOutsGen :: Gen [TxOut]
+    txOutsGen =
       do
-        allAcs <- randomAssetClasses 30
-        values <- replicateM 10 (txOutValue <$> randomTxOut 10 allAcs)
+        let numUniqueAssetClasses :: Int
+            numUniqueAssetClasses = 30
 
-        let uniqueAcs :: Set AssetClass
-            uniqueAcs = uniqueAssetClasses values
+            assetClassSampleSize :: Int
+            assetClassSampleSize = 30
 
-            valueCheck :: Value -> Vector Integer -> Bool
-            valueCheck value vec =
-              Vec.fromList (uniqueAcs ^.. folded . to (Value.assetClassValueOf value)) == vec
+            numUTxOs :: Int
+            numUTxOs = 10
 
-            valuesVec :: [Vector Integer]
-            valuesVec = Vec.toList $ valuesToVecs uniqueAcs values
-                        
-        return $ all (uncurry valueCheck) (zip values valuesVec)
+        allAssetClasses <- randomAssetClasses numUniqueAssetClasses
+        randomTxOuts numUTxOs assetClassSampleSize allAssetClasses
+
+validateBalancing :: Property
+validateBalancing = withMaxSuccess 10000 (forAll balanceGen validate)
+  where
+    validate :: (TxOut, Map TxOutRef TxOut) -> Bool
+    validate (txOutput, utxos) =
+      let result :: (Either Text (Either Text (Set TxIn)))
+          result =
+            fst $
+              runPABEffectPure def $
+                selectTxIns @() @'[PABEffect ()] mempty utxos (txOutValue txOutput)
+
+          isScriptOutput :: TxOut -> Bool
+          isScriptOutput TxOut {txOutAddress = Address {addressCredential = ScriptCredential _}} = True
+          isScriptOutput TxOut {txOutAddress = Address {addressCredential = PubKeyCredential _}} = False
+
+          sufficientValue :: Bool
+          sufficientValue =
+            txOutValue txOutput
+              `leq` foldOf (folded . filtered (not . isScriptOutput) . to txOutValue) utxos
+
+          toTxOut :: TxIn -> TxOut
+          toTxOut = fromJust . (`Map.lookup` utxos) . txInRef
+       in case result of
+            Left _ -> False
+            Right eselectedTxIns
+              | not sufficientValue -> isLeft eselectedTxIns
+              | otherwise ->
+                case eselectedTxIns of
+                  Left err
+                    | txOutValue txOutput == mempty -> True
+                    | otherwise -> error (show err)
+                  Right selectedTxIns ->
+                    txOutValue txOutput `leq` foldOf (folded . to (txOutValue . toTxOut)) selectedTxIns
+
+    balanceGen :: Gen (TxOut, Map TxOutRef TxOut)
+    balanceGen =
+      do
+        let numUniqueAssetClasses :: Int
+            numUniqueAssetClasses = 10
+
+            assetClassSampleSize :: Int
+            assetClassSampleSize = 30
+
+            numUTxOs :: Int
+            numUTxOs = 20
+
+        allAcs <- randomAssetClasses numUniqueAssetClasses
+        rTxOuts <- randomTxOuts numUTxOs assetClassSampleSize allAcs
+        rTxOutRefs <- randomTxOutRefs 19
+
+        let txOutput :: TxOut
+            txOutput = head rTxOuts
+
+            utxos :: Map TxOutRef TxOut
+            utxos = Map.fromList $ zip (tail rTxOutRefs) (tail rTxOuts)
+
+        return (txOutput, utxos)
