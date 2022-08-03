@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -9,6 +10,7 @@ module BotPlutusInterface.Types (
   LogContext (..),
   LogLevel (..),
   LogType (..),
+  LogLine (..),
   ContractEnvironment (..),
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
@@ -30,6 +32,7 @@ module BotPlutusInterface.Types (
   addBudget,
   readCollateralUtxo,
   collateralValue,
+  sufficientLogLevel,
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
@@ -38,8 +41,10 @@ import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
+import Data.Data (Data (toConstr), constrIndex, dataTypeOf, eqT, fromConstrB, indexConstr, type (:~:) (Refl))
 import Data.Default (Default (def))
 import Data.Kind (Type)
+import Data.List (intersect)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -177,12 +182,28 @@ newtype ContractStats = ContractStats
 instance Show (TVar ContractStats) where
   show _ = "<ContractStats>"
 
--- | List of string logs.
+{- | Single log message
+ Defined for pretty instance.
+-}
+data LogLine = LogLine
+  { logLineContext :: LogContext
+  , logLineLevel :: LogLevel
+  , logLineMsg :: PP.Doc ()
+  }
+  deriving stock (Show)
+
+instance Pretty LogLine where
+  pretty (LogLine msgCtx msgLogLvl msg) = pretty msgCtx <+> pretty msgLogLvl <+> PP.unAnnotate msg
+
+-- | List of logs.
 newtype LogsList = LogsList
-  { getLogsList :: [(LogContext, LogLevel, PP.Doc ())]
+  { getLogsList :: [LogLine]
   }
   deriving stock (Show)
   deriving newtype (Semigroup, Monoid)
+
+instance Pretty LogsList where
+  pretty = PP.vcat . map pretty . getLogsList
 
 instance Show (TVar LogsList) where
   show _ = "<ContractLogs>"
@@ -252,7 +273,7 @@ data LogType
   | CollateralLog
   | PABLog
   | AnyLog
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Data)
 
 instance Pretty LogType where
   pretty CoinSelectionLog = "CoinSelection"
@@ -267,7 +288,16 @@ data LogLevel
   | Notice {ltLogTypes :: [LogType]}
   | Info {ltLogTypes :: [LogType]}
   | Debug {ltLogTypes :: [LogType]}
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Show, Data)
+
+instance Enum LogLevel where
+  fromEnum = (\a -> a - 1) . constrIndex . toConstr
+  toEnum = fromConstrB field . indexConstr (dataTypeOf $ Notice []) . (+ 1)
+    where
+      field :: forall a. Data a => a
+      field = case eqT :: Maybe (a :~: [LogType]) of
+        Just Refl -> [AnyLog]
+        Nothing -> error "Expected a value of type LogType."
 
 instance Pretty LogLevel where
   pretty = \case
@@ -276,6 +306,18 @@ instance Pretty LogLevel where
     Notice a -> "[NOTICE " <> pretty a <> "]"
     Warn a -> "[WARNING " <> pretty a <> "]"
     Error a -> "[ERROR " <> pretty a <> "]"
+
+{- | if sufficientLogLevel settingLogLevel msgLogLvl
+ then message should be displayed with this log level setting.
+-}
+sufficientLogLevel :: LogLevel -> LogLevel -> Bool
+sufficientLogLevel logLevelSetting msgLogLvl =
+  msgLogLvl `constrLEq` logLevelSetting -- the log is important enough
+    && not (null intersectLogTypes) -- log is of type we're interested in
+  where
+    intersectLogTypes = ltLogTypes logLevelSetting `intersect` (ltLogTypes msgLogLvl <> [AnyLog])
+
+    constrLEq a b = fromEnum a <= fromEnum b
 
 data LogContext = BpiLog | ContractLog
   deriving stock (Bounded, Enum, Eq, Ord, Show)
