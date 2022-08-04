@@ -293,7 +293,7 @@ greedySearch stopSearch outVec txInsVec utxosVec
   | null utxosVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: The list of remanining UTxO vectors in null."
       >> pure (Right mempty)
-  -- we stop the search is the predicate `stopSearch` is true.
+  -- we stop the search if the predicate `stopSearch` is true.
   | stopSearch txInsVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: Stopping search early."
       >> pure (Right mempty)
@@ -363,7 +363,7 @@ greedyApprox stopSearch outVec txInsVec utxosVec
   | null utxosVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: The list of remanining UTxO vectors in null."
       >> pure (Right mempty)
-  -- we stop the search is the predicate `stopSearch` is true.
+  -- we stop the search if the predicate `stopSearch` is true.
   | stopSearch txInsVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: Stopping search early."
       >> pure (Right mempty)
@@ -417,7 +417,7 @@ l2norm v1 v2
   | otherwise =
     Left $
       pack $
-        "Error: The length of the vectors should be same for l2norm. "
+        "Error: The length of the vectors should be same for l2norm."
           <> "length of vector v1: "
           <> show (length v1)
           <> " "
@@ -482,7 +482,7 @@ opVec f v1 v2
   | otherwise =
     Left $
       pack $
-        "Error: The length of the vectors should be same for addition."
+        "Error: The length of the vectors should be same for arithemetic operation."
           <> "length of vector v1: "
           <> show (length v1)
           <> " "
