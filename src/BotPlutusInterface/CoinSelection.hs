@@ -24,7 +24,6 @@ import Control.Monad.Except (foldM, throwError, unless)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
-import Data.Default (Default (def))
 import Data.Either.Combinators (isRight, maybeToRight)
 import Data.Kind (Type)
 import Data.List qualified as List
@@ -37,7 +36,7 @@ import Data.Vector (Vector)
 import Data.Vector qualified as Vec
 import Ledger qualified
 import Ledger.Tx (
-  TxIn (..),
+  TxIn (txInRef),
   TxOut (..),
   TxOutRef (..),
  )
@@ -157,7 +156,7 @@ Now, let's see how the coin selection works by looking at an example:
 
 -}
 
--- 'searchStrategy' represents the possible search strategy.
+-- | 'searchStrategy' represents the possible search strategy.
 data SearchStrategy
   = -- | This is a greedy search that searches for nearest utxo using l2norm.
     Greedy
@@ -166,17 +165,19 @@ data SearchStrategy
     GreedyApprox
   deriving stock (Eq, Show)
 
-instance Default SearchStrategy where
-  def = GreedyApprox
+defaultSearchStrategy :: SearchStrategy
+defaultSearchStrategy = GreedyApprox
+
+type ValueVector = Vector Integer
 
 -- 'selectTxIns' selects utxos using default search strategy, it also preprocesses
 -- the utxos values in to normalized vectors. So that distances between utxos can be calculated.
 selectTxIns ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  Set TxIn ->
-  Map TxOutRef TxOut ->
-  Value ->
+  Set TxIn -> -- Inputs `TxIn` of the transaction.
+  Map TxOutRef TxOut -> -- Map of utxos that can be spent
+  Value -> -- total output value of the Tx.
   Eff effs (Either Text (Set TxIn))
 selectTxIns originalTxIns utxosIndex outValue =
   runEitherT $ do
@@ -219,7 +220,14 @@ selectTxIns originalTxIns utxosIndex outValue =
 
     -- we use the default search strategy to get indexes of optimal utxos, these indexes are for the
     -- remainingUtxos, as we are sampling utxos from that set.
-    selectedUtxosIdxs <- newEitherT $ searchTxIns @w def (isSufficient outVec) outVec txInsVec remainingUtxosVec
+    selectedUtxosIdxs <-
+      newEitherT $
+        searchTxIns @w
+          defaultSearchStrategy
+          (isSufficient outVec)
+          outVec
+          txInsVec
+          remainingUtxosVec
 
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
 
@@ -227,7 +235,7 @@ selectTxIns originalTxIns utxosIndex outValue =
         selectedUtxos :: [(TxOutRef, TxOut)]
         selectedUtxos = selectedUtxosIdxs ^.. folded . to (\idx -> remainingUtxos ^? ix idx) . folded
 
-        selectedVectors :: [Vector Integer]
+        selectedVectors :: [ValueVector]
         selectedVectors = selectedUtxosIdxs ^.. folded . to (\idx -> remainingUtxosVec ^? ix idx) . folded
 
     finalTxInputVector <- hoistEither $ foldM addVec txInsVec selectedVectors
@@ -238,14 +246,14 @@ selectTxIns originalTxIns utxosIndex outValue =
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "Selected TxIns: " <+> pretty selectedTxIns
 
     -- Now we add the selected utxos to originalTxIns present in the transaction previously.
-    return $ originalTxIns <> Set.fromList selectedTxIns
+    pure $ originalTxIns <> Set.fromList selectedTxIns
   where
     -- This represents the condition when we can stop searching for utxos.
     -- First condition is that the input vector must not be zero vector, i.e.
     -- There must be atleast some input to the transaction.
     -- Second condition is that all the values of input vector must be greater than
     -- or equal to the output vector.
-    isSufficient :: Vector Integer -> Vector Integer -> Bool
+    isSufficient :: ValueVector -> ValueVector -> Bool
     isSufficient outVec txInsVec =
       Vec.all (== True) (Vec.zipWith (<=) outVec txInsVec)
         && txInsVec /= zeroVec (length txInsVec)
@@ -255,20 +263,18 @@ selectTxIns originalTxIns utxosIndex outValue =
 searchTxIns ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  SearchStrategy ->
-  (Vector Integer -> Bool) ->
-  Vector Integer ->
-  Vector Integer ->
-  [Vector Integer] ->
+  SearchStrategy -> -- search strategy to use for selecting utxos
+  (ValueVector -> Bool) -> -- condition on when to stop the search
+  ValueVector -> -- output value vector of the Tx.
+  ValueVector -> -- input value vector of the Tx.
+  [ValueVector] -> -- all the value vectors of the utxos that can be spent.
   Eff effs (Either Text [Int])
-searchTxIns searchStrategy stopSearch outVec txInsVec utxosVec
-  | searchStrategy == Greedy =
-    printBpiLog @w (Debug [CoinSelectionLog]) "Selecting UTxOs via greedy search"
-      >> greedySearch @w stopSearch outVec txInsVec utxosVec
-  | searchStrategy == GreedyApprox =
-    printBpiLog @w (Debug [CoinSelectionLog]) "Selecting UTxOs via greedy pruning search"
-      >> greedyApprox @w stopSearch outVec txInsVec utxosVec
-  | otherwise = return $ throwError "Not a valid search strategy."
+searchTxIns Greedy stopSearch outVec txInsVec utxosVec =
+  printBpiLog @w (Debug [CoinSelectionLog]) "Selecting UTxOs via greedy search"
+    >> greedySearch @w stopSearch outVec txInsVec utxosVec
+searchTxIns GreedyApprox stopSearch outVec txInsVec utxosVec =
+  printBpiLog @w (Debug [CoinSelectionLog]) "Selecting UTxOs via greedy approx search"
+    >> greedyApprox @w stopSearch outVec txInsVec utxosVec
 
 -- `greedySearch` searches for utxos vectors for input to a transaction,
 -- this is achieved by selecting the utxo vector that have closest euclidean distance
@@ -276,21 +282,21 @@ searchTxIns searchStrategy stopSearch outVec txInsVec utxosVec
 greedySearch ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  (Vector Integer -> Bool) ->
-  Vector Integer ->
-  Vector Integer ->
-  [Vector Integer] ->
+  (ValueVector -> Bool) -> -- condition on when to stop the search
+  ValueVector -> -- output value vector of the Tx.
+  ValueVector -> -- input value vector of the Tx.
+  [ValueVector] -> -- all the value vectors of the utxos that can be spent.
   Eff effs (Either Text [Int])
 greedySearch stopSearch outVec txInsVec utxosVec
   -- we stop the search if there are no utxos vectors left, as we will not be able to
   -- select any further utxos as input to a transaction.
   | null utxosVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: The list of remanining UTxO vectors in null."
-      >> return (Right mempty)
+      >> pure (Right mempty)
   -- we stop the search is the predicate `stopSearch` is true.
   | stopSearch txInsVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: Stopping search early."
-      >> return (Right mempty)
+      >> pure (Right mempty)
   | otherwise =
     runEitherT $ do
       -- Here, we calculate the euclidean distance of the following vectors:
@@ -307,11 +313,11 @@ greedySearch stopSearch outVec txInsVec utxosVec
 
       newEitherT $ loop sortedDist txInsVec
   where
-    loop :: [(Int, Float)] -> Vector Integer -> Eff effs (Either Text [Int])
-    loop [] _ = return $ Right mempty
+    loop :: [(Int, Float)] -> ValueVector -> Eff effs (Either Text [Int])
+    loop [] _ = pure $ Right mempty
     loop ((idx, _) : remSortedDist) newTxInsVec =
       if stopSearch newTxInsVec -- we check if we should stop the search.
-        then return $ Right mempty
+        then pure $ Right mempty
         else runEitherT $ do
           -- Get the selected utxo vector given the current idx.
           selectedUtxoVec <-
@@ -346,21 +352,21 @@ greedySearch stopSearch outVec txInsVec utxosVec
 greedyApprox ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  (Vector Integer -> Bool) ->
-  Vector Integer ->
-  Vector Integer ->
-  [Vector Integer] ->
+  (ValueVector -> Bool) -> -- condition on when to stop the search
+  ValueVector -> -- output value vector of the Tx.
+  ValueVector -> -- input value vector of the Tx.
+  [ValueVector] -> -- all the value vectors of the utxos that can be spent.
   Eff effs (Either Text [Int])
 greedyApprox stopSearch outVec txInsVec utxosVec
   -- we stop the search if there are no utxos vectors left, as we will not be able to
   -- select any further utxos as input to a transaction.
   | null utxosVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: The list of remanining UTxO vectors in null."
-      >> return (Right mempty)
+      >> pure (Right mempty)
   -- we stop the search is the predicate `stopSearch` is true.
   | stopSearch txInsVec =
     printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: Stopping search early."
-      >> return (Right mempty)
+      >> pure (Right mempty)
   | otherwise =
     runEitherT $ do
       -- Here, we get the selected indexes of utxo vectors using greedy search.
@@ -371,7 +377,7 @@ greedyApprox stopSearch outVec txInsVec utxosVec
           -- last will have greater distance from the output vector.
           -- Hence, they may contain all the values that's required for
           -- the output vector.
-          revSelectedUtxosVec :: [Vector Integer]
+          revSelectedUtxosVec :: [ValueVector]
           revSelectedUtxosVec =
             List.reverse $ selectedUtxosIdx ^.. folded . to (\idx -> utxosVec ^? ix idx) . folded
 
@@ -380,7 +386,7 @@ greedyApprox stopSearch outVec txInsVec utxosVec
 
       hoistEither $ loop txInsVec revSelectedUtxosIdx revSelectedUtxosVec
   where
-    loop :: Vector Integer -> [Int] -> [Vector Integer] -> Either Text [Int]
+    loop :: ValueVector -> [Int] -> [ValueVector] -> Either Text [Int]
     loop newTxInsVec (idx : idxs) (vec : vecs) = do
       -- Add the selected utxo vector to the current tx input vector.
       newTxInsVec' <- addVec newTxInsVec vec
@@ -400,12 +406,12 @@ greedyApprox stopSearch outVec txInsVec utxosVec
         -- Else we check if we should stop the search here.
         False | stopSearch newTxInsVec -> Right mempty
         -- We add the current utxo vector.
-        False -> (idx :) <$> loop newTxInsVec' idxs vecs
+        _ -> (idx :) <$> loop newTxInsVec' idxs vecs
     loop _newTxInsVec [] [] = pure mempty
     loop _newTxInsVec _idxs _vecs = Left "Length of idxs and list of vecs are not same."
 
 -- calculate euclidean distance of two vectors, of same length/dimension.
-l2norm :: Vector Integer -> Vector Integer -> Either Text Float
+l2norm :: ValueVector -> ValueVector -> Either Text Float
 l2norm v1 v2
   | length v1 == length v2 = Right $ sqrt $ fromInteger $ sum $ Vec.zipWith formula v1 v2
   | otherwise =
@@ -423,25 +429,25 @@ l2norm v1 v2
     formula n1 n2 = (n1 - n2) ^ (2 :: Integer)
 
 -- Add two vectors of same length.
-addVec :: Num n => Vector n -> Vector n -> Either Text (Vector n)
+addVec :: forall (n :: Type). Num n => Vector n -> Vector n -> Either Text (Vector n)
 addVec = opVec (+)
 
 -- Substract two vectors of same length.
-subVec :: Num n => Vector n -> Vector n -> Either Text (Vector n)
+subVec :: forall (n :: Type). Num n => Vector n -> Vector n -> Either Text (Vector n)
 subVec = opVec (-)
 
 -- create zero vector of specified length.
 zeroVec :: Int -> Vector Integer
-zeroVec n = Vec.fromList $ replicate n 0
+zeroVec n = Vec.replicate n 0
 
 -- convert a value to a vector.
-valueToVec :: Set AssetClass -> Value -> Either Text (Vector Integer)
+valueToVec :: Set AssetClass -> Value -> Either Text ValueVector
 valueToVec allAssetClasses v =
   maybeToRight "Error: Not able to uncons from empty vector." $
     (over _Just fst . uncons) $ valuesToVecs allAssetClasses [v]
 
 -- convert values to a list of vectors.
-valuesToVecs :: Set AssetClass -> [Value] -> Vector (Vector Integer)
+valuesToVecs :: Set AssetClass -> [Value] -> Vector ValueVector
 valuesToVecs allAssetClasses values = Vec.fromList $ map toVec values
   where
     toVec :: Value -> Vector Integer
@@ -464,7 +470,13 @@ txOutToTxIn (txOutRef, txOut) =
     ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
 
 -- Apply a binary operation on two vectors of same length.
-opVec :: Num n => (forall a. Num a => a -> a -> a) -> Vector n -> Vector n -> Either Text (Vector n)
+opVec ::
+  forall (n :: Type).
+  Num n =>
+  (forall a. Num a => a -> a -> a) ->
+  Vector n ->
+  Vector n ->
+  Either Text (Vector n)
 opVec f v1 v2
   | length v1 == length v2 = Right $ Vec.zipWith f v1 v2
   | otherwise =

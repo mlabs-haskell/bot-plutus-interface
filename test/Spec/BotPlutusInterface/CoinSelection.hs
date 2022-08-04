@@ -134,7 +134,7 @@ assertUniqueAssetClasses = withMaxSuccess 1000 (forAll uniqueAssetClassesGen val
 
         utxos <- randomTxOuts numUTxOs assetClassSampleSize allAssetClasses
 
-        return (allAssetClasses, utxos)
+        pure (allAssetClasses, utxos)
 
 validValueVectors :: Property
 validValueVectors = withMaxSuccess 1000 (forAll txOutsGen validate)
@@ -226,4 +226,4 @@ validateBalancing = withMaxSuccess 10000 (forAll balanceGen validate)
             utxos :: Map TxOutRef TxOut
             utxos = Map.fromList $ zip (tail rTxOutRefs) (tail rTxOuts)
 
-        return (txOutput, utxos)
+        pure (txOutput, utxos)

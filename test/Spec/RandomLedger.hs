@@ -39,7 +39,7 @@ randomValue samplesize assetclasses =
 
     amounts <- replicateM (length selectedAc) (toInteger <$> arbitrary @Natural)
 
-    return $
+    pure $
       mconcatMap (uncurry Value.assetClassValue) $
         zip (Set.toList selectedAc) amounts
 
@@ -50,7 +50,7 @@ randomTxOut samplesize assetclasses =
     value <- randomValue samplesize assetclasses
     datumhash <- arbitrary
 
-    return (TxOut addr value datumhash)
+    pure (TxOut addr value datumhash)
 
 randomTxOuts :: Int -> Int -> Set AssetClass -> Gen [TxOut]
 randomTxOuts numTxOuts samplesize =
@@ -61,7 +61,7 @@ randomTxOutRef =
   do
     txId <- arbitrary
     txIdx <- toInteger <$> arbitrary @Natural
-    return (TxOutRef txId txIdx)
+    pure (TxOutRef txId txIdx)
 
 randomTxOutRefs :: Int -> Gen [TxOutRef]
 randomTxOutRefs n = replicateM n randomTxOutRef
