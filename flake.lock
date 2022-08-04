@@ -764,17 +764,17 @@
     "plutus-apps": {
       "flake": false,
       "locked": {
-        "lastModified": 1657805529,
-        "narHash": "sha256-b/cDxN3e1TQMDlYmDlUIS53eSxeMPq7YtlUdJOpgV50=",
-        "owner": "gege251",
+        "lastModified": 1659382073,
+        "narHash": "sha256-QBgb+zp65MIHLwDD4Pr75QPhVQlO8qxml1lq4mo0zOA=",
+        "owner": "mlabs-haskell",
         "repo": "plutus-apps",
-        "rev": "59e269d3a2bc66ab99b0070d16c81dc13636f9c4",
+        "rev": "8c6d8387b455368a87228f3ffe9901e8416f9643",
         "type": "github"
       },
       "original": {
-        "owner": "gege251",
+        "owner": "mlabs-haskell",
+        "ref": "maxim/for-cardano-wanchain-demo-with-v2-imports",
         "repo": "plutus-apps",
-        "rev": "59e269d3a2bc66ab99b0070d16c81dc13636f9c4",
         "type": "github"
       }
     },

@@ -112,8 +112,7 @@
     };
     plutus-apps = {
       url =
-        #"github:gege251/plutus-apps/62342808fa7422ebea3233a7e031d3aa00c04672";
-        "git+file:///home/maxim/work/projects/plutus-apps?rev=8c6d8387b455368a87228f3ffe9901e8416f9643";
+        "github:mlabs-haskell/plutus-apps?ref=maxim/for-cardano-wanchain-demo-with-v2-imports";
       flake = false;
     };
     purescript-bridge = {
