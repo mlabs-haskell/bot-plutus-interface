@@ -1,7 +1,12 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
 
-module BotPlutusInterface.CoinSelection (valueToVec, valuesToVecs, selectTxIns, uniqueAssetClasses) where
+module BotPlutusInterface.CoinSelection (
+  valueToVec,
+  valuesToVecs,
+  selectTxIns,
+  uniqueAssetClasses,
+) where
 
 import BotPlutusInterface.Effects (PABEffect, printBpiLog)
 import BotPlutusInterface.Types (LogLevel (Debug), LogType (CoinSelectionLog))
@@ -104,7 +109,7 @@ Now, let's see how the coin selection works by looking at an example:
     utxo3-vector: [3,                              6]
 
   Now, as stated above our goal is to get as close to output-vector as possible,
-  but we also need to satisfiy the following condition:
+  but we also need to satisfy the following condition:
 
     1. Each column of the resultant vector must be greater than or equal to the corresponding
        column of the output vector.
@@ -118,7 +123,7 @@ Now, let's see how the coin selection works by looking at an example:
 
     input-vector: [0, 0]
 
-  Now, we can start searching for utxos that can statisfy our goal and mission:
+  Now, we can start searching for utxos that can satisfy our goal and mission:
 
     step 1. Add input vector to all the utxo vectors. In this case these vectors will be
             utxo1-vector, utxo2-vector, utxo3-vector.
@@ -133,10 +138,10 @@ Now, let's see how the coin selection works by looking at an example:
                     ]
 
             As, we can see the distance between utxo1-vector and output-vector is very large
-            which is to be expected as utxo1-vector contains lots of "value" of different assetclass.
+            which is to be expected as utxo1-vector contains lots of "value" of different AssetClass.
 
     step 3. sort the distances, and select the utxos with least distances
-            until all the conditions are statisfied.
+            until all the conditions are satisfied.
 
             Result: [ 1.41
                     , 2.00
@@ -145,7 +150,7 @@ Now, let's see how the coin selection works by looking at an example:
 
             Since, utxo2-vector has the least distance we will select that utxo.
 
-            But, selecting utxo2-vector alone doesn't statisfy all our conditions,
+            But, selecting utxo2-vector alone doesn't satisfy all our conditions,
             hence we will have to continue selecting. After utxo2-vector, the vector with
             least distance is utxo3-vector, hence we will select that vector.
 
@@ -161,7 +166,7 @@ data SearchStrategy
   = -- | This is a greedy search that searches for nearest utxo using l2norm.
     Greedy
   | -- | This is like greedy search, but here there's
-    -- additonal goal that the change utxo should be equal to the output utxo.
+    -- additional goal that the change utxo should be equal to the output utxo.
     GreedyApprox
   deriving stock (Eq, Show)
 
@@ -170,8 +175,9 @@ defaultSearchStrategy = GreedyApprox
 
 type ValueVector = Vector Integer
 
--- 'selectTxIns' selects utxos using default search strategy, it also preprocesses
--- the utxos values in to normalized vectors. So that distances between utxos can be calculated.
+{- | 'selectTxIns' selects utxos using default search strategy, it also preprocesses
+ the utxos values in to normalized vectors. So that distances between utxos can be calculated.
+-}
 selectTxIns ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -250,7 +256,7 @@ selectTxIns originalTxIns utxosIndex outValue =
   where
     -- This represents the condition when we can stop searching for utxos.
     -- First condition is that the input vector must not be zero vector, i.e.
-    -- There must be atleast some input to the transaction.
+    -- There must be at least some input to the transaction.
     -- Second condition is that all the values of input vector must be greater than
     -- or equal to the output vector.
     isSufficient :: ValueVector -> ValueVector -> Bool
@@ -291,7 +297,7 @@ greedySearch stopSearch outVec txInsVec utxosVec
   -- we stop the search if there are no utxos vectors left, as we will not be able to
   -- select any further utxos as input to a transaction.
   | null utxosVec =
-    printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: The list of remanining UTxO vectors in null."
+    printBpiLog @w (Debug [CoinSelectionLog]) "Greedy: The list of remaining UTxO vectors in null."
       >> pure (Right mempty)
   -- we stop the search if the predicate `stopSearch` is true.
   | stopSearch txInsVec =
@@ -361,7 +367,7 @@ greedyApprox stopSearch outVec txInsVec utxosVec
   -- we stop the search if there are no utxos vectors left, as we will not be able to
   -- select any further utxos as input to a transaction.
   | null utxosVec =
-    printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: The list of remanining UTxO vectors in null."
+    printBpiLog @w (Debug [CoinSelectionLog]) "Greedy Pruning: The list of remaining UTxO vectors in null."
       >> pure (Right mempty)
   -- we stop the search if the predicate `stopSearch` is true.
   | stopSearch txInsVec =
@@ -408,7 +414,7 @@ greedyApprox stopSearch outVec txInsVec utxosVec
         -- We add the current utxo vector.
         _ -> (idx :) <$> loop newTxInsVec' idxs vecs
     loop _newTxInsVec [] [] = pure mempty
-    loop _newTxInsVec _idxs _vecs = Left "Length of idxs and list of vecs are not same."
+    loop _newTxInsVec _idxs _vecs = Left "Lengths of indexes and list of vectors are not same."
 
 -- calculate euclidean distance of two vectors, of same length/dimension.
 l2norm :: ValueVector -> ValueVector -> Either Text Float
@@ -440,13 +446,13 @@ subVec = opVec (-)
 zeroVec :: Int -> Vector Integer
 zeroVec n = Vec.replicate n 0
 
--- convert a value to a vector.
+-- | Convert a value to a vector.
 valueToVec :: Set AssetClass -> Value -> Either Text ValueVector
 valueToVec allAssetClasses v =
   maybeToRight "Error: Not able to uncons from empty vector." $
     (over _Just fst . uncons) $ valuesToVecs allAssetClasses [v]
 
--- convert values to a list of vectors.
+-- | Convert values to a list of vectors.
 valuesToVecs :: Set AssetClass -> [Value] -> Vector ValueVector
 valuesToVecs allAssetClasses values = Vec.fromList $ map toVec values
   where
@@ -455,7 +461,7 @@ valuesToVecs allAssetClasses values = Vec.fromList $ map toVec values
       fmap (Value.assetClassValueOf v) $
         allAssetClasses & id %~ (Vec.fromList . Set.toList)
 
--- As the name suggests, we get a set of all the unique assetclass from given the lists of values.
+-- | As the name suggests, we get a set of all the unique AssetClass from given the lists of values.
 uniqueAssetClasses :: [Value] -> Set AssetClass
 uniqueAssetClasses = Set.fromList . concatMap valueToAssetClass
   where
