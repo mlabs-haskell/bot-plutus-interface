@@ -70,7 +70,6 @@ import Ledger.Interval (
   UpperBound (UpperBound),
  )
 import Ledger.Scripts (Datum, DatumHash (..))
---import Ledger.Scripts qualified as Scripts
 import Plutus.Script.Utils.V2.Scripts qualified as Scripts
 import Ledger.Tx (ChainIndexTxOut, RedeemerPtr (..), Redeemers, ScriptTag (..), Tx (..), TxId (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..), txId)
 import Ledger.Value (Value)
