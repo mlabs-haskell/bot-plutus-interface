@@ -112,7 +112,7 @@
     };
     plutus-apps = {
       url =
-        "github:mlabs-haskell/plutus-apps?ref=maxim/for-cardano-wanchain-demo-with-v2-imports";
+        "github:mlabs-haskell/plutus-apps?ref=maxim/for-cardano-wanchain-demo-with-v2-imports&rev=8c6d8387b455368a87228f3ffe9901e8416f9643";
       flake = false;
     };
     purescript-bridge = {
