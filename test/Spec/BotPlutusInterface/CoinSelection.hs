@@ -40,7 +40,7 @@ tests =
     "BotPlutusInterface.CoinSelection"
     [ testProperty "Have All unique assetClasses" assertUniqueAssetClasses
     , testProperty "columns of vectors represent same assetClass" validValueVectors
-    , testProperty "coin selection results in valid balance of Tx" validateBalancing
+    , testProperty "coin selection produces valid balanced Tx" validateBalancing
     , testCase "coin selection greedy Approx" greedyApprox
     ]
 
