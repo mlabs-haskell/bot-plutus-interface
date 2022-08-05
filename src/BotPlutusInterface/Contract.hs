@@ -240,7 +240,7 @@ awaitTxStatusChange contractEnv txId = do
     txStatus <- getStatus
     case (txStatus, currBlock > cutOffBlock) of
       (status, True) -> do
-        logDebug . mconcat . fmap mconcat $
+        helperLog . mconcat . fmap mconcat $
           [ ["Timeout for waiting `TxId ", show txId, "` status change reached"]
           , [" - waited ", show pollTimeout, " blocks."]
           , [" Current status: ", show status]
@@ -255,17 +255,17 @@ awaitTxStatusChange contractEnv txId = do
       mTx <- queryChainIndexForTxState
       case mTx of
         Nothing -> do
-          logDebug $ "TxId " ++ show txId ++ " not found in index"
+          helperLog $ "TxId " ++ show txId ++ " not found in index"
           pure Unknown
         Just txState -> do
-          logDebug $ "TxId " ++ show txId ++ " found in index, checking status"
+          helperLog $ "TxId " ++ show txId ++ " found in index, checking status"
           blk <- fromInteger <$> currentBlock contractEnv
           case transactionStatus blk txState txId of
             Left e -> do
-              logDebug $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
+              helperLog $ "Status check for TxId " ++ show txId ++ " failed with " ++ show e
               pure Unknown
             Right st -> do
-              logDebug $ "Status for TxId " ++ show txId ++ " is " ++ show st
+              helperLog $ "Status for TxId " ++ show txId ++ " is " ++ show st
               pure st
 
     queryChainIndexForTxState :: Eff effs (Maybe TxIdState)
@@ -277,7 +277,7 @@ awaitTxStatusChange contractEnv txId = do
           pure . Just $ fromTx blk tx
         Nothing -> pure Nothing
 
-    logDebug = printBpiLog @w (Debug [PABLog]) . pretty
+    helperLog = printBpiLog @w (Debug [CollateralLog]) . pretty
 
 -- | This will FULLY balance a transaction
 balanceTx ::
@@ -404,7 +404,7 @@ awaitSlot contractEnv s@(Slot n) = do
     _ -> awaitSlot contractEnv s
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
- are applying here as well.
+     are applying here as well.
 -}
 awaitTime ::
   forall (w :: Type) (effs :: [Type -> Type]).

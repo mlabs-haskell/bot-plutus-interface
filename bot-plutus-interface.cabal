@@ -82,6 +82,7 @@ library
     BotPlutusInterface.BodyBuilder
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
+    BotPlutusInterface.CoinSelection
     BotPlutusInterface.Collateral
     BotPlutusInterface.Config
     BotPlutusInterface.Contract
@@ -176,6 +177,7 @@ test-suite bot-plutus-interface-test
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
     Spec.BotPlutusInterface.Balance
+    Spec.BotPlutusInterface.CoinSelection
     Spec.BotPlutusInterface.Collateral
     Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Contract
@@ -184,6 +186,7 @@ test-suite bot-plutus-interface-test
     Spec.BotPlutusInterface.TxStatusChange
     Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
+    Spec.RandomLedger
 
   build-depends:
     , aeson                      ^>=1.5.0.0
@@ -236,6 +239,7 @@ test-suite bot-plutus-interface-test
     , text                       ^>=1.2.4.0
     , utf8-string
     , uuid
+    , vector
     , warp
 
   hs-source-dirs: test
