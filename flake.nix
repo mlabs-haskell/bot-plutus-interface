@@ -113,6 +113,11 @@
         "github:input-output-hk/Win32-network/3825d3abf75f83f406c1f7161883c438dac7277d";
       flake = false;
     };
+
+    wl-pprint-text = {
+      url = "github:ivan-m/wl-pprint-text";
+      flake = false;
+    };
   };
 
   outputs = { self, nixpkgs, haskell-nix, iohk-nix, ... }@inputs:
@@ -156,198 +161,139 @@
         )
       ];
 
-      extraSources = [
-        {
-          src = inputs.cardano-addresses;
-          subdirs = [ "core" "command-line" ];
-        }
-        {
-          src = inputs.cardano-base;
-          subdirs = [
-            "base-deriving-via"
-            "binary"
-            "binary/test"
-            "cardano-crypto-class"
-            "cardano-crypto-praos"
-            "cardano-crypto-tests"
-            "measures"
-            "orphans-deriving-via"
-            "slotting"
-            "strict-containers"
-          ];
-        }
-        {
-          src = inputs.cardano-crypto;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.cardano-ledger;
-          subdirs = [
-            "eras/alonzo/impl"
-            "eras/byron/chain/executable-spec"
-            "eras/byron/crypto"
-            "eras/byron/crypto/test"
-            "eras/byron/ledger/executable-spec"
-            "eras/byron/ledger/impl"
-            "eras/byron/ledger/impl/test"
-            "eras/shelley/impl"
-            "eras/shelley-ma/impl"
-            "eras/shelley/test-suite"
-            "libs/cardano-data"
-            "libs/cardano-ledger-core"
-            "libs/cardano-ledger-pretty"
-            "libs/cardano-protocol-tpraos"
-            "libs/compact-map"
-            "libs/non-integral"
-            "libs/set-algebra"
-            "libs/small-steps"
-            "libs/small-steps-test"
-          ];
-        }
-        {
-          src = inputs.cardano-node;
-          subdirs = [
-            "cardano-api"
-            "cardano-node"
-            "cardano-cli"
-            "cardano-git-rev"
-            "trace-resources"
-            "trace-forward"
-            "trace-dispatcher"
-          ];
-        }
-        {
-          src = inputs.cardano-config;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.cardano-prelude;
-          subdirs = [ "cardano-prelude" "cardano-prelude-test" ];
-        }
-        {
-          src = inputs.cardano-wallet;
-          subdirs = [
-            "lib/cli"
-            "lib/core"
-            "lib/core-integration"
-            "lib/dbvar"
-            "lib/launcher"
-            "lib/numeric"
-            "lib/shelley"
-            "lib/strict-non-empty-containers"
-            "lib/test-utils"
-            "lib/text-class"
-          ];
-        }
-        {
-          src = inputs.ekg-forward;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.flat;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.goblins;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.iohk-monitoring-framework;
-          subdirs = [
-            "iohk-monitoring"
-            "tracer-transformers"
-            "contra-tracer"
-            "plugins/backend-aggregation"
-            "plugins/backend-ekg"
-            "plugins/backend-monitoring"
-            "plugins/backend-trace-forwarder"
-            "plugins/scribe-systemd"
-          ];
-        }
-        {
-          src = inputs.optparse-applicative;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.ouroboros-network;
-          subdirs = [
-            "io-classes"
-            "io-sim"
-            "strict-stm"
-            "monoidal-synchronisation"
-            "network-mux"
-            "ntp-client"
-            "ouroboros-consensus"
-            "ouroboros-consensus-byron"
-            "ouroboros-consensus-cardano"
-            "ouroboros-consensus-protocol"
-            "ouroboros-consensus-shelley"
-            "ouroboros-network"
-            "ouroboros-network-framework"
-            "ouroboros-network-testing"
-            "typed-protocols"
-            "typed-protocols-cborg"
-            "typed-protocols-examples"
-          ];
-        }
-        {
-          src = inputs.plutus;
-          subdirs = [
-            "plutus-core"
-            "plutus-ledger-api"
-            "plutus-tx"
-            "plutus-tx-plugin"
-            "prettyprinter-configurable"
-            "stubs/plutus-ghc-stub"
-            "word-array"
-          ];
-        }
-        {
-          src = inputs.plutus-apps;
-          subdirs = [
-            "doc"
-            "freer-extras"
-            "playground-common"
-            "plutus-chain-index"
-            "plutus-chain-index-core"
-            "plutus-contract"
-            "plutus-ledger"
-            "plutus-ledger-constraints"
-            "plutus-pab"
-            "plutus-playground-server"
-            "plutus-use-cases"
-            "quickcheck-dynamic"
-            "web-ghc"
-          ];
-        }
-        {
-          src = inputs.purescript-bridge;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.servant-purescript;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.Win32-network;
-          subdirs = [ "." ];
-        }
+      extraHackagePackages = [
+        "${inputs.Win32-network}"
+
+        "${inputs.cardano-addresses}/command-line"
+        "${inputs.cardano-addresses}/core"
+
+        "${inputs.cardano-base}/base-deriving-via"
+        "${inputs.cardano-base}/binary"
+        "${inputs.cardano-base}/binary/test"
+        "${inputs.cardano-base}/cardano-crypto-class"
+        "${inputs.cardano-base}/cardano-crypto-praos"
+        "${inputs.cardano-base}/cardano-crypto-tests"
+        "${inputs.cardano-base}/measures"
+        "${inputs.cardano-base}/orphans-deriving-via"
+        "${inputs.cardano-base}/slotting"
+        "${inputs.cardano-base}/strict-containers"
+      
+        "${inputs.cardano-config}"
+
+        "${inputs.cardano-crypto}"
+
+        "${inputs.cardano-ledger}/eras/alonzo/impl"
+        "${inputs.cardano-ledger}/eras/byron/chain/executable-spec"
+        "${inputs.cardano-ledger}/eras/byron/crypto"
+        "${inputs.cardano-ledger}/eras/byron/crypto/test"
+        "${inputs.cardano-ledger}/eras/byron/ledger/executable-spec"
+        "${inputs.cardano-ledger}/eras/byron/ledger/impl"
+        "${inputs.cardano-ledger}/eras/byron/ledger/impl/test"
+        "${inputs.cardano-ledger}/eras/shelley-ma/impl"
+        "${inputs.cardano-ledger}/eras/shelley/impl"
+        "${inputs.cardano-ledger}/eras/shelley/test-suite"
+        "${inputs.cardano-ledger}/libs/cardano-data"
+        "${inputs.cardano-ledger}/libs/cardano-ledger-core"
+        "${inputs.cardano-ledger}/libs/cardano-ledger-pretty"
+        "${inputs.cardano-ledger}/libs/cardano-protocol-tpraos"
+        "${inputs.cardano-ledger}/libs/compact-map"
+        "${inputs.cardano-ledger}/libs/non-integral"
+        "${inputs.cardano-ledger}/libs/set-algebra"
+        "${inputs.cardano-ledger}/libs/small-steps"
+        "${inputs.cardano-ledger}/libs/small-steps-test"
+
+        "${inputs.cardano-node}/cardano-api"
+        "${inputs.cardano-node}/cardano-cli"
+        "${inputs.cardano-node}/cardano-git-rev"
+        "${inputs.cardano-node}/cardano-node"
+        "${inputs.cardano-node}/trace-dispatcher"
+        "${inputs.cardano-node}/trace-forward"
+        "${inputs.cardano-node}/trace-resources"
+
+        "${inputs.cardano-prelude}/cardano-prelude"
+        "${inputs.cardano-prelude}/cardano-prelude-test"
+
+        "${inputs.cardano-wallet}/lib/cli"
+        "${inputs.cardano-wallet}/lib/core"
+        "${inputs.cardano-wallet}/lib/core-integration"
+        "${inputs.cardano-wallet}/lib/dbvar"
+        "${inputs.cardano-wallet}/lib/launcher"
+        "${inputs.cardano-wallet}/lib/numeric"
+        "${inputs.cardano-wallet}/lib/shelley"
+        "${inputs.cardano-wallet}/lib/strict-non-empty-containers"
+        "${inputs.cardano-wallet}/lib/test-utils"
+        "${inputs.cardano-wallet}/lib/text-class"
+
+        "${inputs.ekg-forward}"
+
+        "${inputs.flat}"
+
+        "${inputs.goblins}"
+
+        "${inputs.iohk-monitoring-framework}/contra-tracer"
+        "${inputs.iohk-monitoring-framework}/iohk-monitoring"
+        "${inputs.iohk-monitoring-framework}/plugins/backend-aggregation"
+        "${inputs.iohk-monitoring-framework}/plugins/backend-ekg"
+        "${inputs.iohk-monitoring-framework}/plugins/backend-monitoring"
+        "${inputs.iohk-monitoring-framework}/plugins/backend-trace-forwarder"
+        "${inputs.iohk-monitoring-framework}/plugins/scribe-systemd"
+        "${inputs.iohk-monitoring-framework}/tracer-transformers"
+
+        "${inputs.optparse-applicative}"
+
+        "${inputs.ouroboros-network}/io-classes"
+        "${inputs.ouroboros-network}/io-sim"
+        "${inputs.ouroboros-network}/monoidal-synchronisation"
+        "${inputs.ouroboros-network}/network-mux"
+        "${inputs.ouroboros-network}/ntp-client"
+        "${inputs.ouroboros-network}/ouroboros-consensus"
+        "${inputs.ouroboros-network}/ouroboros-consensus-byron"
+        "${inputs.ouroboros-network}/ouroboros-consensus-cardano"
+        "${inputs.ouroboros-network}/ouroboros-consensus-protocol"
+        "${inputs.ouroboros-network}/ouroboros-consensus-shelley"
+        "${inputs.ouroboros-network}/ouroboros-network"
+        "${inputs.ouroboros-network}/ouroboros-network-framework"
+        "${inputs.ouroboros-network}/ouroboros-network-testing"
+        "${inputs.ouroboros-network}/strict-stm"
+        "${inputs.ouroboros-network}/typed-protocols"
+        "${inputs.ouroboros-network}/typed-protocols-cborg"
+        "${inputs.ouroboros-network}/typed-protocols-examples"
+
+        "${inputs.plutus-apps}/doc"
+        "${inputs.plutus-apps}/freer-extras"
+        "${inputs.plutus-apps}/playground-common"
+        "${inputs.plutus-apps}/plutus-chain-index"
+        "${inputs.plutus-apps}/plutus-chain-index-core"
+        "${inputs.plutus-apps}/plutus-contract"
+        "${inputs.plutus-apps}/plutus-ledger"
+        "${inputs.plutus-apps}/plutus-ledger-constraints"
+        "${inputs.plutus-apps}/plutus-pab"
+        "${inputs.plutus-apps}/plutus-playground-server"
+        "${inputs.plutus-apps}/plutus-use-cases"
+        "${inputs.plutus-apps}/quickcheck-dynamic"
+        "${inputs.plutus-apps}/web-ghc"
+
+        "${inputs.plutus}/plutus-core"
+        "${inputs.plutus}/plutus-ledger-api"
+        "${inputs.plutus}/plutus-tx"
+        "${inputs.plutus}/plutus-tx-plugin"
+        "${inputs.plutus}/prettyprinter-configurable"
+        "${inputs.plutus}/stubs/plutus-ghc-stub"
+        "${inputs.plutus}/word-array"
+
+        "${inputs.purescript-bridge}"
+
+        "${inputs.servant-purescript}"
+
+        "${inputs.wl-pprint-text}"
       ];
 
-      extraHackagePackages = with nixpkgs.lib;
-        (concatLists (map
-          (extraSource: (map
-            (subdir:
-              if subdir == "." then extraSource.src.outPath else "${extraSource.src.outPath}/${subdir}")
-            extraSource.subdirs))
-          extraSources));
-
-      compiler-nix-name = "ghc8107";
 
       projectFor = system:
         let
           pkgs = nixpkgsFor system;
           pkgs' = nixpkgsFor' system;
+          compiler-nix-name = "ghc8107";
           myHackages = inputs.haskell-nix-extra-hackage.mkHackagesFor system compiler-nix-name extraHackagePackages;
         in
         pkgs.haskell-nix.cabalProject' {
@@ -356,6 +302,8 @@
           inherit compiler-nix-name cabalProjectLocal;
           inherit (myHackages) extra-hackages extra-hackage-tarballs;
           modules = myHackages.modules ++ haskellModules;
+
+          index-state = "2022-01-22T00:00:00Z";
 
           shell = {
             additional = ps: [
@@ -395,7 +343,7 @@
 
     in
     {
-      inherit cabalProjectLocal extraSources haskellModules;
+      inherit cabalProjectLocal extraHackagePackages haskellModules;
 
       project = perSystem projectFor;
       flake = perSystem (system: (projectFor system).flake { });
