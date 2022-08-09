@@ -152,11 +152,11 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
       -- Balance the tx
       -- (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
-      (balancedTx', minUtxos) <- balanceTxLoop utxoIndexS privKeys [] preBalancedTx
+      (balancedTx, minUtxos) <- balanceTxLoop utxoIndexS privKeys [] preBalancedTx
 
-      let txOuts1 = txOutputs balancedTx'
-          txOuts2 = txOuts1 <> Map.elems utxoIndexD
-          balancedTx = balancedTx' {txOutputs = txOuts2}
+      let txOuts1 = txOutputs balancedTx
+          addDatumTxs txos = txos <> Map.elems utxoIndexD
+          addDatums tx = tx {txOutputs = (addDatumTxs (txOutputs tx))}
       
 
       -- Get current Ada change
@@ -173,7 +173,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
-          fullyBalancedTx = addAdaChange balanceCfg changeAddr finalAdaChange balancedTxWithChange
+          fullyBalancedTx = addDatums $ addAdaChange balanceCfg changeAddr finalAdaChange balancedTxWithChange
           txInfoLog =
             printBpiLog @w (Debug [TxBalancingLog]) $
               "UnbalancedTx TxInputs: "
@@ -418,7 +418,7 @@ addAdaChange balanceCfg changeAddr change tx
       { txOutputs =
           List.reverse $
             modifyFirst
-              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (txOutValue txout))
+              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (txOutValue txout) && Tx.txOutDatumHash txout == Nothing)
               (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
               (List.reverse $ txOutputs tx)
       }
@@ -426,7 +426,7 @@ addAdaChange balanceCfg changeAddr change tx
     tx
       { txOutputs =
           modifyFirst
-            ((== changeAddr) . Tx.txOutAddress)
+            (\txout -> Tx.txOutAddress txout == changeAddr && Tx.txOutDatumHash txout == Nothing)
             (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
             (txOutputs tx)
       }
