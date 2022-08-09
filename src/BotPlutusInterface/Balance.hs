@@ -45,7 +45,7 @@ import Data.List ((\\))
 import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -122,6 +122,9 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       let utxoIndex :: Map TxOutRef TxOut
           utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
 
+          utxoIndexD, utxoIndexS :: Map TxOutRef TxOut
+          (utxoIndexD, utxoIndexS) = splitUtxos utxoIndex
+
           requiredSigs :: [PubKeyHash]
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
 
@@ -148,7 +151,13 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
           else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
       -- Balance the tx
-      (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
+      -- (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
+      (balancedTx', minUtxos) <- balanceTxLoop utxoIndexS privKeys [] preBalancedTx
+
+      let txOuts1 = txOutputs balancedTx'
+          txOuts2 = txOuts1 <> Map.elems utxoIndexD
+          balancedTx = balancedTx' {txOutputs = txOuts2}
+      
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
@@ -313,6 +322,14 @@ getAdaChange utxos = lovelaceValue . getChange utxos
 
 getNonAdaChange :: Map TxOutRef TxOut -> Tx -> Value
 getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
+
+hasDatum :: TxOut -> Bool
+hasDatum = isJust . txOutDatumHash
+
+-- | Split UTxOs into ones that have data
+-- and those that don't.
+splitUtxos :: Map TxOutRef TxOut -> (Map TxOutRef TxOut, Map TxOutRef TxOut)
+splitUtxos = Map.partition hasDatum
 
 -- | Add min lovelaces to each tx output
 addLovelaces :: [(TxOut, Integer)] -> Tx -> Tx
