@@ -34,8 +34,19 @@ import BotPlutusInterface.Types (
   Tip (block, slot),
   TxFile (Signed),
  )
-import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
-import Control.Lens (preview, (^.))
+import Cardano.Api (
+  AsType (..),
+  EraInMode (..),
+  ShelleyBasedEra (ShelleyBasedEraBabbage),
+  Tx (Tx),
+  toLedgerPParams,
+ )
+import Cardano.Api.Shelley (toShelleyTxOut)
+import Cardano.Ledger.Shelley.API.Wallet (
+  CLI (evaluateMinLovelaceOutput),
+ )
+import Cardano.Prelude (maybeToEither)
+import Control.Lens (preview, (.~), (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
@@ -46,7 +57,7 @@ import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, newEitherT)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Aeson.KeyMap qualified as KeyMap
-import Data.Function (fix)
+import Data.Function (fix, (&))
 import Data.Kind (Type)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map qualified as Map
@@ -56,15 +67,16 @@ import Data.Text qualified as Text
 import Data.Vector qualified as V
 import Ledger (POSIXTime)
 import Ledger qualified
+import Ledger.Ada qualified as Ada
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
-import Ledger.Constraints.OffChain (UnbalancedTx (..), adjustUnbalancedTx)
-import Ledger.Params (Params (Params))
+import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
 import Ledger.Slot (Slot (Slot))
-import Ledger.TimeSlot (SlotConfig (..))
-import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx))
+import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
 import Ledger.Tx qualified as Tx
+import Ledger.Validation (Coin (Coin))
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
 import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
+import Plutus.Contract.CardanoAPI (toCardanoTxOutBabbage, toCardanoTxOutDatumHashBabbage)
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (
   BalanceTxResponse (..),
@@ -76,6 +88,7 @@ import Plutus.Contract.Effects (
  )
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
+import Plutus.V1.Ledger.Tx (TxOut (txOutValue))
 import PlutusTx.Builtins (fromBuiltin)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
@@ -187,8 +200,8 @@ handlePABReq contractEnv req = do
       ChainIndexQueryResp <$> queryChainIndex @w query
     BalanceTxReq unbalancedTx ->
       BalanceTxResp <$> balanceTx @w contractEnv unbalancedTx
-    WriteBalancedTxReq tx ->
-      WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx
+    WriteBalancedTxReq tx' ->
+      WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx'
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
     AwaitTimeReq t -> AwaitTimeResp <$> awaitTime @w contractEnv t
     CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
@@ -210,18 +223,47 @@ handlePABReq contractEnv req = do
   printBpiLog @w Debug $ pretty resp
   pure resp
 
+-- do-not-remove yet, need fo comparison with "own" implementation below
+-- minAda calculated fo 1 Lovelace output for this version is 999978
+-- adjustUnbalancedTx' ::
+--   forall (w :: Type) (effs :: [Type -> Type]).
+--   ContractEnvironment w ->
+--   UnbalancedTx ->
+--   Eff effs (Either Tx.ToCardanoError UnbalancedTx)
+-- adjustUnbalancedTx' contractEnv unbalancedTx = do
+--   let slotConfig = SlotConfig 20000 1654524000
+--       networkId = contractEnv.cePABConfig.pcNetwork
+--       maybeParams = contractEnv.cePABConfig.pcProtocolParams >>= \pparams -> pure $ Params slotConfig pparams networkId
+--   case maybeParams of
+--     Just params -> pure $ snd <$> adjustUnbalancedTx params unbalancedTx
+--     _ -> pure . Left $ Tx.TxBodyError "no protocol params"
+
+-- minAda calculated fo 1 Lovelace output for this version is 840450
+-- if switch all babbage related things to alonzo, it will calculate 999978 as ^ above
 adjustUnbalancedTx' ::
   forall (w :: Type) (effs :: [Type -> Type]).
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs (Either Tx.ToCardanoError UnbalancedTx)
-adjustUnbalancedTx' contractEnv unbalancedTx = do
-  let slotConfig = SlotConfig 20000 1654524000
-      networkId = contractEnv.cePABConfig.pcNetwork
-      maybeParams = contractEnv.cePABConfig.pcProtocolParams >>= \pparams -> pure $ Params slotConfig pparams networkId
-  case maybeParams of
-    Just params -> pure $ snd <$> adjustUnbalancedTx params unbalancedTx
-    _ -> pure . Left $ Tx.TxBodyError "no protocol params"
+adjustUnbalancedTx' contractEnv unbalancedTx = pure $ do
+  pparams <- getPParams
+  let networkId = contractEnv.cePABConfig.pcNetwork
+
+  updatedOuts <- traverse (adjustTxOut networkId pparams) (unbalancedTx ^. tx . outputs)
+  return $ unbalancedTx & (tx . outputs .~ updatedOuts)
+  where
+    getPParams =
+      maybeToEither (Tx.TxBodyError "No protocol params found in PAB config") $
+        asBabbageBased toLedgerPParams
+          <$> contractEnv.cePABConfig.pcProtocolParams
+
+    adjustTxOut networkId pparams txOut = do
+      txOut' <- toCardanoTxOutBabbage networkId toCardanoTxOutDatumHashBabbage txOut
+      let (Coin minTxOut) = evaluateMinLovelaceOutput pparams (asBabbageBased toShelleyTxOut txOut')
+          missingLovelace = max 0 (Ada.lovelaceOf minTxOut - Ada.fromValue (txOutValue txOut))
+      pure $ txOut {txOutValue = txOutValue txOut <> Ada.toValue missingLovelace}
+
+    asBabbageBased f = f ShelleyBasedEraBabbage
 
 {- | Await till transaction status change to something from `Unknown`.
  Uses `chain-index` to query transaction by id.
@@ -283,9 +325,9 @@ awaitTxStatusChange contractEnv txId = do
     queryChainIndexForTxState = do
       mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
       case mTx of
-        Just tx -> do
+        Just tx' -> do
           blk <- fromInteger <$> currentBlock contractEnv
-          pure . Just $ fromTx blk tx
+          pure . Just $ fromTx blk tx'
         Nothing -> pure Nothing
 
     logDebug = printBpiLog @w Debug . pretty
@@ -310,8 +352,8 @@ balanceTx contractEnv unbalancedTx = do
 
 fromCardanoTx :: CardanoTx -> Tx.Tx
 fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
-fromCardanoTx (EmulatorTx tx) = tx
-fromCardanoTx (Tx.Both tx _) = tx
+fromCardanoTx (EmulatorTx tx') = tx'
+fromCardanoTx (Tx.Both tx' _) = tx'
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -322,48 +364,48 @@ writeBalancedTx ::
   Eff effs WriteBalancedTxResponse
 writeBalancedTx contractEnv cardanoTx = do
   let pabConf = contractEnv.cePABConfig
-      tx = fromCardanoTx cardanoTx
+      tx' = fromCardanoTx cardanoTx
   uploadDir @w pabConf.pcSigningKeyFileDir
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
 
   eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . CardanoApiTx) $ do
-    void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
+    void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx'
     lift $ uploadDir @w pabConf.pcScriptFileDir
 
     privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
-    let requiredSigners = Map.keys $ tx ^. Tx.signatures
+    let requiredSigners = Map.keys $ tx' ^. Tx.signatures
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
         signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-    void $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx
+    void $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx'
 
     -- TODO: This whole part is hacky and we should remove it.
-    let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx)
+    let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx')
     -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
     alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsBabbageEra) path
     let cardanoApiTx = Tx.SomeTx (Tx alonzoBody []) BabbageEraInCardanoMode
 
     if signable
-      then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
+      then newEitherT $ CardanoCLI.signTx @w pabConf tx' requiredSigners
       else
         lift . printBpiLog @w Warn . PP.vsep $
           [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-          , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx))
+          , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx'))
           , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
           ]
 
     when (pabConf.pcCollectStats && signable) $
-      collectBudgetStats (Tx.txId tx) pabConf
+      collectBudgetStats (Tx.txId tx') pabConf
 
     when (not pabConf.pcDryRun && signable) $ do
-      newEitherT $ CardanoCLI.submitTx @w pabConf tx
+      newEitherT $ CardanoCLI.submitTx @w pabConf tx'
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
     let cardanoTxId = Ledger.getCardanoTxId $ Tx.CardanoApiTx cardanoApiTx
-        signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx)
+        signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx')
         signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
-    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" cardanoTxId)
+    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx')) (Files.txFilePath pabConf "raw" cardanoTxId)
     when signable $ mvFiles signedSrcPath signedDstPath
 
     pure cardanoApiTx

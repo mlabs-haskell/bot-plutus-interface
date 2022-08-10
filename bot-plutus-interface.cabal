@@ -106,6 +106,7 @@ library
     , cardano-crypto
     , cardano-ledger-alonzo
     , cardano-ledger-core
+    , cardano-ledger-shelley
     , cardano-prelude
     , cardano-slotting
     , config-schema
@@ -173,6 +174,7 @@ test-suite bot-plutus-interface-test
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
+    Spec.BotPlutusInterface.AdjustUnbalanced
     Spec.BotPlutusInterface.Balance
     Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Contract
