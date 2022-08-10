@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Spec.BotPlutusInterface.AdjustUnbalanced qualified
 import Spec.BotPlutusInterface.Balance qualified
 import Spec.BotPlutusInterface.Contract qualified
 import Spec.BotPlutusInterface.ContractStats qualified
@@ -27,4 +28,5 @@ tests =
     , Spec.BotPlutusInterface.Server.tests
     , Spec.BotPlutusInterface.ContractStats.tests
     , Spec.BotPlutusInterface.TxStatusChange.tests
+    , Spec.BotPlutusInterface.AdjustUnbalanced.tests
     ]
