@@ -45,7 +45,7 @@ import Data.List ((\\))
 import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -156,8 +156,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
       let txOuts1 = txOutputs balancedTx
           addDatumTxs txos = txos <> Map.elems utxoIndexD
-          addDatums tx = tx {txOutputs = (addDatumTxs (txOutputs tx))}
-      
+          addDatums tx = tx {txOutputs = addDatumTxs (txOutputs tx)}
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
@@ -326,8 +325,9 @@ getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
 hasDatum :: TxOut -> Bool
 hasDatum = isJust . txOutDatumHash
 
--- | Split UTxOs into ones that have data
--- and those that don't.
+{- | Split UTxOs into ones that have data
+ and those that don't.
+-}
 splitUtxos :: Map TxOutRef TxOut -> (Map TxOutRef TxOut, Map TxOutRef TxOut)
 splitUtxos = Map.partition hasDatum
 
@@ -418,7 +418,7 @@ addAdaChange balanceCfg changeAddr change tx
       { txOutputs =
           List.reverse $
             modifyFirst
-              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (txOutValue txout) && Tx.txOutDatumHash txout == Nothing)
+              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (txOutValue txout) && isNothing (Tx.txOutDatumHash txout))
               (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
               (List.reverse $ txOutputs tx)
       }
@@ -426,7 +426,7 @@ addAdaChange balanceCfg changeAddr change tx
     tx
       { txOutputs =
           modifyFirst
-            (\txout -> Tx.txOutAddress txout == changeAddr && Tx.txOutDatumHash txout == Nothing)
+            (\txout -> Tx.txOutAddress txout == changeAddr && isNothing (Tx.txOutDatumHash txout))
             (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
             (txOutputs tx)
       }
