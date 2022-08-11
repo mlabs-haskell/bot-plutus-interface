@@ -58,6 +58,7 @@ import Ledger (
   TxOutRef,
  )
 import Ledger qualified
+import Ledger.Ada qualified as Ada
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -71,7 +72,6 @@ import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
-import Ledger.Ada qualified as Ada
 
 data PABConfig = PABConfig
   { -- | Calling the cli through ssh when set to Remote

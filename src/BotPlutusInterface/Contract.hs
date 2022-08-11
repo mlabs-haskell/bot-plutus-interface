@@ -1,7 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
@@ -64,8 +63,8 @@ import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, hoistEither, 
 import Control.Monad.Trans.Except (ExceptT, throwE)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
-import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Aeson.KeyMap qualified as KeyMap
+import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Function (fix, (&))
 import Data.Kind (Type)
 import Data.List.NonEmpty (NonEmpty ((:|)))

@@ -9,6 +9,7 @@ import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
+import Ledger.Ada qualified as Value
 import Ledger.Address (Address, PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
@@ -66,7 +67,7 @@ addUtxosForFees = do
       ownAddr = addr1
       ebalancedTx =
         fst $
-          runPABEffectPure def $
+          runPABEffectPure def $ do
             Balance.balanceTxStep @() @'[PABEffect ()] defaultBalanceConfig utxoIndex ownAddr tx
 
   case ebalancedTx of
@@ -75,7 +76,15 @@ addUtxosForFees = do
 
 addUtxosForNativeTokens :: Assertion
 addUtxosForNativeTokens = do
-  let txout = TxOut addr2 (Value.singleton "11223344" "Token" 123) Nothing
+  let minimumAdaRequired = Value.adaValueOf 1
+      {- `minimumAdaRequired` has to be added to `txout` because
+       balancing now decoupled from adjusting minimum Ada amount in output,
+       and adjusting happens during `adjustUnbalancedTx` Contract
+       effect execution *before* balancing. Adding `minimumAdaRequired`
+       to `txout` Value aims to simulate result of `adjustUnbalancedTx` call.
+       Note that 1 Ada is test value - real amount is determined by Ledger and can vary.
+      -}
+      txout = TxOut addr2 (Value.singleton "11223344" "Token" 123 <> minimumAdaRequired) Nothing
       tx = mempty {txOutputs = [txout]} `withFee` 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       ownAddr = addr1
