@@ -447,7 +447,7 @@ mintTokens = do
       txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000) NoOutputDatum Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
-      collateralTxId = encodeByteString $ fromBuiltin $ TxId.getTxId theCollateralTxId
+      collateralTxId = encodeByteString $ fromBuiltin $ Tx.getTxId theCollateralTxId
 
       mintingPolicy :: Scripts.MintingPolicy
       mintingPolicy =
@@ -621,7 +621,7 @@ redeemFromValidator = do
           (Right validator)
       initState = def & utxos <>~ [(txOutRef, txOut), (txOutRef', txOut')]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
-      collateralTxId = encodeByteString $ fromBuiltin $ TxId.getTxId theCollateralTxId
+      collateralTxId = encodeByteString $ fromBuiltin $ Tx.getTxId theCollateralTxId
 
       validator :: Scripts.Validator
       validator =

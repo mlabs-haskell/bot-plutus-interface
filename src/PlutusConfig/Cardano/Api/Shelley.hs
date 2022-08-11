@@ -23,6 +23,7 @@ import Cardano.Api.Shelley (ProtocolParameters (..))
 --  )
 import Data.Aeson qualified as JSON
 import Data.ByteString.Lazy qualified as LazyByteString
+import Control.Exception (IOException, catch)
 
 -- import Data.Default (def)
 -- import Data.Text qualified as Text
@@ -279,7 +280,9 @@ import Prelude
 --     pure ProtocolParameters {..}
 
 readProtocolParametersJSON :: FilePath -> IO (Either String ProtocolParameters)
-readProtocolParametersJSON fn = (JSON.eitherDecode <$> LazyByteString.readFile fn) `catch` (\(e :: IOException) -> pure $ Left (show e))
+readProtocolParametersJSON fn = 
+  (JSON.eitherDecode <$> LazyByteString.readFile fn) 
+  `catch` (\(e :: IOException) -> pure $ Left (show e))
 
 writeProtocolParametersJSON :: FilePath -> ProtocolParameters -> IO ()
 writeProtocolParametersJSON fn params =

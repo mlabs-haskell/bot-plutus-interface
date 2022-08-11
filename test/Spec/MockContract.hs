@@ -287,7 +287,7 @@ instance Monoid w => Default (MockContractState w) where
         _utxos =
           [
             ( collateralTxOutRef theCollateralUtxo
-            , TxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing
+            , PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) NoOutputDatum Nothing
             )
           ]
       , _tip = Tip 1000 (BlockId "ab12") 4

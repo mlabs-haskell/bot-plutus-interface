@@ -57,11 +57,11 @@ handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
     TxOutFromRef txOutRef ->
       TxOutRefResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getTxOut txOutRef)
     UnspentTxOutFromRef txOutRef ->
-      UnspentTxOutResponse <$> chainIndexQueryOne pabConf (ChainIndexClient.getUnspentTxOut txOutRef)
+      UnspentTxOutResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getUnspentTxOut txOutRef)
     UnspentTxOutSetAtAddress page credential ->
       UnspentTxOutsAtResponse
         <$> chainIndexQueryMany
-          pabConf
+          cePABConfig
           (ChainIndexClient.getUnspentTxOutsAtAddress (QueryAtAddressRequest (Just page) credential))
     TxFromTxId txId ->
       TxIdResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getTx txId)

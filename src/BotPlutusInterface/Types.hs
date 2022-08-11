@@ -66,12 +66,12 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
-import Plutus.V1.Ledger.Ada qualified as Ada
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
+import Ledger.Ada qualified as Ada
 
 data PABConfig = PABConfig
   { -- | Calling the cli through ssh when set to Remote

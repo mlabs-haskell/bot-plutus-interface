@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
 
@@ -348,7 +349,8 @@ balanceTx ::
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTx contractEnv unbalancedTx = do
+balanceTx _ (UnbalancedTx (Left _) _ _ _) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
+balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
   let pabConf = contractEnv.cePABConfig
 
   result <- handleCollateral @w contractEnv
@@ -360,13 +362,13 @@ balanceTx contractEnv unbalancedTx = do
       eitherBalancedTx <-
         Balance.balanceTxIO' @w
           Balance.defaultBalanceConfig
-            { Balance.bcHasScripts = Balance.txUsesScripts (unBalancedTxTx unbalancedTx)
+            { Balance.bcHasScripts = Balance.txUsesScripts tx'
             }
           pabConf
           pabConf.pcOwnPubKeyHash
           unbalancedTx
 
-      pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . EmulatorTx) eitherBalancedTx
+      pure $ either (BalanceTxFailed . OtherError) (BalanceTxSuccess . EmulatorTx) eitherBalancedTx
 
 fromCardanoTx :: CardanoTx -> Tx.Tx
 fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
@@ -575,7 +577,7 @@ makeCollateral cEnv = runEitherT $ do
         pabConf
         pabConf.pcOwnPubKeyHash unbalancedTx
 
-  wbr <- lift $ writeBalancedTx cEnv (Right balancedTx)
+  wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)
   case wbr of
     WriteBalancedTxFailed e -> throwE . T.pack $ "Failed to create collateral output: " <> show e
     WriteBalancedTxSuccess cTx -> do

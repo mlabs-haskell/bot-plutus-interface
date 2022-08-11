@@ -41,7 +41,6 @@ import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
 import Data.Kind (Type)
-import Data.List ((\\))
 import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -152,7 +151,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
-          bTx = fst <$> balanceTxLoop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
+          bTx = balanceTxLoop utxoIndex privKeys (addOutput changeAddr balancedTx)
 
       -- Checks if there's ada change left, if there is then we check
       -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
@@ -188,16 +187,9 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       Map TxOutRef TxOut ->
       Map PubKeyHash DummyPrivKey ->
       Tx ->
-      EitherT Text (Eff effs) (Tx, [(TxOut, Integer)])
-    balanceTxLoop utxoIndex privKeys prevMinUtxos tx = do
+      EitherT Text (Eff effs) Tx
+    balanceTxLoop utxoIndex privKeys tx = do
       void $ lift $ Files.writeAll @w pabConf tx
-      nextMinUtxos <-
-        newEitherT $
-          calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
-
-      let minUtxos = prevMinUtxos ++ nextMinUtxos
-
-      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Min utxos:" <+> pretty minUtxos
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
@@ -212,11 +204,11 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
-      balancedTx <- newEitherT $ balanceTxStep @w balanceCfg minUtxos utxoIndex changeAddr $ tx `withFee` fees
+      balancedTx <- newEitherT $ balanceTxStep @w balanceCfg utxoIndex changeAddr $ tx `withFee` fees
 
       if balancedTx == tx
-        then pure (balancedTx, minUtxos)
-        else balanceTxLoop utxoIndex privKeys minUtxos balancedTx
+        then pure balancedTx
+        else balanceTxLoop utxoIndex privKeys balancedTx
 
 -- `utxosAndCollateralAtAddress` returns all the utxos that can be used as an input of a `Tx`,
 -- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
@@ -275,14 +267,13 @@ balanceTxStep ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   BalanceConfig ->
-  [(TxOut, Integer)] ->
   Map TxOutRef TxOut ->
   Address ->
   Tx ->
   Eff effs (Either Text Tx)
-balanceTxStep balanceCfg minUtxos utxos changeAddr tx =
+balanceTxStep balanceCfg utxos changeAddr tx =
   runEitherT $
-    (newEitherT . balanceTxIns @w utxos) (addLovelaces minUtxos tx)
+    (newEitherT . balanceTxIns @w utxos) tx
       >>= hoistEither . handleNonAdaChange balanceCfg changeAddr utxos
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
@@ -304,23 +295,6 @@ getAdaChange utxos = lovelaceValue . getChange utxos
 
 getNonAdaChange :: Map TxOutRef TxOut -> Tx -> Value
 getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
-
--- | Add min lovelaces to each tx output
-addLovelaces :: [(TxOut, Integer)] -> Tx -> Tx
-addLovelaces minLovelaces tx =
-  let lovelacesAdded =
-        map
-          ( \txOut ->
-              let outValue = txOutValue txOut
-                  lovelaces = Ada.getLovelace $ Ada.fromValue outValue
-                  minUtxo = fromMaybe 0 $ lookup txOut minLovelaces
-               in txOut
-                    { txOutValue =
-                        outValue <> Ada.lovelaceValueOf (max 0 (minUtxo - lovelaces))
-                    }
-          )
-          $ txOutputs tx
-   in tx {txOutputs = lovelacesAdded}
 
 balanceTxIns ::
   forall (w :: Type) (effs :: [Type -> Type]).
