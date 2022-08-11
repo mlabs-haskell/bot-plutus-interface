@@ -13,6 +13,7 @@ import BotPlutusInterface.Contract (runContract)
 import BotPlutusInterface.Files (txFileName, txIdToText)
 import BotPlutusInterface.Types (
   AppState (AppState),
+  CollateralVar (CollateralVar),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
   PABConfig (..),
@@ -152,7 +153,7 @@ websocketHandler :: AppState -> PendingConnection -> Handler ()
 websocketHandler state pendingConn = liftIO $ do
   conn <- acceptRequest pendingConn
 
-  withPingThread conn 30 (return ()) $
+  withPingThread conn 30 (pure ()) $
     forever $ do
       msg <- receiveData conn
 
@@ -253,7 +254,7 @@ contractLookupHandler ::
   Handler Bool
 contractLookupHandler (AppState s) contractInstanceId = liftIO . atomically $ do
   instances <- readTVar s
-  return $ Map.member contractInstanceId instances
+  pure $ Map.member contractInstanceId instances
 
 handleContract ::
   forall
@@ -274,6 +275,7 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
   contractState <- newTVarIO (ContractState Active mempty)
   contractStats <- newTVarIO mempty
   contractLogs <- newTVarIO mempty
+  collateral <- CollateralVar <$> newTVarIO Nothing
 
   atomically $ modifyTVar st (Map.insert contractInstanceID (SomeContractState contractState))
 
@@ -284,6 +286,7 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
           , ceContractInstanceId = contractInstanceID
           , ceContractStats = contractStats
           , ceContractLogs = contractLogs
+          , ceCollateral = collateral
           }
   void $
     forkIO $ do

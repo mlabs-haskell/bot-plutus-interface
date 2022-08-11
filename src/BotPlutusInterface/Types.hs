@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -6,8 +7,10 @@ module BotPlutusInterface.Types (
   PABConfig (..),
   CLILocation (..),
   AppState (AppState),
-  LogLevel (..),
   LogContext (..),
+  LogLevel (..),
+  LogType (..),
+  LogLine (..),
   ContractEnvironment (..),
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
@@ -24,17 +27,24 @@ module BotPlutusInterface.Types (
   ContractStats (..),
   TxStatusPolling (..),
   LogsList (..),
+  CollateralUtxo (..),
+  CollateralVar (..),
   addBudget,
+  readCollateralUtxo,
+  collateralValue,
+  sufficientLogLevel,
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.Shelley (ProtocolParameters)
-import Control.Concurrent.STM (TVar)
+import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
+import Data.Data (Data (toConstr), constrIndex, dataTypeOf, eqT, fromConstrB, indexConstr, type (:~:) (Refl))
 import Data.Default (Default (def))
 import Data.Kind (Type)
+import Data.List (intersect)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -47,6 +57,7 @@ import Ledger (
   TxId,
   TxOutRef,
  )
+import Ledger qualified
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -55,7 +66,8 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
-import Prettyprinter (Pretty (pretty))
+import Plutus.V1.Ledger.Ada qualified as Ada
+import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
@@ -91,8 +103,13 @@ data PABConfig = PABConfig
     pcCollectLogs :: !Bool
   , pcBudgetMultiplier :: !Rational
   , pcTxStatusPolling :: !TxStatusPolling
+  , -- | User defined size of collateral, in Lovelaces
+    pcCollateralSize :: !Natural
   }
   deriving stock (Show, Eq)
+
+collateralValue :: PABConfig -> Ledger.Value
+collateralValue = Ada.lovelaceValueOf . toInteger . pcCollateralSize
 
 {- | Settings for `Contract.awaitTxStatusChange` implementation.
  See also `BotPlutusInterface.Contract.awaitTxStatusChange`
@@ -165,15 +182,40 @@ newtype ContractStats = ContractStats
 instance Show (TVar ContractStats) where
   show _ = "<ContractStats>"
 
--- | List of string logs.
+{- | Single log message
+ Defined for pretty instance.
+-}
+data LogLine = LogLine
+  { logLineContext :: LogContext
+  , logLineLevel :: LogLevel
+  , logLineMsg :: PP.Doc ()
+  }
+  deriving stock (Show)
+
+instance Pretty LogLine where
+  pretty (LogLine msgCtx msgLogLvl msg) = pretty msgCtx <+> pretty msgLogLvl <+> PP.unAnnotate msg
+
+-- | List of logs.
 newtype LogsList = LogsList
-  { getLogsList :: [(LogContext, LogLevel, PP.Doc ())]
+  { getLogsList :: [LogLine]
   }
   deriving stock (Show)
   deriving newtype (Semigroup, Monoid)
 
+instance Pretty LogsList where
+  pretty = PP.vcat . map pretty . getLogsList
+
 instance Show (TVar LogsList) where
   show _ = "<ContractLogs>"
+
+newtype CollateralUtxo = CollateralUtxo
+  { collateralTxOutRef :: TxOutRef
+  }
+  deriving stock (Show)
+  deriving newtype (Eq)
+
+instance Pretty CollateralUtxo where
+  pretty (CollateralUtxo txOutRef) = "Collateral" <+> pretty txOutRef
 
 data ContractEnvironment w = ContractEnvironment
   { cePABConfig :: PABConfig
@@ -181,8 +223,18 @@ data ContractEnvironment w = ContractEnvironment
   , ceContractState :: TVar (ContractState w)
   , ceContractStats :: TVar ContractStats
   , ceContractLogs :: TVar LogsList
+  , ceCollateral :: CollateralVar
   }
   deriving stock (Show)
+
+newtype CollateralVar = CollateralVar
+  { unCollateralVar :: TVar (Maybe CollateralUtxo)
+  }
+instance Show CollateralVar where
+  show _ = "<Collateral TxOutRef>"
+
+readCollateralUtxo :: forall (w :: Type). ContractEnvironment w -> IO (Maybe CollateralUtxo)
+readCollateralUtxo = readTVarIO . unCollateralVar . ceCollateral
 
 data Tip = Tip
   { epoch :: Integer
@@ -215,16 +267,57 @@ data ContractState w = ContractState
 data CLILocation = Local | Remote Text
   deriving stock (Show, Eq)
 
-data LogLevel = Error | Warn | Notice | Info | Debug
-  deriving stock (Bounded, Enum, Eq, Ord, Show)
+data LogType
+  = CoinSelectionLog
+  | TxBalancingLog
+  | CollateralLog
+  | PABLog
+  | AnyLog
+  deriving stock (Eq, Ord, Show, Data)
+
+instance Pretty LogType where
+  pretty CoinSelectionLog = "CoinSelection"
+  pretty TxBalancingLog = "TxBalancing"
+  pretty CollateralLog = "Collateral"
+  pretty PABLog = "PABLog"
+  pretty AnyLog = "Any"
+
+data LogLevel
+  = Error {ltLogTypes :: [LogType]}
+  | Warn {ltLogTypes :: [LogType]}
+  | Notice {ltLogTypes :: [LogType]}
+  | Info {ltLogTypes :: [LogType]}
+  | Debug {ltLogTypes :: [LogType]}
+  deriving stock (Eq, Show, Data)
+
+instance Enum LogLevel where
+  fromEnum = (\a -> a - 1) . constrIndex . toConstr
+  toEnum = fromConstrB field . indexConstr (dataTypeOf $ Notice []) . (+ 1)
+    where
+      field :: forall a. Data a => a
+      field = case eqT :: Maybe (a :~: [LogType]) of
+        Just Refl -> [AnyLog]
+        Nothing -> error "Expected a value of type LogType."
 
 instance Pretty LogLevel where
   pretty = \case
-    Debug -> "[DEBUG]"
-    Info -> "[INFO]"
-    Notice -> "[NOTICE]"
-    Warn -> "[WARNING]"
-    Error -> "[ERROR]"
+    Debug a -> "[DEBUG " <> pretty a <> "]"
+    Info a -> "[INFO " <> pretty a <> "]"
+    Notice a -> "[NOTICE " <> pretty a <> "]"
+    Warn a -> "[WARNING " <> pretty a <> "]"
+    Error a -> "[ERROR " <> pretty a <> "]"
+
+{- | if sufficientLogLevel settingLogLevel msgLogLvl
+ then message should be displayed with this log level setting.
+-}
+sufficientLogLevel :: LogLevel -> LogLevel -> Bool
+sufficientLogLevel logLevelSetting msgLogLvl =
+  msgLogLvl `constrLEq` logLevelSetting -- the log is important enough
+    && not (null intersectLogTypes) -- log is of type we're interested in
+  where
+    intersectLogTypes = ltLogTypes logLevelSetting `intersect` (ltLogTypes msgLogLvl <> [AnyLog])
+
+    constrLEq a b = fromEnum a <= fromEnum b
 
 data LogContext = BpiLog | ContractLog
   deriving stock (Bounded, Enum, Eq, Ord, Show)
@@ -248,7 +341,7 @@ instance Default PABConfig where
       , pcMetadataDir = "/metadata"
       , pcDryRun = True
       , pcProtocolParamsFile = "./protocol.json"
-      , pcLogLevel = Info
+      , pcLogLevel = Info [AnyLog]
       , pcOwnPubKeyHash = ""
       , pcOwnStakePubKeyHash = Nothing
       , pcPort = 9080
@@ -257,6 +350,7 @@ instance Default PABConfig where
       , pcCollectLogs = False
       , pcBudgetMultiplier = 1
       , pcTxStatusPolling = TxStatusPolling 1_000_000 8
+      , pcCollateralSize = 10_000_000
       }
 
 data RawTx = RawTx

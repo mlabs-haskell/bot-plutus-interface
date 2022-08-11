@@ -7,3 +7,4 @@ packages: ./bot-plutus-interface.cabal
 
 tests: true
 benchmarks: true
+test-show-details: direct

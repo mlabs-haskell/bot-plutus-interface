@@ -183,7 +183,7 @@ posixTimeToSlot sysStart eraHist pTime = do
       query = HF.wallclockToSlot relativeTime
 
   (sn, _, _) <- HF.interpretQuery int query
-  return (fromSlotNo sn)
+  pure (fromSlotNo sn)
   where
     toUtc :: Ledger.POSIXTime -> UTCTime
     toUtc (Ledger.POSIXTime milliseconds) =

@@ -25,9 +25,11 @@ source-repository head
 common common-lang
   ghc-options:
     -Wall -Wcompat -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wredundant-constraints -Werror
-    -fobject-code -fno-ignore-interface-pragmas
-    -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
+    -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
+    -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+    -fplugin=RecordDotPreprocessor
+
+  -- -Werror
 
   build-depends:
     , base
@@ -80,6 +82,8 @@ library
     BotPlutusInterface.BodyBuilder
     BotPlutusInterface.CardanoCLI
     BotPlutusInterface.ChainIndex
+    BotPlutusInterface.CoinSelection
+    BotPlutusInterface.Collateral
     BotPlutusInterface.Config
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
@@ -176,6 +180,8 @@ test-suite bot-plutus-interface-test
   other-modules:
     Spec.BotPlutusInterface.AdjustUnbalanced
     Spec.BotPlutusInterface.Balance
+    Spec.BotPlutusInterface.CoinSelection
+    Spec.BotPlutusInterface.Collateral
     Spec.BotPlutusInterface.Config
     Spec.BotPlutusInterface.Contract
     Spec.BotPlutusInterface.ContractStats
@@ -183,6 +189,7 @@ test-suite bot-plutus-interface-test
     Spec.BotPlutusInterface.TxStatusChange
     Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
+    Spec.RandomLedger
 
   build-depends:
     , aeson
@@ -236,6 +243,7 @@ test-suite bot-plutus-interface-test
     , text                       ^>=1.2.4.0
     , utf8-string
     , uuid
+    , vector
     , warp
 
   hs-source-dirs: test

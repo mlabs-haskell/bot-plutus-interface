@@ -17,6 +17,7 @@ import BotPlutusInterface.Effects (
 import BotPlutusInterface.Types (
   CLILocation (..),
   LogLevel (..),
+  LogType (AnyLog),
   PABConfig (..),
   TxStatusPolling (TxStatusPolling, spBlocksTimeOut, spInterval),
  )
@@ -73,11 +74,11 @@ instance ToValue LogLevel where
 
 logLevelSpec :: ValueSpec LogLevel
 logLevelSpec =
-  Error <$ atomSpec "error"
-    <!> Warn <$ atomSpec "warn"
-    <!> Notice <$ atomSpec "notice"
-    <!> Info <$ atomSpec "info"
-    <!> Debug <$ atomSpec "debug"
+  Error [AnyLog] <$ atomSpec "error"
+    <!> Warn [AnyLog] <$ atomSpec "warn"
+    <!> Notice [AnyLog] <$ atomSpec "notice"
+    <!> Info [AnyLog] <$ atomSpec "info"
+    <!> Debug [AnyLog] <$ atomSpec "debug"
 
 instance ToValue TxStatusPolling where
   toValue (TxStatusPolling interval timeout) =
@@ -126,6 +127,7 @@ instance ToValue PABConfig where
         pcCollectLogs
         pcBudgetMultiplier
         pcTxStatusPolling
+        pcCollateralSize
       ) =
       Sections
         ()
@@ -150,6 +152,7 @@ instance ToValue PABConfig where
         , Section () "collectLogs"        $ toValue pcCollectLogs
         , Section () "budgetMultiplier"   $ toValue pcBudgetMultiplier
         , Section () "pcTxStatusPolling"  $ toValue pcTxStatusPolling
+        , Section () "pcCollateralSize"   $ toValue pcCollateralSize
         ]
 {- ORMOLU_ENABLE -}
 
@@ -261,6 +264,13 @@ pabConfigSpec = sectionsSpec "PABConfig" $ do
       txStatusPollingSpec
       "Set interval between `chain-index` queries and number of blocks to wait until timeout while await Transaction status to change"
 
+  pcCollateralSize <-
+    sectionWithDefault'
+      (pcCollateralSize def)
+      "pcCollateralSize"
+      naturalSpec
+      "User defined Lovelace amount of collateral UTxO"
+
   pure PABConfig {..}
 
 docPABConfig :: String
@@ -281,7 +291,7 @@ loadPABConfig :: FilePath -> IO (Either String PABConfig)
 loadPABConfig fn = do
   confE <- deserialize <$> readFile fn
   case confE of
-    Left err -> return $ Left $ "PABConfig: " <> fn <> ": " <> err
+    Left err -> pure $ Left $ "PABConfig: " <> fn <> ": " <> err
     Right conf@PABConfig {pcProtocolParamsFile, pcNetwork, pcCliLocation} -> do
       pparamsE <- readProtocolParametersJSON (toString pcProtocolParamsFile)
       case pparamsE of
@@ -302,7 +312,7 @@ loadPABConfig fn = do
                     }
             callLocalCommand shellArgs
               >>= \case
-                Left errPParams -> return $ Left $ Text.unpack errPParams
+                Left errPParams -> pure $ Left $ Text.unpack errPParams
                 Right _ -> loadPABConfig fn
           | otherwise ->
             return $ pparamsError pcProtocolParamsFile err

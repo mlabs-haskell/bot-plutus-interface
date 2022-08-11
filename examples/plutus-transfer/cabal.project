@@ -2,7 +2,7 @@
 index-state: 2022-05-18T00:00:00Z
 
 packages:
-  ./. 
+  ./.
   ../../.
 
 -- You never, ever, want this.

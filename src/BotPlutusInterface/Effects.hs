@@ -28,22 +28,29 @@ module BotPlutusInterface.Effects (
   slotToPOSIXTime,
   posixTimeToSlot,
   posixTimeRangeToContainedSlotRange,
+  getInMemCollateral,
+  setInMemCollateral,
 ) where
 
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
+import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.ExBudget qualified as ExBudget
 import BotPlutusInterface.TimeSlot qualified as TimeSlot
 import BotPlutusInterface.Types (
   BudgetEstimationError,
   CLILocation (..),
+  CollateralUtxo,
   ContractEnvironment,
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
+  LogLine (..),
+  LogType (..),
   LogsList (LogsList),
   TxBudget,
   TxFile,
   addBudget,
+  sufficientLogLevel,
  )
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
@@ -68,7 +75,7 @@ import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
-import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty, (<+>))
+import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty)
 import Prettyprinter qualified as PP
 import Prettyprinter.Render.String qualified as Render
 import System.Directory qualified as Directory
@@ -119,6 +126,8 @@ data PABEffect (w :: Type) (r :: Type) where
   POSIXTimeRangeToSlotRange ::
     Ledger.POSIXTimeRange ->
     PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
+  GetInMemCollateral :: PABEffect w (Maybe CollateralUtxo)
+  SetInMemCollateral :: CollateralUtxo -> PABEffect w ()
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -139,12 +148,11 @@ handlePABEffect contractEnv =
           case contractEnv.cePABConfig.pcCliLocation of
             Local -> Directory.createDirectoryIfMissing createParents filePath
             Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
-        PrintLog logCtx logLevel txt ->
-          let logMsg = prettyLog logCtx logLevel txt
-           in do
-                printLog' contractEnv.cePABConfig.pcLogLevel logCtx logLevel logMsg
-                when contractEnv.cePABConfig.pcCollectLogs $
-                  collectLog contractEnv.ceContractLogs logCtx logLevel logMsg
+        PrintLog logCtx logLevel msg -> do
+          let logLine = LogLine logCtx logLevel msg
+          printLog' contractEnv.cePABConfig.pcLogLevel logLine
+          when contractEnv.cePABConfig.pcCollectLogs $
+            collectLog contractEnv.ceContractLogs logLine
         UpdateInstanceState s -> do
           atomically $
             modifyTVar contractEnv.ceContractState $
@@ -169,7 +177,7 @@ handlePABEffect contractEnv =
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
-          handleChainIndexReq contractEnv.cePABConfig query
+          handleChainIndexReq contractEnv query
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
@@ -179,23 +187,23 @@ handlePABEffect contractEnv =
           TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
         POSIXTimeRangeToSlotRange pTimeRange ->
           TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
+        GetInMemCollateral -> Collateral.getInMemCollateral contractEnv
+        SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
     )
 
-printLog' :: LogLevel -> LogContext -> LogLevel -> PP.Doc () -> IO ()
-printLog' logLevelSetting msgCtx msgLogLvl msg =
-  when (logLevelSetting >= msgLogLvl) $ putStrLn target
+printLog' :: LogLevel -> LogLine -> IO ()
+printLog' logLevelSetting logLine =
+  when
+    (sufficientLogLevel logLevelSetting (logLineLevel logLine))
+    $ putStrLn target
   where
     target =
-      Render.renderString . layoutPretty defaultLayoutOptions $
-        prettyLog msgCtx msgLogLvl msg
+      Render.renderString . layoutPretty defaultLayoutOptions . pretty $ logLine
 
-prettyLog :: LogContext -> LogLevel -> PP.Doc () -> PP.Doc ()
-prettyLog msgCtx msgLogLvl msg = pretty msgCtx <+> pretty msgLogLvl <+> msg
-
-collectLog :: TVar LogsList -> LogContext -> LogLevel -> PP.Doc () -> IO ()
-collectLog logs logCtx logLvl msg = atomically $ modifyTVar' logs appendLog
+collectLog :: TVar LogsList -> LogLine -> IO ()
+collectLog logs logLine = atomically $ modifyTVar' logs appendLog
   where
-    appendLog (LogsList ls) = LogsList $ (logCtx, logLvl, msg) : ls
+    appendLog (LogsList ls) = LogsList $ logLine : ls
 
 -- | Reinterpret contract logs to be handled by PABEffect later down the line.
 handleContractLog :: forall w a effs. Member (PABEffect w) effs => Pretty a => Eff (LogMsg a ': effs) ~> Eff effs
@@ -209,14 +217,14 @@ handleContractLogInternal = reinterpret $ \case
         msgPretty = pretty msgContent
      in printLog @w ContractLog msgLogLevel msgPretty
   where
-    toNativeLogLevel Freer.Debug = Debug
-    toNativeLogLevel Freer.Info = Info
-    toNativeLogLevel Freer.Notice = Notice
-    toNativeLogLevel Freer.Warning = Warn
-    toNativeLogLevel Freer.Error = Error
-    toNativeLogLevel Freer.Critical = Error
-    toNativeLogLevel Freer.Alert = Error
-    toNativeLogLevel Freer.Emergency = Error
+    toNativeLogLevel Freer.Debug = Debug [AnyLog]
+    toNativeLogLevel Freer.Info = Info [AnyLog]
+    toNativeLogLevel Freer.Notice = Notice [AnyLog]
+    toNativeLogLevel Freer.Warning = Warn [AnyLog]
+    toNativeLogLevel Freer.Error = Error [AnyLog]
+    toNativeLogLevel Freer.Critical = Error [AnyLog]
+    toNativeLogLevel Freer.Alert = Error [AnyLog]
+    toNativeLogLevel Freer.Emergency = Error [AnyLog]
 
 callLocalCommand :: forall (a :: Type). ShellArgs a -> IO (Either Text a)
 callLocalCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} =
@@ -398,3 +406,16 @@ posixTimeRangeToContainedSlotRange ::
   Ledger.POSIXTimeRange ->
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
 posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange
+
+getInMemCollateral ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Eff effs (Maybe CollateralUtxo)
+getInMemCollateral = send @(PABEffect w) GetInMemCollateral
+
+setInMemCollateral ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  CollateralUtxo ->
+  Eff effs ()
+setInMemCollateral = send @(PABEffect w) . SetInMemCollateral

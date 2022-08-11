@@ -59,3 +59,11 @@ geth-node/chaindata/geth/*
 geth-node/chaindata/history
 *.ipc
 .direnv
+
+# emacs stuff
+*.~undo-tree~
+
+# debug configs
+examples/debug/
+
+visualization/

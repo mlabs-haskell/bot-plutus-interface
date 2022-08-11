@@ -60,11 +60,11 @@ Haskell is a language that is older than some of the people currently writing
 it; parts of its ecosystem are not exempt from it. With age comes legacy, and
 much of it is based on historical decisions which we now know to be problematic
 or wrong. We can't avoid our history, but we can minimize its impact on our
-current work. 
+current work.
 
 Thus, we aim to codify good practices in this document _as seen today_. We also
 try to avoid obvious 'sharp edges' by proscribing them away in a principled,
-consistent and justifiable manner. 
+consistent and justifiable manner.
 
 ## Automate away drudgery
 
@@ -155,7 +155,7 @@ difficult to read even without a split screen. We don't _enforce_ a maximum of
 ## Naming
 
 camelCase MUST be used for all non-type, non-data-constructor names; otherwise,
-TitleCase MUST be used. Acronyms used as part of a naming identifier (such as 
+TitleCase MUST be used. Acronyms used as part of a naming identifier (such as
 'JSON', 'API', etc) SHOULD be downcased; thus ``repairJson`` and
 ``fromHttpService`` are correct. Exceptions are allowed for external libraries
 (Aeson's ``parseJSON`` for example).
@@ -315,11 +315,11 @@ wrappers around monadic stacks:
 ```haskell
 newtype FooM a = FooM (ReaderT Int (StateT Text IO) a)
   deriving newtype (
-    Functor, 
-    Applicative, 
-    Monad, 
-    MonadReader Int, 
-    MonadState Text, 
+    Functor,
+    Applicative,
+    Monad,
+    MonadReader Int,
+    MonadState Text,
     MonadIO
     )
 ```
@@ -341,8 +341,8 @@ Thus, even for popularity and compatibility reasons, these should be on by
 default.
 
 ``InstanceSigs`` are harmless by default, and introduce no complications. Their
-not being default is strange. ``ImportQualifiedPost`` is already a convention 
-of this project, and helps with formatting of imports. 
+not being default is strange. ``ImportQualifiedPost`` is already a convention
+of this project, and helps with formatting of imports.
 
 ``LambdaCase`` reduces a lot of code in the common case of analysis of sum
 types. Without it, we are forced to either write a dummy ``case`` argument:
@@ -383,7 +383,7 @@ instead of the one from ``base``.
 ``OverloadedStrings`` deals with the problem that ``String`` is a suboptimal
 choice of string representation for basically _any_ problem, with the general
 recommendation being to use ``Text`` instead. It is not, however, without its
-problems: 
+problems:
 
 * ``ByteString``s are treated as ASCII strings by their ``IsString`` instance;
 * Overly polymorphic behaviour of many functions (especially in the presence of
@@ -438,8 +438,8 @@ alternatives. This means that, when a non-``base`` ``Prelude`` is in scope, it
 often requires familiarity with its specific decisions, in addition to whatever
 cognitive load the current module and its other imports impose. Given that we
 already use an alternative prelude (in tandem with the one from ``base``),
-additional alternatives present an unnecessary cognitive load. Lastly, the 
-dependency footprint of many alternative ``Prelude``s is _highly_ non-trivial; 
+additional alternatives present an unnecessary cognitive load. Lastly, the
+dependency footprint of many alternative ``Prelude``s is _highly_ non-trivial;
 it isn't clear if we need all of this in our dependency tree.
 
 For all of the above reasons, the best choice is 'default to Plutus, with local
@@ -470,7 +470,7 @@ Every publically-exported definition MUST have a Haddock comment, detailing its
 purpose. If a definition is a function, it SHOULD also have examples of use
 using [Bird tracks][bird-tracks]. The Haddock for a publically-exported
 definition SHOULD also provide an explanation of any caveats, complexities of
-its use, or common issues a user is likely to encounter. 
+its use, or common issues a user is likely to encounter.
 
 If the code project is a library, these Haddock comments SHOULD carry an
 [``@since``][haddock-since] annotation, stating what version of the library they
@@ -502,15 +502,15 @@ also the expected behaviour of its instances.
 ## Other
 
 Lists SHOULD NOT be field values of types; this extends to ``String``s. Instead,
-``Vector``s (``Text``s) SHOULD be used, unless a more appropriate structure exists. 
+``Vector``s (``Text``s) SHOULD be used, unless a more appropriate structure exists.
 On-chain code, due to a lack of alternatives, is one place lists can be used as
 field values of types.
 
 Partial functions MUST NOT be defined. Partial functions SHOULD NOT be used
 except to ensure that another function is total (and the type system cannot be
-used to prove it). 
+used to prove it).
 
-Derivations MUST use an explicit [strategy][deriving-strategies]. Thus, the 
+Derivations MUST use an explicit [strategy][deriving-strategies]. Thus, the
 following is wrong:
 
 ```haskell

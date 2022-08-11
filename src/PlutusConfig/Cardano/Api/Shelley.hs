@@ -279,7 +279,7 @@ import Prelude
 --     pure ProtocolParameters {..}
 
 readProtocolParametersJSON :: FilePath -> IO (Either String ProtocolParameters)
-readProtocolParametersJSON fn = JSON.eitherDecode <$> LazyByteString.readFile fn
+readProtocolParametersJSON fn = (JSON.eitherDecode <$> LazyByteString.readFile fn) `catch` (\(e :: IOException) -> pure $ Left (show e))
 
 writeProtocolParametersJSON :: FilePath -> ProtocolParameters -> IO ()
 writeProtocolParametersJSON fn params =

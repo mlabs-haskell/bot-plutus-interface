@@ -2,36 +2,50 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Balance (
+  BalanceConfig (BalanceConfig, bcHasScripts, bcSeparateChange),
   balanceTxStep,
   balanceTxIO,
+  balanceTxIO',
+  defaultBalanceConfig,
+  txUsesScripts,
   withFee,
 ) where
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.CoinSelection (selectTxIns)
+import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissingCLI,
+  getInMemCollateral,
   posixTimeRangeToContainedSlotRange,
   printBpiLog,
  )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Types (LogLevel (Debug), PABConfig)
+import BotPlutusInterface.Types (
+  CollateralUtxo (collateralTxOutRef),
+  LogLevel (Debug),
+  LogType (TxBalancingLog),
+  PABConfig,
+  collateralTxOutRef,
+ )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
-import Data.Either.Combinators (rightToMaybe)
 import Data.Kind (Type)
+import Data.List ((\\))
+import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -60,30 +74,61 @@ import Ledger.Tx.CardanoAPI (CardanoBuildTx)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
-  Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
   TokenName (..),
  )
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
+-- Config for balancing a `Tx`.
+data BalanceConfig = BalanceConfig
+  { -- | This field represents whether the current `Tx` that needs to be balanced uses scripts.
+    bcHasScripts :: Bool
+  , -- | This field represents whether the ada change should be in separate UTxO.
+    bcSeparateChange :: Bool
+  }
+  deriving stock (Show, Eq)
+
+defaultBalanceConfig :: BalanceConfig
+defaultBalanceConfig = BalanceConfig {bcHasScripts = False, bcSeparateChange = False}
+
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
- assets
+     assets. `balanceTxIO` calls `balanceTxIO' with default `BalanceConfig`.
 -}
 balanceTxIO ::
   forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
+  (Member (PABEffect w) effs) =>
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
   Eff effs (Either Text Tx)
-balanceTxIO pabConf ownPkh unbalancedTx =
+balanceTxIO = balanceTxIO' @w defaultBalanceConfig
+
+-- | `balanceTxIO'` is more flexible version of `balanceTxIO`, this let us specify custom `BalanceConfig`.
+balanceTxIO' ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  (Member (PABEffect w) effs) =>
+  BalanceConfig ->
+  PABConfig ->
+  PubKeyHash ->
+  UnbalancedTx ->
+  Eff effs (Either Text Tx)
+balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
   runEitherT $
     do
-      utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+      (utxos, mcollateral) <- newEitherT $ utxosAndCollateralAtAddress @w balanceCfg pabConf changeAddr
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
-      let utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+
+      let utxoIndex :: Map TxOutRef TxOut
+          utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+
+          requiredSigs :: [PubKeyHash]
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Set.toList (unBalancedTxRequiredSignatories unbalancedTx)
+
+      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxoIndex
+
+      -- We need this folder on the CLI machine, which may not be the local machine
+      lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
 
       tx <-
         newEitherT $
@@ -91,47 +136,72 @@ balanceTxIO pabConf ownPkh unbalancedTx =
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
-      lift $ printBpiLog @w Debug $ viaShow utxoIndex
-
-      -- We need this folder on the CLI machine, which may not be the local machine
-      lift $ createDirectoryIfMissingCLI @w False (Text.unpack pabConf.pcTxFileDir)
-
-      -- Adds required collaterals, only needs to happen once
-      -- Also adds signatures for fee calculation
-      preBalancedTx <- hoistEither $ addTxCollaterals utxoIndex tx >>= addSignatories ownPkh privKeys requiredSigs
+      -- Adds required collaterals in the `Tx`, if `bcHasScripts`
+      -- is true. Also adds signatures for fee calculation
+      preBalancedTx <-
+        if bcHasScripts balanceCfg
+          then
+            maybe
+              (throwE "Tx uses script but no collateral was provided.")
+              (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
+              mcollateral
+          else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
       -- Balance the tx
-      balancedTx <- loop utxoIndex privKeys preBalancedTx
+      balancedTx <- balanceTxLoop utxoIndex privKeys preBalancedTx
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
-      -- If we have change but no change UTxO, we need to add an output for it
-      -- We'll add a minimal output, run the loop again so it gets minUTxO, then update change
+          bTx = fst <$> balanceTxLoop utxoIndex privKeys minUtxos (addOutput changeAddr balancedTx)
+
+      -- Checks if there's ada change left, if there is then we check
+      -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
+      -- the changeAddr.
       balancedTxWithChange <-
-        if adaChange /= 0 && not (hasChangeUTxO changeAddr balancedTx)
-          then loop utxoIndex privKeys (addOutput changeAddr balancedTx)
-          else pure balancedTx
+        case adaChange /= 0 of
+          True | bcSeparateChange balanceCfg || not (hasChangeUTxO changeAddr balancedTx) -> bTx
+          _ -> pure balancedTx
 
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
-          fullyBalancedTx = addAdaChange changeAddr finalAdaChange balancedTxWithChange
+          fullyBalancedTx = addAdaChange balanceCfg changeAddr finalAdaChange balancedTxWithChange
+          txInfoLog =
+            printBpiLog @w (Debug [TxBalancingLog]) $
+              "UnbalancedTx TxInputs: "
+                <+> pretty (length $ txInputs preBalancedTx)
+                <+> "UnbalancedTx TxOutputs: "
+                <+> pretty (length $ txOutputs preBalancedTx)
+                <+> "TxInputs: "
+                <+> pretty (length $ txInputs fullyBalancedTx)
+                <+> "TxOutputs: "
+                <+> pretty (length $ txOutputs fullyBalancedTx)
+
+      lift txInfoLog
 
       -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
     changeAddr :: Address
     changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) pabConf.pcOwnStakePubKeyHash
-    loop ::
+
+    balanceTxLoop ::
       Map TxOutRef TxOut ->
       Map PubKeyHash DummyPrivKey ->
       Tx ->
-      EitherT Text (Eff effs) Tx
-    loop utxoIndex privKeys tx = do
+      EitherT Text (Eff effs) (Tx, [(TxOut, Integer)])
+    balanceTxLoop utxoIndex privKeys prevMinUtxos tx = do
       void $ lift $ Files.writeAll @w pabConf tx
+      nextMinUtxos <-
+        newEitherT $
+          calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
+
+      let minUtxos = prevMinUtxos ++ nextMinUtxos
+
+      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Min utxos:" <+> pretty minUtxos
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
-        hoistEither $ balanceTxStep utxoIndex changeAddr $ tx `withFee` 0
+        newEitherT $ balanceTxStep @w balanceCfg utxoIndex changeAddr $ tx `withFee` 0
 
       exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
 
@@ -139,14 +209,49 @@ balanceTxIO pabConf ownPkh unbalancedTx =
 
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
-      lift $ printBpiLog @w Debug $ "Fees:" <+> pretty fees
+      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
-      balancedTx <- hoistEither $ balanceTxStep utxoIndex changeAddr $ tx `withFee` fees
+      balancedTx <- newEitherT $ balanceTxStep @w balanceCfg minUtxos utxoIndex changeAddr $ tx `withFee` fees
 
       if balancedTx == tx
-        then pure balancedTx
-        else loop utxoIndex privKeys balancedTx
+        then pure (balancedTx, minUtxos)
+        else balanceTxLoop utxoIndex privKeys minUtxos balancedTx
+
+-- `utxosAndCollateralAtAddress` returns all the utxos that can be used as an input of a `Tx`,
+-- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
+utxosAndCollateralAtAddress ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  (Member (PABEffect w) effs) =>
+  BalanceConfig ->
+  PABConfig ->
+  Address ->
+  Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
+utxosAndCollateralAtAddress balanceCfg pabConf changeAddr =
+  runEitherT $ do
+    utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+    inMemCollateral <- lift $ getInMemCollateral @w
+
+    -- check if `bcHasScripts` is true, if this is the case then we search of
+    -- collateral UTxO in the environment, if such collateral is not present we throw Error.
+    if bcHasScripts balanceCfg
+      then
+        maybe
+          ( throwE $
+              "The given transaction uses script, but there's no collateral provided."
+                <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
+          )
+          (const $ pure (removeCollateralFromMap inMemCollateral utxos, inMemCollateral))
+          inMemCollateral
+      else pure (removeCollateralFromMap inMemCollateral utxos, Nothing)
+
+hasChangeUTxO :: Address -> Tx -> Bool
+hasChangeUTxO changeAddr tx =
+  any check $ txOutputs tx
+  where
+    check :: TxOut -> Bool
+    check txOut =
+      Tx.txOutAddress txOut == changeAddr
 
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
 getExecutionUnitPrices pabConf =
@@ -167,14 +272,18 @@ withFee :: Tx -> Integer -> Tx
 withFee tx fee = tx {txFee = Ada.lovelaceValueOf fee}
 
 balanceTxStep ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  BalanceConfig ->
+  [(TxOut, Integer)] ->
   Map TxOutRef TxOut ->
   Address ->
   Tx ->
-  Either Text Tx
-balanceTxStep utxos changeAddr tx =
-  Right tx
-    >>= balanceTxIns utxos
-    >>= handleNonAdaChange changeAddr utxos
+  Eff effs (Either Text Tx)
+balanceTxStep balanceCfg minUtxos utxos changeAddr tx =
+  runEitherT $
+    (newEitherT . balanceTxIns @w utxos) (addLovelaces minUtxos tx)
+      >>= hoistEither . handleNonAdaChange balanceCfg changeAddr utxos
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
 getChange :: Map TxOutRef TxOut -> Tx -> Value
@@ -196,85 +305,66 @@ getAdaChange utxos = lovelaceValue . getChange utxos
 getNonAdaChange :: Map TxOutRef TxOut -> Tx -> Value
 getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
 
--- | Getting the necessary utxos to cover the fees for the transaction
-collectTxIns :: Set TxIn -> Map TxOutRef TxOut -> Value -> Either Text (Set TxIn)
-collectTxIns originalTxIns utxos value =
-  if isSufficient updatedInputs
-    then Right updatedInputs
-    else
-      Left $
-        Text.unlines
-          [ "Insufficient tx inputs, needed: "
-          , showText (Value.flattenValue value)
-          , "got:"
-          , showText (Value.flattenValue (txInsValue updatedInputs))
-          ]
-  where
-    updatedInputs =
-      foldl
-        ( \acc txIn ->
-            if isSufficient acc
-              then acc
-              else Set.insert txIn acc
-        )
-        originalTxIns
-        $ mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList utxos
+-- | Add min lovelaces to each tx output
+addLovelaces :: [(TxOut, Integer)] -> Tx -> Tx
+addLovelaces minLovelaces tx =
+  let lovelacesAdded =
+        map
+          ( \txOut ->
+              let outValue = txOutValue txOut
+                  lovelaces = Ada.getLovelace $ Ada.fromValue outValue
+                  minUtxo = fromMaybe 0 $ lookup txOut minLovelaces
+               in txOut
+                    { txOutValue =
+                        outValue <> Ada.lovelaceValueOf (max 0 (minUtxo - lovelaces))
+                    }
+          )
+          $ txOutputs tx
+   in tx {txOutputs = lovelacesAdded}
 
-    isSufficient :: Set TxIn -> Bool
-    isSufficient txIns' =
-      not (Set.null txIns') && txInsValue txIns' `Value.geq` value
-
-    txInsValue :: Set TxIn -> Value
-    txInsValue txIns' =
-      mconcat $ map Tx.txOutValue $ mapMaybe ((`Map.lookup` utxos) . Tx.txInRef) $ Set.toList txIns'
-
--- Converting a chain index transaction output to a transaction input type
-txOutToTxIn :: (TxOutRef, TxOut) -> Either Text TxIn
-txOutToTxIn (txOutRef, txOut) =
-  case addressCredential (txOutAddress txOut) of
-    PubKeyCredential _ -> Right $ Tx.pubKeyTxIn txOutRef
-    ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
-
-balanceTxIns :: Map TxOutRef TxOut -> Tx -> Either Text Tx
+balanceTxIns ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Map TxOutRef TxOut ->
+  Tx ->
+  Eff effs (Either Text Tx)
 balanceTxIns utxos tx = do
-  let txOuts = Tx.txOutputs tx
-      nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
-      minSpending =
-        mconcat
-          [ txFee tx
-          , nonMintedValue
-          ]
-  txIns <- collectTxIns (txInputs tx) utxos minSpending
-  pure $ tx {txInputs = txIns <> txInputs tx}
+  runEitherT $ do
+    let txOuts = Tx.txOutputs tx
+        nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
+        minSpending =
+          mconcat
+            [ txFee tx
+            , nonMintedValue
+            ]
+    txIns <- newEitherT $ selectTxIns @w (txInputs tx) utxos minSpending
+    pure $ tx {txInputs = txIns <> txInputs tx}
 
-{- | Pick a collateral from the utxo map and add it to the unbalanced transaction
- (suboptimally we just pick a random utxo from the tx inputs)
--}
-addTxCollaterals :: Map TxOutRef TxOut -> Tx -> Either Text Tx
-addTxCollaterals utxos tx =
-  if not $ usesScripts tx
-    then Right tx
-    else do
-      let txIns = mapMaybe (rightToMaybe . txOutToTxIn) $ Map.toList $ filterAdaOnly utxos
-      txIn <- findPubKeyTxIn txIns
-      pure $ tx {txCollateral = Set.singleton txIn}
-  where
-    findPubKeyTxIn = \case
-      x@(TxIn _ (Just ConsumePublicKeyAddress)) : _ -> Right x
-      x@(TxIn _ Nothing) : _ -> Right x
-      _ : xs -> findPubKeyTxIn xs
-      _ -> Left "There are no utxos to be used as collateral"
-    filterAdaOnly = Map.filter (isAdaOnly . txOutValue)
-    usesScripts Tx {txInputs, txMintScripts} =
-      not (null txMintScripts)
-        || any
-          (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
-          (Set.toList txInputs)
+-- | Set collateral or fail in case it's required but not available
+addTxCollaterals :: CollateralUtxo -> Tx -> Tx
+addTxCollaterals cOut tx
+  | txUsesScripts tx = tx {txCollateral = Set.singleton (Tx.pubKeyTxIn (collateralTxOutRef cOut))}
+  | otherwise = tx
+
+txUsesScripts :: Tx -> Bool
+txUsesScripts Tx {txInputs, txMintScripts} =
+  not (null txMintScripts)
+    || any
+      (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
+      (Set.toList txInputs)
 
 -- | Ensures all non ada change goes back to user
-handleNonAdaChange :: Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
-handleNonAdaChange changeAddr utxos tx =
+handleNonAdaChange :: BalanceConfig -> Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+handleNonAdaChange balanceCfg changeAddr utxos tx =
   let nonAdaChange = getNonAdaChange utxos tx
+      predicate =
+        if bcSeparateChange balanceCfg
+          then
+            ( \txout ->
+                Tx.txOutAddress txout == changeAddr
+                  && not (justLovelace $ Tx.txOutValue txout)
+            )
+          else (\txout -> Tx.txOutAddress txout == changeAddr)
       newOutput =
         TxOut
           { txOutAddress = changeAddr
@@ -283,46 +373,37 @@ handleNonAdaChange changeAddr utxos tx =
           }
       outputs =
         modifyFirst
-          ((==) changeAddr . Tx.txOutAddress)
+          predicate
           (Just . maybe newOutput (addValueToTxOut nonAdaChange))
           (txOutputs tx)
    in if isValueNat nonAdaChange
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
         else Left "Not enough inputs to balance tokens."
 
-hasChangeUTxO :: Address -> Tx -> Bool
-hasChangeUTxO changeAddr tx =
-  any ((==) changeAddr . Tx.txOutAddress) $ txOutputs tx
-
--- | Adds ada change to a transaction, assuming there is already an output going to ownPkh. Otherwise, this is identity
-addAdaChange :: Address -> Integer -> Tx -> Tx
-addAdaChange _ 0 tx = tx
-addAdaChange changeAddr change tx =
-  tx
-    { txOutputs =
-        modifyFirst
-          ((==) changeAddr . Tx.txOutAddress)
-          (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
-          (txOutputs tx)
-    }
-
-consJust :: forall (a :: Type). Maybe a -> [a] -> [a]
-consJust (Just x) = (x :)
-consJust _ = id
-
-{- | Modifies the first element matching a predicate, or, if none found, call the modifier with Nothing
- Calling this function ensures the modifier will always be run once
+{- | `addAdaChange` checks if `bcSeparateChange` is true,
+      if it is then we add the ada change to seperate `TxOut` at changeAddr that contains only ada,
+      else we add it to any `TxOut` present at changeAddr.
 -}
-modifyFirst ::
-  forall (a :: Type).
-  -- | Predicate for value to update
-  (a -> Bool) ->
-  -- | Modifier, input Maybe representing existing value (or Nothing if missing), output value representing new value (or Nothing to remove)
-  (Maybe a -> Maybe a) ->
-  [a] ->
-  [a]
-modifyFirst _ m [] = m Nothing `consJust` []
-modifyFirst p m (x : xs) = if p x then m (Just x) `consJust` xs else x : modifyFirst p m xs
+addAdaChange :: BalanceConfig -> Address -> Integer -> Tx -> Tx
+addAdaChange _ _ 0 tx = tx
+addAdaChange balanceCfg changeAddr change tx
+  | bcSeparateChange balanceCfg =
+    tx
+      { txOutputs =
+          List.reverse $
+            modifyFirst
+              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (txOutValue txout))
+              (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
+              (List.reverse $ txOutputs tx)
+      }
+  | otherwise =
+    tx
+      { txOutputs =
+          modifyFirst
+            ((== changeAddr) . Tx.txOutAddress)
+            (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
+            (txOutputs tx)
+      }
 
 addValueToTxOut :: Value -> TxOut -> TxOut
 addValueToTxOut val txOut = txOut {txOutValue = txOutValue txOut <> val}
@@ -375,8 +456,19 @@ validateRange (Interval (LowerBound (Finite lowerBound) _) (UpperBound (Finite u
   | lowerBound >= upperBound = False
 validateRange _ = True
 
-showText :: forall (a :: Type). Show a => a -> Text
-showText = Text.pack . show
+{- | Modifies the first element matching a predicate, or, if none found, call the modifier with Nothing
+ Calling this function ensures the modifier will always be run once
+-}
+modifyFirst ::
+  forall (a :: Type).
+  -- | Predicate for value to update
+  (a -> Bool) ->
+  -- | Modifier, input Maybe representing existing value (or Nothing if missing), output value representing new value (or Nothing to remove)
+  (Maybe a -> Maybe a) ->
+  [a] ->
+  [a]
+modifyFirst _ m [] = m Nothing `consJust` []
+modifyFirst p m (x : xs) = if p x then m (Just x) `consJust` xs else x : modifyFirst p m xs
 
 minus :: Value -> Value -> Value
 minus x y =
@@ -391,8 +483,9 @@ isValueNat :: Value -> Bool
 isValueNat =
   all (\(_, _, a) -> a >= 0) . Value.flattenValue
 
-isAdaOnly :: Value -> Bool
-isAdaOnly v =
-  case Value.flattenValue v of
-    [("", "", _)] -> True
-    _ -> False
+justLovelace :: Value -> Bool
+justLovelace value = length (Value.flattenValue value) == 1 && lovelaceValue value /= 0
+
+consJust :: forall (a :: Type). Maybe a -> [a] -> [a]
+consJust (Just x) = (x :)
+consJust _ = id
