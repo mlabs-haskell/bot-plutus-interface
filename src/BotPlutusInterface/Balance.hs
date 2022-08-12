@@ -122,8 +122,9 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       let utxoIndex :: Map TxOutRef TxOut
           utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
 
-          utxoIndexD, utxoIndexS :: Map TxOutRef TxOut
-          (utxoIndexD, utxoIndexS) = splitUtxos utxoIndex
+          -- Partition UTxOs into those with and without datums.
+          -- utxoIndexD, utxoIndexS :: Map TxOutRef TxOut
+          -- (utxoIndexD, utxoIndexS) = splitUtxos utxoIndex
 
           requiredSigs :: [PubKeyHash]
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
@@ -151,12 +152,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
           else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
       -- Balance the tx
-      -- (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
-      (balancedTx, minUtxos) <- balanceTxLoop utxoIndexS privKeys [] preBalancedTx
-
-      let txOuts1 = txOutputs balancedTx
-          addDatumTxs txos = txos <> Map.elems utxoIndexD
-          addDatums tx = tx {txOutputs = addDatumTxs (txOutputs tx)}
+      (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
@@ -172,7 +168,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
       -- Get the updated change, add it to the tx
       let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
-          fullyBalancedTx = addDatums $ addAdaChange balanceCfg changeAddr finalAdaChange balancedTxWithChange
+          fullyBalancedTx = addAdaChange balanceCfg changeAddr finalAdaChange balancedTxWithChange
           txInfoLog =
             printBpiLog @w (Debug [TxBalancingLog]) $
               "UnbalancedTx TxInputs: "
@@ -325,11 +321,8 @@ getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
 hasDatum :: TxOut -> Bool
 hasDatum = isJust . txOutDatumHash
 
-{- | Split UTxOs into ones that have data
- and those that don't.
--}
-splitUtxos :: Map TxOutRef TxOut -> (Map TxOutRef TxOut, Map TxOutRef TxOut)
-splitUtxos = Map.partition hasDatum
+hasNoDatum :: TxOut -> Bool
+hasNoDatum = isNothing . txOutDatumHash
 
 -- | Add min lovelaces to each tx output
 addLovelaces :: [(TxOut, Integer)] -> Tx -> Tx
@@ -418,7 +411,7 @@ addAdaChange balanceCfg changeAddr change tx
       { txOutputs =
           List.reverse $
             modifyFirst
-              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (txOutValue txout) && isNothing (Tx.txOutDatumHash txout))
+              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (txOutValue txout) && hasNoDatum txout)
               (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
               (List.reverse $ txOutputs tx)
       }
@@ -426,7 +419,7 @@ addAdaChange balanceCfg changeAddr change tx
     tx
       { txOutputs =
           modifyFirst
-            (\txout -> Tx.txOutAddress txout == changeAddr && isNothing (Tx.txOutDatumHash txout))
+            (\txout -> Tx.txOutAddress txout == changeAddr && hasNoDatum txout)
             (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
             (txOutputs tx)
       }
