@@ -305,7 +305,7 @@ balanceTx contractEnv unbalancedTx = do
           pabConf.pcOwnPubKeyHash
           unbalancedTx
 
-      pure $ either (BalanceTxFailed) (BalanceTxSuccess . Right) eitherBalancedTx
+      pure $ either BalanceTxFailed (BalanceTxSuccess . Right) eitherBalancedTx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
