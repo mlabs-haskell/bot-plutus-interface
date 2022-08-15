@@ -142,19 +142,23 @@ calculateMinUtxo ::
   Map DatumHash Datum ->
   TxOut ->
   Eff effs (Either Text Integer)
-calculateMinUtxo pabConf datums txOut =
-  join
-    <$> callCommand @w
-      ShellArgs
-        { cmdName = "cardano-cli"
-        , cmdArgs =
-            mconcat
-              [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
-              , txOutOpts pabConf datums [txOut]
-              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-              ]
-        , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
-        }
+calculateMinUtxo pabConf datums txOut = do
+  let outs = txOutOpts pabConf datums [txOut]
+  case outs of
+    [] -> pure $ Left "When constructing the transaction, no output values were specified."
+    _ ->
+      join
+        <$> callCommand @w
+          ShellArgs
+            { cmdName = "cardano-cli"
+            , cmdArgs =
+                mconcat
+                  [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
+                  , outs
+                  , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+                  ]
+            , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
+            }
 
 -- | Calculating fee for an unbalanced transaction
 calculateMinFee ::
@@ -366,22 +370,25 @@ txOutOpts :: PABConfig -> Map DatumHash Datum -> [TxOut] -> [Text]
 txOutOpts pabConf datums =
   concatMap
     ( \TxOut {txOutAddress, txOutValue, txOutDatumHash} ->
-        mconcat
-          [
-            [ "--tx-out"
-            , Text.intercalate
-                "+"
-                [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
-                , valueToCliArg txOutValue
+        if Value.isZero txOutValue
+          then []
+          else
+            mconcat
+              [
+                [ "--tx-out"
+                , Text.intercalate
+                    "+"
+                    [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
+                    , valueToCliArg txOutValue
+                    ]
                 ]
-            ]
-          , case txOutDatumHash of
-              Nothing -> []
-              Just datumHash@(DatumHash dh) ->
-                if Map.member datumHash datums
-                  then ["--tx-out-datum-embed-file", datumJsonFilePath pabConf datumHash]
-                  else ["--tx-out-datum-hash", encodeByteString $ fromBuiltin dh]
-          ]
+              , case txOutDatumHash of
+                  Nothing -> []
+                  Just datumHash@(DatumHash dh) ->
+                    if Map.member datumHash datums
+                      then ["--tx-out-datum-embed-file", datumJsonFilePath pabConf datumHash]
+                      else ["--tx-out-datum-hash", encodeByteString $ fromBuiltin dh]
+              ]
     )
 
 networkOpt :: PABConfig -> [Text]
