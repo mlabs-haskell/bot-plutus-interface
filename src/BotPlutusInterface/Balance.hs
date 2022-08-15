@@ -36,7 +36,7 @@ import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT, firstEitherT)
+import Control.Monad.Trans.Either (EitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
@@ -69,7 +69,7 @@ import Ledger.Tx (
   TxOutRef (..),
  )
 import Ledger.Tx qualified as Tx
-import Ledger.Tx.CardanoAPI (ToCardanoError(InvalidValidityRange))
+import Ledger.Tx.CardanoAPI (ToCardanoError (InvalidValidityRange))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
@@ -193,8 +193,9 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
     balanceTxLoop utxoIndex privKeys prevMinUtxos tx = do
       void $ lift $ Files.writeAll @w pabConf tx
       nextMinUtxos <-
-        firstEitherT WAPI.OtherError $ newEitherT $
-          calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
+        firstEitherT WAPI.OtherError $
+          newEitherT $
+            calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
@@ -238,9 +239,10 @@ utxosAndCollateralAtAddress balanceCfg pabConf changeAddr =
     if bcHasScripts balanceCfg
       then
         maybe
-          ( throwE $ WAPI.OtherError $
-              "The given transaction uses script, but there's no collateral provided."
-                <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
+          ( throwE $
+              WAPI.OtherError $
+                "The given transaction uses script, but there's no collateral provided."
+                  <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
           )
           (const $ pure (removeCollateralFromMap inMemCollateral utxos, inMemCollateral))
           inMemCollateral
@@ -437,7 +439,7 @@ addSignatories ownPkh privKeys pkhs tx =
     ( \tx' pkh ->
         case Map.lookup pkh privKeys of
           Just privKey -> Right $ Tx.addSignature' (unDummyPrivateKey privKey) tx'
-          Nothing -> Left $  WAPI.PaymentPrivateKeyNotFound $ PaymentPubKeyHash pkh
+          Nothing -> Left $ WAPI.PaymentPrivateKeyNotFound $ PaymentPubKeyHash pkh
     )
     tx
     (ownPkh : pkhs)
@@ -453,7 +455,7 @@ addValidRange timeRange tx =
     then
       bimap (WAPI.OtherError . Text.pack . show) (setRange tx)
         <$> posixTimeRangeToContainedSlotRange @w timeRange
-    else pure $ Left $  WAPI.ToCardanoError InvalidValidityRange
+    else pure $ Left $ WAPI.ToCardanoError InvalidValidityRange
   where
     setRange tx' range = tx' {txValidRange = range}
 

@@ -474,7 +474,7 @@ handleCollateral cEnv = do
       helperLog
         ("Failed to create collateral UTxO: " <> pretty notCreatedCollateral)
 
-      pure  notCreatedCollateral
+      pure notCreatedCollateral
 
   case result of
     Right collteralUtxo ->
