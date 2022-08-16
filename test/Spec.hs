@@ -11,10 +11,14 @@ import Spec.BotPlutusInterface.TxStatusChange qualified
 import Spec.BotPlutusInterface.UtxoParser qualified
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Prelude
+import System.IO
 
 -- | @since 0.1
 main :: IO ()
-main = defaultMain tests
+main = do
+  hSetBuffering stdin LineBuffering
+  hSetBuffering stdout LineBuffering
+  defaultMain tests
 
 {- | Project wide tests
 

@@ -66,9 +66,9 @@ tests =
 testTxUsesCollateralCorrectly :: Assertion
 testTxUsesCollateralCorrectly = do
   let txOutRef1 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut1 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 10_000_000) NoOutputDatum Nothing
+      txOut1 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 10_000_000) Nothing Nothing
       txOutRef2 = TxOutRef "d406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e4" 0
-      txOut2 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 90_000_000) NoOutputDatum Nothing
+      txOut2 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 90_000_000) Nothing Nothing
       cenv' = def {ceCollateral = CollateralVar $ unsafePerformIO $ newTVarIO Nothing}
       initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)] & contractEnv .~ cenv' & collateralUtxo .~ Nothing
 
@@ -107,7 +107,7 @@ testTxUsesCollateralCorrectly = do
 testTxCreatesCollateralCorrectly :: Assertion
 testTxCreatesCollateralCorrectly = do
   let txOutRef1 = TxOutRef "d406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e4" 0
-      txOut1 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 90_000_000) NoOutputDatum Nothing
+      txOut1 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 90_000_000) Nothing Nothing
       cenv' = def {ceCollateral = CollateralVar $ unsafePerformIO $ newTVarIO Nothing}
       initState = def & utxos .~ [(txOutRef1, txOut1)] & contractEnv .~ cenv' & collateralUtxo .~ Nothing
 
@@ -151,7 +151,7 @@ curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
 mintContract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
 mintContract = do
   let lookups =
-        Constraints.mintingPolicy mintingPolicy
+        Constraints.plutusV1MintingPolicy mintingPolicy
   let constraints =
         Constraints.mustMintValue (Value.singleton curSymbol "testToken" 5)
           <> Constraints.mustPayToPubKey

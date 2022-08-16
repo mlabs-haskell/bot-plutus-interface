@@ -59,7 +59,7 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
-import Data.List (sortOn)
+import Data.List (sortOn, unzip4)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
@@ -71,6 +71,7 @@ import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
+import Plutus.Script.Utils.Scripts qualified as Scripts
 import Plutus.Script.Utils.V1.Scripts qualified as Scripts
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
@@ -184,10 +185,10 @@ writeAll pabConf tx = do
   -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
   -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
-  let (validatorScripts, redeemers, datums) =
-        unzip3 $ mapMaybe Tx.inScripts $ Set.toList $ Tx.txInputs tx
+  let (plutusVersions, validatorScripts, redeemers, datums) =
+        unzip4 $ mapMaybe Tx.inScripts $ Tx.txInputs tx
 
-      policyScripts = Set.toList $ Tx.txMintScripts tx
+      policyScripts = Map.elems $ Tx.txMintScripts tx
       allDatums = datums <> Map.elems (Tx.txData tx)
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
 

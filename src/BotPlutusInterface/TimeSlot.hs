@@ -23,8 +23,8 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (CardanoMode, EraHistory)
 import Cardano.Api qualified as CAPI
-import Cardano.Ledger.Alonzo (AlonzoEra)
-import Cardano.Ledger.Alonzo.PParams (PParams, _protocolVersion)
+-- import Cardano.Ledger.Alonzo (AlonzoEra)
+import Cardano.Ledger.Babbage.PParams (PParams, _protocolVersion)
 import Cardano.Ledger.Alonzo.TxInfo (slotToPOSIXTime)
 import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Slot (EpochInfo)
@@ -56,6 +56,7 @@ import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
 import System.Environment (getEnv)
 import Prelude
+import Cardano.Ledger.Babbage (BabbageEra)
 
 -- | Error returned by the functions of this module
 data TimeSlotConversionError
@@ -72,7 +73,7 @@ slotToPOSIXTimeIO pabConf lSlot = runEitherT $ do
   sysStart <- newET $ querySystemStart nodeInfo
   pparams <-
     liftEither
-      . fmap (CAPI.toLedgerPParams CAPI.ShelleyBasedEraAlonzo)
+      . fmap (CAPI.toLedgerPParams CAPI.ShelleyBasedEraBabbage)
       . maybeToEither (TimeSlotConversionError "No protocol params found")
       $ pcProtocolParams pabConf
   let epochInfo = toLedgerEpochInfo eraHistory
@@ -112,7 +113,7 @@ posixTimeRangeToContainedSlotRangeIO
     eraHistory <- newET $ queryEraHistory nodeInfo
     pparams <-
       liftEither
-        . fmap (CAPI.toLedgerPParams CAPI.ShelleyBasedEraAlonzo)
+        . fmap (CAPI.toLedgerPParams CAPI.ShelleyBasedEraBabbage)
         . maybeToEither (TimeSlotConversionError "No protocol params found")
         $ pcProtocolParams pabConf
     let epochInfo = toLedgerEpochInfo eraHistory
@@ -155,7 +156,7 @@ posixTimeRangeToContainedSlotRangeIO
       -- if bound is not `NegInf` or `PosInf`, then `Closure` need to be calculated
       -- https://github.com/input-output-hk/plutus-apps/blob/e51f57fa99f4cc0942ba6476b0689e43f0948eb3/plutus-ledger/src/Ledger/TimeSlot.hs#L125-L130
       getExtClosure ::
-        PParams (AlonzoEra StandardCrypto) ->
+        PParams (BabbageEra StandardCrypto) ->
         EpochInfo (Either Text) ->
         SystemStart ->
         Extended Ledger.Slot ->

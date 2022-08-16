@@ -109,6 +109,7 @@ library
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-ledger-babbage
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-prelude

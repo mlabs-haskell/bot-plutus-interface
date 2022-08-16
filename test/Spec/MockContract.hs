@@ -125,6 +125,7 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Tuple.Extra (first)
 import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
+import Plutus.Script.Utils.Scripts qualified as Scripts
 import Ledger (
   Extended (NegInf, PosInf),
   Interval (Interval),
@@ -287,7 +288,7 @@ instance Monoid w => Default (MockContractState w) where
         _utxos =
           [
             ( collateralTxOutRef theCollateralUtxo
-            , PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) NoOutputDatum Nothing
+            , PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing Nothing
             )
           ]
       , _tip = Tip 1000 (BlockId "ab12") 4
@@ -493,13 +494,13 @@ mockQueryUtxoOut utxos' =
 txOutToDatum :: ChainIndexTxOut -> Text
 txOutToDatum =
   \case
-    PublicKeyChainIndexTxOut _ _ NoOutputDatum _ -> "TxOutDatumNone"
-    PublicKeyChainIndexTxOut _ _ (OutputDatumHash (DatumHash dh)) _ -> printDatumHash dh
-    PublicKeyChainIndexTxOut _ _ (OutputDatum (Datum d)) _ -> printDatum d
-    ScriptChainIndexTxOut _ _ (Left (DatumHash dh)) _ _ -> printDatumHash dh
-    ScriptChainIndexTxOut _ _ (Right (Datum d)) _ _ -> printDatum d
+    PublicKeyChainIndexTxOut _ _ Nothing _ -> "TxOutDatumNone"
+    PublicKeyChainIndexTxOut _ _ (Just (dh, Nothing)) _  -> printDatumHash dh
+    PublicKeyChainIndexTxOut _ _ (Just (_, Just (Datum d))) _ -> printDatum d
+    ScriptChainIndexTxOut _ _ (dh, Nothing) _ _ -> printDatumHash dh
+    ScriptChainIndexTxOut _ _ (_, Just (Datum d)) _ _ -> printDatum d
   where
-    printDatumHash dh =
+    printDatumHash (DatumHash dh) =
       "TxDatumHash ScriptDataInBabbageEra " <> encodeByteString (fromBuiltin dh)
     printDatum d =
       "TxOutDatumInline ReferenceTxInsScriptsInlineDatumsInBabbageEra "
@@ -699,17 +700,24 @@ buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map converCiTxOut $ fillG
       PublicKeyChainIndexTxOut
         (Ledger.Address (PubKeyCredential "") Nothing)
         mempty
-        NoOutputDatum
+        Nothing
         Nothing
 
 converCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
 converCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
-  CIT.ChainIndexTxOut addr val dat (convertRefScript maybeRefSc)
+  CIT.ChainIndexTxOut addr val (convertMaybeDatum dat) (convertRefScript maybeRefSc)
 converCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
   let datum = case eitherDatum of
-        Left dh -> OutputDatumHash dh
-        Right d -> OutputDatum d
+        (dh, Nothing) -> OutputDatumHash dh
+        (_, Just d) -> OutputDatum d
    in CIT.ChainIndexTxOut addr val datum (convertRefScript maybeRefSc)
+
+convertMaybeDatum :: Maybe (DatumHash, Maybe Datum) -> OutputDatum 
+convertMaybeDatum = \case
+  -- FIXME" tmp implementation, check if something exists already for such conversion
+  Nothing -> NoOutputDatum 
+  Just (dh, Nothing) -> OutputDatumHash dh 
+  Just (_dh, Just d) -> OutputDatum d
 
 convertRefScript :: Maybe V1.Script -> ReferenceScript
 convertRefScript =
