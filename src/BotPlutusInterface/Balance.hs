@@ -45,7 +45,7 @@ import Data.List ((\\))
 import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -104,7 +104,7 @@ balanceTxIO ::
   Eff effs (Either Text Tx)
 balanceTxIO = balanceTxIO' @w defaultBalanceConfig
 
--- | `balanceTxIO'` is more flexible version of `balanceTxIO`, this let us specify custom `BalanceConfig`.
+-- | `balanceTxIO'` is more flexible version of `balanceTxIO`, this lets us specify custom `BalanceConfig`.
 balanceTxIO' ::
   forall (w :: Type) (effs :: [Type -> Type]).
   (Member (PABEffect w) effs) =>
@@ -322,7 +322,7 @@ hasDatum :: TxOut -> Bool
 hasDatum = isJust . txOutDatumHash
 
 hasNoDatum :: TxOut -> Bool
-hasNoDatum = isNothing . txOutDatumHash
+hasNoDatum = not . hasDatum
 
 -- | Add min lovelaces to each tx output
 addLovelaces :: [(TxOut, Integer)] -> Tx -> Tx
@@ -382,8 +382,9 @@ handleNonAdaChange balanceCfg changeAddr utxos tx =
             ( \txout ->
                 Tx.txOutAddress txout == changeAddr
                   && not (justLovelace $ Tx.txOutValue txout)
+                  && hasNoDatum txout
             )
-          else (\txout -> Tx.txOutAddress txout == changeAddr)
+          else (\txout -> Tx.txOutAddress txout == changeAddr && hasNoDatum txout)
       newOutput =
         TxOut
           { txOutAddress = changeAddr
