@@ -71,7 +71,6 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Vector qualified as V
 import Ledger (POSIXTime, getCardanoTxId)
@@ -82,10 +81,13 @@ import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
 import Ledger.Slot (Slot (Slot))
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
 import Ledger.Tx qualified as Tx
+import Ledger.Tx.CardanoAPI (toCardanoTxOut, toCardanoTxOutDatumHash)
 import Ledger.Validation (Coin (Coin))
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
 import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
+
 -- import Plutus.Contract.CardanoAPI (toCardanoTxOutBabbage, toCardanoTxOutDatumHashBabbage)
+
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (
   BalanceTxResponse (..),
@@ -103,7 +105,6 @@ import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
-import Ledger.Tx.CardanoAPI (toCardanoTxOut, toCardanoTxOutDatumHash)
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
@@ -230,7 +231,6 @@ handlePABReq contractEnv req = do
     ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
     YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
     CurrentChainIndexSlotReq -> error ("Unsupported PAB effect: " ++ show req)
-    
 
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
@@ -569,7 +569,7 @@ makeCollateral cEnv = runEitherT $ do
 
   let pabConf = cEnv.cePABConfig
   unbalancedTx <-
-    firstEitherT (T.pack . show) $
+    firstEitherT (Text.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
 
   balancedTx <-
@@ -581,7 +581,7 @@ makeCollateral cEnv = runEitherT $ do
 
   wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)
   case wbr of
-    WriteBalancedTxFailed e -> throwE . T.pack $ "Failed to create collateral output: " <> show e
+    WriteBalancedTxFailed e -> throwE . Text.pack $ "Failed to create collateral output: " <> show e
     WriteBalancedTxSuccess cTx -> do
       status <- lift $ awaitTxStatusChange cEnv (getCardanoTxId cTx)
       lift $ printBpiLog @w (Notice [CollateralLog]) $ "Collateral Tx Status: " <> pretty status

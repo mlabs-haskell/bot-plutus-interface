@@ -38,7 +38,6 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.ChainIndex (OutputDatum (NoOutputDatum))
 import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
 import Plutus.Contract (
   Contract (..),
@@ -83,7 +82,6 @@ import Spec.MockContract (
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
 import Prelude
-import Plutus.Script.Utils.Scripts qualified as Scripts
 
 {- | Contract tests
 
@@ -462,7 +460,7 @@ mintTokens = do
       curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
 
       redeemerHash =
-        let (Scripts.RedeemerHash rh) = Scripts.redeemerHash Scripts.unitRedeemer
+        let (Scripts.RedeemerHash rh) = ScriptUtils.redeemerHash Scripts.unitRedeemer
          in encodeByteString $ fromBuiltin rh
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
@@ -553,7 +551,7 @@ spendToValidator = do
       datum = Scripts.Datum $ PlutusTx.toBuiltinData (11 :: Integer)
 
       datumHash :: ScriptUtils.DatumHash
-      datumHash = Scripts.datumHash datum
+      datumHash = ScriptUtils.datumHash datum
 
       datumHash' =
         let (Scripts.DatumHash dh) = datumHash
@@ -644,14 +642,14 @@ redeemFromValidator = do
       datum = Scripts.Datum $ PlutusTx.toBuiltinData (11 :: Integer)
 
       datumHash :: Scripts.DatumHash
-      datumHash = Scripts.datumHash datum
+      datumHash = ScriptUtils.datumHash datum
 
       datumHash' =
         let (Scripts.DatumHash dh) = datumHash
          in encodeByteString $ fromBuiltin dh
 
       redeemerHash =
-        let (Scripts.RedeemerHash rh) = Scripts.redeemerHash Scripts.unitRedeemer
+        let (Scripts.RedeemerHash rh) = ScriptUtils.redeemerHash Scripts.unitRedeemer
          in encodeByteString $ fromBuiltin rh
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx

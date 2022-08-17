@@ -12,7 +12,6 @@ import Ledger (ChainIndexTxOut (PublicKeyChainIndexTxOut), PaymentPubKeyHash (un
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Tx (CardanoTx, TxOutRef (TxOutRef))
-import Plutus.ChainIndex (OutputDatum (NoOutputDatum))
 import Plutus.Contract (
   Contract (..),
   Endpoint,

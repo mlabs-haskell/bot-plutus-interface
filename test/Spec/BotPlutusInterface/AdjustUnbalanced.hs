@@ -18,7 +18,6 @@ import Ledger (
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Tx (TxOutRef (TxOutRef))
-import Plutus.ChainIndex (OutputDatum (NoOutputDatum))
 import Plutus.Contract (
   Contract (..),
   Endpoint,

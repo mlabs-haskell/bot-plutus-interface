@@ -106,6 +106,7 @@ pabConfigExample =
             , protocolParamMaxValueSize = Just 1016
             , protocolParamCollateralPercent = Just 1017
             , protocolParamMaxCollateralInputs = Just 1018
+            , protocolParamUTxOCostPerByte = Just 0
             }
     , pcTipPollingInterval = 1021
     , pcScriptFileDir = "./result-scripts2"

@@ -55,7 +55,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
-import Ledger (MintingPolicy, MintingPolicyHash, Slot (Slot), SlotRange) -- FIXME" consider qualified imports as before
+import Ledger (Slot (Slot), SlotRange)
 import Ledger qualified
 import Ledger.Ada (fromValue, getLovelace)
 import Ledger.Ada qualified as Ada
@@ -73,7 +73,7 @@ import Ledger.Tx (ChainIndexTxOut, RedeemerPtr (..), Redeemers, ScriptTag (..), 
 import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
-import Plutus.Script.Utils.Scripts qualified as Scripts
+import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   ExBudget (..),
@@ -262,11 +262,11 @@ txInOpts spendIndex pabConf =
                 ]
               ,
                 [ "--tx-in-datum-file"
-                , datumJsonFilePath pabConf (Scripts.datumHash datum)
+                , datumJsonFilePath pabConf (ScriptUtils.datumHash datum)
                 ]
               ,
                 [ "--tx-in-redeemer-file"
-                , redeemerJsonFilePath pabConf (Scripts.redeemerHash redeemer)
+                , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
                 ]
               ,
                 [ "--tx-in-execution-units"
@@ -285,7 +285,7 @@ txInCollateralOpts =
 mintOpts ::
   MintBudgets ->
   PABConfig ->
-  Map MintingPolicyHash MintingPolicy ->
+  Map Ledger.MintingPolicyHash Ledger.MintingPolicy ->
   Redeemers ->
   Value ->
   ([Text], ExBudget)
@@ -305,7 +305,7 @@ mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
                     (,exBudget) $
                       mconcat
                         [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
-                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Scripts.redeemerHash r)]
+                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash r)]
                         , ["--mint-execution-units", exBudgetToCliArg exBudget]
                         ]
                in orMempty $ fmap toOpts redeemer

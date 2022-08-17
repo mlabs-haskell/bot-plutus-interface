@@ -125,7 +125,6 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Tuple.Extra (first)
 import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
-import Plutus.Script.Utils.Scripts qualified as Scripts
 import Ledger (
   Extended (NegInf, PosInf),
   Interval (Interval),
@@ -495,7 +494,7 @@ txOutToDatum :: ChainIndexTxOut -> Text
 txOutToDatum =
   \case
     PublicKeyChainIndexTxOut _ _ Nothing _ -> "TxOutDatumNone"
-    PublicKeyChainIndexTxOut _ _ (Just (dh, Nothing)) _  -> printDatumHash dh
+    PublicKeyChainIndexTxOut _ _ (Just (dh, Nothing)) _ -> printDatumHash dh
     PublicKeyChainIndexTxOut _ _ (Just (_, Just (Datum d))) _ -> printDatum d
     ScriptChainIndexTxOut _ _ (dh, Nothing) _ _ -> printDatumHash dh
     ScriptChainIndexTxOut _ _ (_, Just (Datum d)) _ _ -> printDatum d
@@ -712,11 +711,11 @@ converCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
         (_, Just d) -> OutputDatum d
    in CIT.ChainIndexTxOut addr val datum (convertRefScript maybeRefSc)
 
-convertMaybeDatum :: Maybe (DatumHash, Maybe Datum) -> OutputDatum 
+convertMaybeDatum :: Maybe (DatumHash, Maybe Datum) -> OutputDatum
 convertMaybeDatum = \case
   -- FIXME" tmp implementation, check if something exists already for such conversion
-  Nothing -> NoOutputDatum 
-  Just (dh, Nothing) -> OutputDatumHash dh 
+  Nothing -> NoOutputDatum
+  Just (dh, Nothing) -> OutputDatumHash dh
   Just (_dh, Just d) -> OutputDatum d
 
 convertRefScript :: Maybe V1.Script -> ReferenceScript

@@ -29,13 +29,13 @@ import Data.Attoparsec.Text (
  )
 import Data.Functor (($>))
 import Data.Text (Text)
-import Ledger (Address (addressCredential), Datum, Script (Script))
+import Ledger (Address (addressCredential), Datum)
 import Ledger.Ada qualified as Ada
 import Ledger.Scripts (DatumHash (..))
 import Ledger.Tx (ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut), TxId (..), TxOutRef (..))
 import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
-import Plutus.Script.Utils.Scripts qualified as Scripts
+import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   BuiltinByteString,
   Credential (PubKeyCredential, ScriptCredential),
@@ -126,7 +126,7 @@ convertOutputDatum = \case
   -- FIXME" tmp implementation, check if something exists already
   NoOutputDatum -> Nothing
   OutputDatumHash dh -> Just (dh, Nothing)
-  OutputDatum d -> Just (Scripts.datumHash d, Just d)
+  OutputDatum d -> Just (ScriptUtils.datumHash d, Just d)
 
 -- TODO: Handle inline datums, if we need them here
 outputDatumParser :: Parser OutputDatum

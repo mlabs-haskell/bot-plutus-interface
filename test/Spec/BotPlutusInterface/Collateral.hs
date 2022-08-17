@@ -12,7 +12,7 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Scripts qualified as Scripts
-import Ledger.Tx (CardanoTx, ChainIndexTxOut (PublicKeyChainIndexTxOut), TxOut (TxOut), TxOutRef (TxOutRef))
+import Ledger.Tx (CardanoTx, ChainIndexTxOut (PublicKeyChainIndexTxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.Tx qualified as TxId
 import Ledger.Value qualified as Value
@@ -44,7 +44,6 @@ import Control.Concurrent.STM (newTVarIO)
 
 import Spec.BotPlutusInterface.Contract (assertCommandHistory, assertContract)
 
-import Plutus.ChainIndex (OutputDatum (NoOutputDatum))
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import System.IO.Unsafe (unsafePerformIO)

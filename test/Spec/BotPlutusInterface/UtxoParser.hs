@@ -18,7 +18,6 @@ import Ledger.Tx (
 import Ledger.Value (TokenName (TokenName))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.V2.Ledger.Api (OutputDatum (NoOutputDatum, OutputDatumHash))
 import PlutusTx.Builtins (toBuiltin)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))

@@ -315,7 +315,6 @@ balanceTxIns utxos tx = do
     -- FIXME: maybe better way to handle to <> from Set, as now using list here will break balancing
     -- constantly adding inputs and running balance loop forever
     pure $ tx {txInputs = Set.toList (txIns <> Set.fromList (txInputs tx))}
-    
 
 -- | Set collateral or fail in case it's required but not available
 addTxCollaterals :: CollateralUtxo -> Tx -> Tx

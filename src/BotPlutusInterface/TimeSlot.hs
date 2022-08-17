@@ -23,9 +23,12 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (CardanoMode, EraHistory)
 import Cardano.Api qualified as CAPI
+
 -- import Cardano.Ledger.Alonzo (AlonzoEra)
-import Cardano.Ledger.Babbage.PParams (PParams, _protocolVersion)
+
 import Cardano.Ledger.Alonzo.TxInfo (slotToPOSIXTime)
+import Cardano.Ledger.Babbage (BabbageEra)
+import Cardano.Ledger.Babbage.PParams (PParams, _protocolVersion)
 import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Slot (EpochInfo)
 import Cardano.Prelude (maybeToEither)
@@ -56,7 +59,6 @@ import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
 import System.Environment (getEnv)
 import Prelude
-import Cardano.Ledger.Babbage (BabbageEra)
 
 -- | Error returned by the functions of this module
 data TimeSlotConversionError

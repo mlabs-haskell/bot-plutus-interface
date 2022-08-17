@@ -5,7 +5,6 @@ import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.Effects (PABEffect)
 import Data.Default (Default (def))
 import Data.Map qualified as Map
-import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
