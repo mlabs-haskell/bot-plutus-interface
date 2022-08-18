@@ -123,7 +123,6 @@ tokenNameParser = do
 
 convertOutputDatum :: OutputDatum -> Maybe (DatumHash, Maybe Datum)
 convertOutputDatum = \case
-  -- FIXME" tmp implementation, check if something exists already
   NoOutputDatum -> Nothing
   OutputDatumHash dh -> Just (dh, Nothing)
   OutputDatum d -> Just (ScriptUtils.datumHash d, Just d)
@@ -133,7 +132,7 @@ outputDatumParser :: Parser OutputDatum
 outputDatumParser =
   OutputDatumHash <$> datumHashParser
     <|> "TxOutDatumNone" $> NoOutputDatum
-    <|> "OutputDatum" $> error "OutputDatum not supported yet" -- FIXME: some better handling
+    -- FIXME: will it fail for "TxOutDatumInline ..."?
 
 datumHashParser :: Parser DatumHash
 datumHashParser = do
