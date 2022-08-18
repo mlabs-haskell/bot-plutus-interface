@@ -132,7 +132,8 @@ outputDatumParser :: Parser OutputDatum
 outputDatumParser =
   OutputDatumHash <$> datumHashParser
     <|> "TxOutDatumNone" $> NoOutputDatum
-    -- FIXME: will it fail for "TxOutDatumInline ..."?
+
+-- FIXME: will it fail for "TxOutDatumInline ..."?
 
 datumHashParser :: Parser DatumHash
 datumHashParser = do
