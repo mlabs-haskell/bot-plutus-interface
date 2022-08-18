@@ -33,6 +33,7 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
+import Control.Lens ((^..), folded, to)
 import Control.Monad (foldM, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
@@ -312,9 +313,9 @@ balanceTxIns utxos tx = do
             , nonMintedValue
             ]
     txIns <- newEitherT $ selectTxIns @w (Set.fromList $ txInputs tx) utxos minSpending
-    -- FIXME: maybe better way to handle to <> from Set, as now using list here will break balancing
     -- constantly adding inputs and running balance loop forever
-    pure $ tx {txInputs = Set.toList (txIns <> Set.fromList (txInputs tx))}
+    pure $ tx {txInputs = Set.fromList (txInputs tx) ^.. to (<> txIns) . folded
+              }
 
 -- | Set collateral or fail in case it's required but not available
 addTxCollaterals :: CollateralUtxo -> Tx -> Tx
