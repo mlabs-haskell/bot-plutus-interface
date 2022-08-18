@@ -17,7 +17,7 @@
     # all inputs below here are for pinning with haskell.nix
     cardano-addresses = {
       url =
-        "github:input-output-hk/cardano-addresses/b6f2f3cef01a399376064194fd96711a5bdba4a7";
+        "github:input-output-hk/cardano-addresses/b7273a5d3c21f1a003595ebf1e1f79c28cd72513";
       flake = false;
     };
     cardano-base = {
@@ -37,12 +37,12 @@
     };
     cardano-ledger = {
       url =
-        "github:input-output-hk/cardano-ledger/3be8a19083fc13d9261b1640e27dd389b51bb08e";
+        "github:input-output-hk/cardano-ledger/c7c63dabdb215ebdaed8b63274965966f2bf408f";
       flake = false;
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/c75451f0ffd7a60b5ad6c4263891e6c8acac105a";
+        "github:input-output-hk/cardano-node?ref=1.35.3-rc1";
       flake = false; # we need it to be available in shell
     };
     cardano-prelude = {
@@ -51,7 +51,7 @@
       flake = false;
     };
     cardano-wallet = {
-      url = "github:input-output-hk/cardano-wallet/2ac308b00d9d4a3435f6b9594ded9495e2b217eb";
+      url = "github:input-output-hk/cardano-wallet/18a931648550246695c790578d4a55ee2f10463e";
       flake = false;
     };
     ekg-forward = {
@@ -74,7 +74,7 @@
       flake = false;
     };
     hedgehog-extras = {
-      url = "github:input-output-hk/hedgehog-extras/967d79533c21e33387d0227a5f6cc185203fe658";
+      url = "github:input-output-hk/hedgehog-extras/714ee03a5a786a05fc57ac5d2f1c2edce4660d85";
       flake = false;
     };
     hysterical-screams = {
@@ -82,7 +82,7 @@
       flake = false;
     };
     hw-aeson = {
-      url = "github:haskell-works/hw-aeson/d99d2f3e39a287607418ae605b132a3deb2b753f";
+      url = "github:haskell-works/hw-aeson/b5ef03a7d7443fcd6217ed88c335f0c411a05408";
       flake = false;
     };
     iohk-monitoring-framework = {
@@ -102,17 +102,18 @@
     };
     ouroboros-network = {
       url =
-        "github:input-output-hk/ouroboros-network/a65c29b6a85e90d430c7f58d362b7eb097fd4949";
+        "github:input-output-hk/ouroboros-network/cb9eba406ceb2df338d8384b35c8addfe2067201";
       flake = false;
     };
     plutus = {
       url =
-        "github:input-output-hk/plutus/69ab98c384703172f898eb5bcad1078ded521426";
+        "github:input-output-hk/plutus/a56c96598b4b25c9e28215214d25189331087244";
       flake = false;
     };
     plutus-apps = {
       url =
-        "github:mlabs-haskell/plutus-apps/5cd1682b1ccf8f12c64fc0c1731d61fee41779f6";
+        "github:mikekeke/plutus-apps/efdb04b602ade22245769f7e52d07475b3e8c339";
+        # "git+file:///home/mike/dev/iog/plutus-apps-bpi-debug?rev=7ab52429bfe1b88dd46c72727b40f871d3fb8d63";
       flake = false;
     };
     purescript-bridge = {
@@ -358,6 +359,7 @@
             "playground-common"
             "plutus-chain-index"
             "plutus-chain-index-core"
+            "plutus-hysterical-screams"
             "plutus-contract"
             "plutus-contract-certification"
             "plutus-ledger"
@@ -411,7 +413,7 @@
             additional = ps: [
               ps.plutus-pab
             ];
-            withHoogle = false;
+            withHoogle = true;
             tools.haskell-language-server = { };
             exactDeps = true;
             nativeBuildInputs = with pkgs'; [

@@ -29,19 +29,20 @@ import Data.Attoparsec.Text (
  )
 import Data.Functor (($>))
 import Data.Text (Text)
-import Ledger (Address (addressCredential))
+import Ledger (Address (addressCredential), Datum)
 import Ledger.Ada qualified as Ada
 import Ledger.Scripts (DatumHash (..))
 import Ledger.Tx (ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut), TxId (..), TxOutRef (..))
 import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
+import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   BuiltinByteString,
   Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
   TokenName (..),
  )
-import Plutus.V2.Ledger.Api (OutputDatum (NoOutputDatum, OutputDatumHash))
+import Plutus.V2.Ledger.Api (OutputDatum (NoOutputDatum, OutputDatum, OutputDatumHash))
 import PlutusTx.Builtins (toBuiltin)
 import Prelude hiding (takeWhile)
 
@@ -78,10 +79,21 @@ chainIndexTxOutParser address = do
   case addressCredential address of
     ScriptCredential validatorHash -> do
       datumHash <- datumHashParser <?> "DatumHash"
-      pure $ ScriptChainIndexTxOut address value (Left datumHash) Nothing (Left validatorHash)
+      pure $
+        ScriptChainIndexTxOut
+          address
+          value
+          (datumHash, Nothing)
+          Nothing
+          (validatorHash, Nothing)
     PubKeyCredential _ -> do
       outputDatum <- outputDatumParser <?> "OutputDatum"
-      pure $ PublicKeyChainIndexTxOut address value outputDatum Nothing
+      pure $
+        PublicKeyChainIndexTxOut
+          address
+          value
+          (convertOutputDatum outputDatum)
+          Nothing
 
 valueParser :: Parser Value
 valueParser = do
@@ -109,11 +121,19 @@ tokenNameParser = do
       void $ optional $ string "0x"
       TokenName <$> decodeHash (takeWhile (not . isSpace))
 
+convertOutputDatum :: OutputDatum -> Maybe (DatumHash, Maybe Datum)
+convertOutputDatum = \case
+  NoOutputDatum -> Nothing
+  OutputDatumHash dh -> Just (dh, Nothing)
+  OutputDatum d -> Just (ScriptUtils.datumHash d, Just d)
+
 -- TODO: Handle inline datums, if we need them here
 outputDatumParser :: Parser OutputDatum
 outputDatumParser =
   OutputDatumHash <$> datumHashParser
     <|> "TxOutDatumNone" $> NoOutputDatum
+
+-- FIXME: will it fail for "TxOutDatumInline ..."?
 
 datumHashParser :: Parser DatumHash
 datumHashParser = do

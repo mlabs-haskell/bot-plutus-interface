@@ -59,11 +59,10 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
-import Data.List (sortOn)
+import Data.List (sortOn, unzip4)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
-import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
@@ -71,7 +70,8 @@ import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
-import Plutus.Script.Utils.V1.Scripts qualified as Scripts
+import Plutus.Script.Utils.Scripts qualified as ScriptUtils
+import Plutus.Script.Utils.V1.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),
@@ -145,7 +145,7 @@ writePolicyScriptFile ::
   Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
   let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
-      filepath = policyScriptFilePath pabConf (Scripts.scriptCurrencySymbol mintingPolicy)
+      filepath = policyScriptFilePath pabConf (ScriptUtils.scriptCurrencySymbol mintingPolicy)
    in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
 -- | Compiles and writes a script file under the given folder
@@ -157,7 +157,7 @@ writeValidatorScriptFile ::
   Eff effs (Either (FileError ()) Text)
 writeValidatorScriptFile pabConf validatorScript =
   let script = serialiseScript $ Ledger.unValidatorScript validatorScript
-      filepath = validatorScriptFilePath pabConf (Scripts.validatorHash validatorScript)
+      filepath = validatorScriptFilePath pabConf (ScriptUtils.validatorHash validatorScript)
    in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
 -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
@@ -184,10 +184,10 @@ writeAll pabConf tx = do
   -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
   -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
-  let (validatorScripts, redeemers, datums) =
-        unzip3 $ mapMaybe Tx.inScripts $ Set.toList $ Tx.txInputs tx
+  let (_, validatorScripts, redeemers, datums) =
+        unzip4 $ mapMaybe Tx.inScripts $ Tx.txInputs tx
 
-      policyScripts = Set.toList $ Tx.txMintScripts tx
+      policyScripts = Map.elems $ Tx.txMintScripts tx
       allDatums = datums <> Map.elems (Tx.txData tx)
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
 
@@ -310,7 +310,7 @@ writeDatumJsonFile ::
   Eff effs (Either (FileError ()) Text)
 writeDatumJsonFile pabConf datum =
   let json = dataToJson $ getDatum datum
-      filepath = datumJsonFilePath pabConf (Scripts.datumHash datum)
+      filepath = datumJsonFilePath pabConf (ScriptUtils.datumHash datum)
    in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
 
 writeRedeemerJsonFile ::
@@ -321,7 +321,7 @@ writeRedeemerJsonFile ::
   Eff effs (Either (FileError ()) Text)
 writeRedeemerJsonFile pabConf redeemer =
   let json = dataToJson $ getRedeemer redeemer
-      filepath = redeemerJsonFilePath pabConf (Scripts.redeemerHash redeemer)
+      filepath = redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
    in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
 
 dataToJson :: forall (a :: Type). ToData a => a -> JSON.Value

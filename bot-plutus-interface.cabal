@@ -27,9 +27,7 @@ common common-lang
     -Wall -Wcompat -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
     -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
-    -fplugin=RecordDotPreprocessor
-
-  -- -Werror
+    -fplugin=RecordDotPreprocessor -Werror
 
   build-depends:
     , base
@@ -109,6 +107,7 @@ library
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-ledger-babbage
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-prelude

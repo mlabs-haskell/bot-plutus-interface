@@ -13,7 +13,7 @@ import Ledger (ChainIndexTxOut (PublicKeyChainIndexTxOut), PaymentPubKeyHash (un
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Tx (TxOutRef (TxOutRef))
-import Plutus.ChainIndex (OutputDatum (NoOutputDatum), RollbackState (Unknown), Tip (TipAtGenesis), TxStatus)
+import Plutus.ChainIndex (RollbackState (Unknown), Tip (TipAtGenesis), TxStatus)
 import Plutus.ChainIndex.Types (Tip (Tip))
 import Plutus.Contract (
   Contract (..),
@@ -48,7 +48,7 @@ tests =
 testTxFoundAndConfirmed :: Assertion
 testTxFoundAndConfirmed = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350) NoOutputDatum Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing Nothing
       initState =
         def & utxos .~ [(txOutRef, txOut)]
           & contractEnv .~ contractEnv'

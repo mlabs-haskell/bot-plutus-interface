@@ -71,7 +71,6 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Vector qualified as V
 import Ledger (POSIXTime, getCardanoTxId)
@@ -82,10 +81,13 @@ import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
 import Ledger.Slot (Slot (Slot))
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
 import Ledger.Tx qualified as Tx
+import Ledger.Tx.CardanoAPI (toCardanoTxOut, toCardanoTxOutDatumHash)
 import Ledger.Validation (Coin (Coin))
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
 import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
-import Plutus.Contract.CardanoAPI (toCardanoTxOutBabbage, toCardanoTxOutDatumHashBabbage)
+
+-- import Plutus.Contract.CardanoAPI (toCardanoTxOutBabbage, toCardanoTxOutDatumHashBabbage)
+
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (
   BalanceTxResponse (..),
@@ -213,7 +215,7 @@ handlePABReq contractEnv req = do
       WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx'
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
     AwaitTimeReq t -> AwaitTimeResp <$> awaitTime @w contractEnv t
-    CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
+    CurrentPABSlotReq -> CurrentPABSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
       either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
@@ -228,6 +230,7 @@ handlePABReq contractEnv req = do
     AwaitTxOutStatusChangeReq _ -> error ("Unsupported PAB effect: " ++ show req)
     ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
     YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    CurrentChainIndexSlotReq -> error ("Unsupported PAB effect: " ++ show req)
 
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
@@ -267,7 +270,7 @@ adjustUnbalancedTx' contractEnv unbalancedTx = pure $ do
           <$> contractEnv.cePABConfig.pcProtocolParams
 
     adjustTxOut networkId pparams txOut = do
-      txOut' <- toCardanoTxOutBabbage networkId toCardanoTxOutDatumHashBabbage txOut
+      txOut' <- toCardanoTxOut networkId toCardanoTxOutDatumHash txOut
       let (Coin minTxOut) = evaluateMinLovelaceOutput pparams (asBabbageBased toShelleyTxOut txOut')
           missingLovelace = max 0 (Ada.lovelaceOf minTxOut - Ada.fromValue (txOutValue txOut))
       pure $ txOut {txOutValue = txOutValue txOut <> Ada.toValue missingLovelace}
@@ -402,8 +405,8 @@ writeBalancedTx contractEnv cardanoTx = do
     -- TODO: This whole part is hacky and we should remove it.
     let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx')
     -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
-    alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsBabbageEra) path
-    let cardanoApiTx = Tx.SomeTx (Tx alonzoBody []) BabbageEraInCardanoMode
+    babbageBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsBabbageEra) path
+    let cardanoApiTx = Tx.SomeTx (Tx babbageBody []) BabbageEraInCardanoMode
 
     if signable
       then newEitherT $ CardanoCLI.signTx @w pabConf tx' requiredSigners
@@ -566,7 +569,7 @@ makeCollateral cEnv = runEitherT $ do
 
   let pabConf = cEnv.cePABConfig
   unbalancedTx <-
-    firstEitherT (T.pack . show) $
+    firstEitherT (Text.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
 
   balancedTx <-
@@ -578,7 +581,7 @@ makeCollateral cEnv = runEitherT $ do
 
   wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)
   case wbr of
-    WriteBalancedTxFailed e -> throwE . T.pack $ "Failed to create collateral output: " <> show e
+    WriteBalancedTxFailed e -> throwE . Text.pack $ "Failed to create collateral output: " <> show e
     WriteBalancedTxSuccess cTx -> do
       status <- lift $ awaitTxStatusChange cEnv (getCardanoTxId cTx)
       lift $ printBpiLog @w (Notice [CollateralLog]) $ "Collateral Tx Status: " <> pretty status

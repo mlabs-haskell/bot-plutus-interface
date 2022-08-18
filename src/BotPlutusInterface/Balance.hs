@@ -280,7 +280,7 @@ balanceTxStep balanceCfg utxos changeAddr tx =
 getChange :: Map TxOutRef TxOut -> Tx -> Value
 getChange utxos tx =
   let fees = lovelaceValue $ txFee tx
-      txInRefs = map Tx.txInRef $ Set.toList $ txInputs tx
+      txInRefs = map Tx.txInRef $ txInputs tx
       inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
       outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
       nonMintedOutputValue = outputValue `minus` txMint tx
@@ -311,13 +311,15 @@ balanceTxIns utxos tx = do
             [ txFee tx
             , nonMintedValue
             ]
-    txIns <- newEitherT $ selectTxIns @w (txInputs tx) utxos minSpending
-    pure $ tx {txInputs = txIns <> txInputs tx}
+    txIns <- newEitherT $ selectTxIns @w (Set.fromList $ txInputs tx) utxos minSpending
+    -- FIXME: maybe better way to handle to <> from Set, as now using list here will break balancing
+    -- constantly adding inputs and running balance loop forever
+    pure $ tx {txInputs = Set.toList (txIns <> Set.fromList (txInputs tx))}
 
 -- | Set collateral or fail in case it's required but not available
 addTxCollaterals :: CollateralUtxo -> Tx -> Tx
 addTxCollaterals cOut tx
-  | txUsesScripts tx = tx {txCollateral = Set.singleton (Tx.pubKeyTxIn (collateralTxOutRef cOut))}
+  | txUsesScripts tx = tx {txCollateral = [Tx.pubKeyTxIn (collateralTxOutRef cOut)]}
   | otherwise = tx
 
 txUsesScripts :: Tx -> Bool
@@ -325,7 +327,7 @@ txUsesScripts Tx {txInputs, txMintScripts} =
   not (null txMintScripts)
     || any
       (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
-      (Set.toList txInputs)
+      txInputs
 
 -- | Ensures all non ada change goes back to user
 handleNonAdaChange :: BalanceConfig -> Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx

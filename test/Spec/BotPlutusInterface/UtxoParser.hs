@@ -18,7 +18,6 @@ import Ledger.Tx (
 import Ledger.Value (TokenName (TokenName))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.V2.Ledger.Api (OutputDatum (NoOutputDatum, OutputDatumHash))
 import PlutusTx.Builtins (toBuiltin)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
@@ -64,7 +63,7 @@ singleAdaOnly = do
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) NoOutputDatum Nothing
+      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) Nothing Nothing
       )
     ]
 
@@ -81,15 +80,15 @@ multiAdaOnly = do
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) NoOutputDatum Nothing
+      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) Nothing Nothing
       )
     ,
       ( TxOutRef "52a003b3f4956433429631afe4002f82a924a5a7a891db7ae1f6434797a57dff" 1
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 89835907) NoOutputDatum Nothing
+      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 89835907) Nothing Nothing
       )
     ,
       ( TxOutRef "d8a5630a9d7e913f9d186c95e5138a239a4e79ece3414ac894dbf37280944de3" 0
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 501000123456) NoOutputDatum Nothing
+      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 501000123456) Nothing Nothing
       )
     ]
 
@@ -119,7 +118,7 @@ singleWithNativeTokens = do
               <> Value.assetClassValue tokenWithRawByteString 3456
               <> Value.assetClassValue tokenWithEmptyName 4567
           )
-          NoOutputDatum
+          Nothing
           Nothing
       )
     ]
@@ -138,9 +137,9 @@ singleWithDatum = do
       , ScriptChainIndexTxOut
           addr
           (Ada.lovelaceValueOf 5000000000)
-          (Left "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0")
+          ("2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0", Nothing)
           Nothing
-          (Left "0000")
+          ("0000", Nothing)
       )
     ]
 
@@ -158,7 +157,7 @@ pkhAddrWithDatum = do
       , PublicKeyChainIndexTxOut
           addr
           (Ada.lovelaceValueOf 5000000000)
-          (OutputDatumHash "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0")
+          (Just ("2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0", Nothing))
           Nothing
       )
     ]

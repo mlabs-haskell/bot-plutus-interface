@@ -52,8 +52,6 @@ import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
-import Data.Set (Set)
-import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
@@ -75,6 +73,7 @@ import Ledger.Tx (ChainIndexTxOut, RedeemerPtr (..), Redeemers, ScriptTag (..), 
 import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
+import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   ExBudget (..),
@@ -236,7 +235,7 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInOpts :: SpendBudgets -> PABConfig -> Set TxIn -> ([Text], ExBudget)
+txInOpts :: SpendBudgets -> PABConfig -> [TxIn] -> ([Text], ExBudget)
 txInOpts spendIndex pabConf =
   foldMap
     ( \(TxIn txOutRef txInType) ->
@@ -250,12 +249,11 @@ txInOpts spendIndex pabConf =
                 , opts
                 ]
     )
-    . Set.toList
   where
     scriptInputs :: Maybe TxInType -> ExBudget -> ([Text], ExBudget)
     scriptInputs txInType exBudget =
       case txInType of
-        Just (ConsumeScriptAddress validator redeemer datum) ->
+        Just (ConsumeScriptAddress _lang validator redeemer datum) ->
           (,exBudget) $
             mconcat
               [
@@ -264,11 +262,11 @@ txInOpts spendIndex pabConf =
                 ]
               ,
                 [ "--tx-in-datum-file"
-                , datumJsonFilePath pabConf (Scripts.datumHash datum)
+                , datumJsonFilePath pabConf (ScriptUtils.datumHash datum)
                 ]
               ,
                 [ "--tx-in-redeemer-file"
-                , redeemerJsonFilePath pabConf (Scripts.redeemerHash redeemer)
+                , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
                 ]
               ,
                 [ "--tx-in-execution-units"
@@ -279,12 +277,18 @@ txInOpts spendIndex pabConf =
         Just ConsumeSimpleScriptAddress -> mempty
         Nothing -> mempty
 
-txInCollateralOpts :: Set TxIn -> [Text]
+txInCollateralOpts :: [TxIn] -> [Text]
 txInCollateralOpts =
-  concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef]) . Set.toList
+  concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef])
 
 -- Minting options
-mintOpts :: MintBudgets -> PABConfig -> Set Scripts.MintingPolicy -> Redeemers -> Value -> ([Text], ExBudget)
+mintOpts ::
+  MintBudgets ->
+  PABConfig ->
+  Map Ledger.MintingPolicyHash Ledger.MintingPolicy ->
+  Redeemers ->
+  Value ->
+  ([Text], ExBudget)
 mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
   let scriptOpts =
         foldMap
@@ -301,12 +305,12 @@ mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
                     (,exBudget) $
                       mconcat
                         [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
-                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Scripts.redeemerHash r)]
+                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash r)]
                         , ["--mint-execution-units", exBudgetToCliArg exBudget]
                         ]
                in orMempty $ fmap toOpts redeemer
           )
-          $ zip [0 ..] $ Set.toList mintingPolicies
+          $ zip [0 ..] $ Map.elems mintingPolicies
       mintOpt =
         if not (Value.isZero mintValue)
           then ["--mint", valueToCliArg mintValue]

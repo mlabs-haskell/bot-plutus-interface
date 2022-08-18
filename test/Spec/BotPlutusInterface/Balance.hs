@@ -5,7 +5,6 @@ import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.Effects (PABEffect)
 import Data.Default (Default (def))
 import Data.Map qualified as Map
-import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
@@ -72,7 +71,7 @@ addUtxosForFees = do
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
-    Right balanceTx -> txInputs <$> balanceTx @?= Right (Set.fromList [txIn1, txIn2])
+    Right balanceTx -> txInputs <$> balanceTx @?= Right [txIn1, txIn2]
 
 addUtxosForNativeTokens :: Assertion
 addUtxosForNativeTokens = do
@@ -95,7 +94,7 @@ addUtxosForNativeTokens = do
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
-    Right balancedTx -> txInputs <$> balancedTx @?= Right (Set.fromList [txIn3, txIn4])
+    Right balancedTx -> txInputs <$> balancedTx @?= Right [txIn3, txIn4]
 
 addUtxosForChange :: Assertion
 addUtxosForChange = do
@@ -110,4 +109,4 @@ addUtxosForChange = do
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
-    Right balancedTx -> txInputs <$> balancedTx @?= Right (Set.fromList [txIn1, txIn2])
+    Right balancedTx -> txInputs <$> balancedTx @?= Right [txIn1, txIn2]
