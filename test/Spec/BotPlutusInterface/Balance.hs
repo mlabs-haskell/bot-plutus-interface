@@ -38,6 +38,9 @@ import PlutusTx qualified
 import Spec.MockContract (
   MockContractState,
   contractEnv,
+  paymentPkh3,
+  pkh3,
+  pkhAddr3,
   runContractPure,
   runPABEffectPure,
   utxos,
@@ -71,10 +74,10 @@ pkh1, pkh2 :: PubKeyHash
 pkh1 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 1
 pkh2 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 2
 
-addr1, addr2, addr3 :: Address
+addr1, addr2, valAddr :: Address
 addr1 = Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh1) Nothing
 addr2 = Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh2) Nothing
-addr3 = Ledger.scriptAddress validator
+valAddr = Ledger.scriptAddress validator
 
 txOutRef1, txOutRef2, txOutRef3, txOutRef4, txOutRef5, txOutRef6, txOutRef7 :: TxOutRef
 txOutRef1 = TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
@@ -102,7 +105,7 @@ utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton 
 utxo7 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 5_000_000) Nothing)
 
 scrValue :: Value.Value
-scrValue = (Value.singleton "11223344" "Token" 200) <> (Ada.lovelaceValueOf 500_000)
+scrValue = Value.singleton "11223344" "Token" 200 <> Ada.lovelaceValueOf 500_000
 
 scrDatum :: Ledger.Datum
 scrDatum = Ledger.Datum $ Api.toBuiltinData (23 :: Integer)
@@ -162,14 +165,14 @@ dontAddChangeToDatum :: Assertion
 dontAddChangeToDatum = do
   let scrTxOut' =
         ScriptChainIndexTxOut
-          addr3
+          valAddr
           (Right validator) -- (valHash, Just validator)
           (Right scrDatum) -- (scrDatumHash, Just scrDatum)
           scrValue
       scrTxOut = Ledger.toTxOut scrTxOut'
       usrTxOut' =
         PublicKeyChainIndexTxOut
-          addr1
+          pkhAddr3
           (Ada.lovelaceValueOf 5_000_000)
       usrTxOut = Ledger.toTxOut usrTxOut'
       -- initState :: MockContractState ()
@@ -177,23 +180,27 @@ dontAddChangeToDatum = do
         def & utxos .~ [(txOutRef6, scrTxOut), (txOutRef7, usrTxOut)]
           & contractEnv .~ contractEnv'
       pabConf :: PABConfig
-      pabConf = def {pcOwnPubKeyHash = pkh1}
+      pabConf = def {pcOwnPubKeyHash = pkh3}
       -- contractEnv' :: ContractEnvironment ()
       contractEnv' = def {cePABConfig = pabConf}
 
-      -- TODO: set these up.
-      scrLkups = mempty
-      txConsts = mempty
-
+      scrLkups =
+        Constraints.unspentOutputs (Map.fromList [(txOutRef6, scrTxOut'), (txOutRef7, usrTxOut')])
+          <> Constraints.ownPaymentPubKeyHash paymentPkh3
+      txConsts =
+        -- Pay the same datum to the script, but with more ada.
+        Constraints.mustPayToOtherScript valHash scrDatum (scrValue <> Ada.lovelaceValueOf 1_000_000)
+          <> Constraints.mustSpendScriptOutput txOutRef6 Ledger.unitRedeemer
+          <> Constraints.mustSpendPubKeyOutput txOutRef7
       eunbalancedTx = Constraints.mkTx @Void scrLkups txConsts
 
   case eunbalancedTx of
     Left mkTxErr -> assertFailure ("MkTx Error: " <> show mkTxErr)
     Right unbalancedTx -> do
-      let (eRslt, finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh1 unbalancedTx)
+      let (eRslt, finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
       case eRslt of
         (Left txt) -> assertFailure ("PAB effect error: " <> Text.unpack txt)
-        (Right (Left txt)) -> assertFailure ("Balancing error: " <> Text.unpack txt)
+        (Right (Left txt)) -> assertFailure $ "Balancing error: " <> Text.unpack txt -- <> "\n(Tx: " <> show unbalancedTx <> ")"
         (Right (Right trx)) -> do
-          -- TODO
+          -- TODO: Write the actual test.
           assertFailure "Incomplete Test"
