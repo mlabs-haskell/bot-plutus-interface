@@ -41,7 +41,7 @@ import Spec.MockContract (
   paymentPkh3,
   pkh3,
   pkhAddr3,
-  runContractPure,
+  -- runContractPure,
   runPABEffectPure,
   utxos,
  )
@@ -197,10 +197,17 @@ dontAddChangeToDatum = do
   case eunbalancedTx of
     Left mkTxErr -> assertFailure ("MkTx Error: " <> show mkTxErr)
     Right unbalancedTx -> do
-      let (eRslt, finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
+      let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
       case eRslt of
         (Left txt) -> assertFailure ("PAB effect error: " <> Text.unpack txt)
         (Right (Left txt)) -> assertFailure $ "Balancing error: " <> Text.unpack txt -- <> "\n(Tx: " <> show unbalancedTx <> ")"
         (Right (Right trx)) -> do
           -- TODO: Write the actual test.
-          assertFailure "Incomplete Test"
+          assertBool
+            ( "Original UTxO not in output Tx."
+                <> "\nOriginal UTxO: "
+                <> show scrTxOut
+                <> "\nNew UTxOs: "
+                <> show (txOutputs trx)
+            )
+            (scrTxOut `elem` txOutputs trx)
