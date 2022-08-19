@@ -10,7 +10,7 @@ import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
   PABConfig (pcOwnPubKeyHash, pcProtocolParams),
  )
-import Control.Lens ((&), (.~), (^.))
+import Control.Lens ((&), (.~), (<>~), (^.))
 import Data.Default (Default (def))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
@@ -22,6 +22,7 @@ import Ledger.Address (Address, PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Constraints qualified as Constraints
+import Ledger.Constraints.OffChain qualified as OffChain
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
@@ -173,7 +174,7 @@ dontAddChangeToDatum = do
       usrTxOut' =
         PublicKeyChainIndexTxOut
           pkhAddr3
-          (Ada.lovelaceValueOf 5_000_000)
+          (Ada.lovelaceValueOf 1_001_000)
       usrTxOut = Ledger.toTxOut usrTxOut'
       -- initState :: MockContractState ()
       initState =
@@ -189,7 +190,9 @@ dontAddChangeToDatum = do
           <> Constraints.ownPaymentPubKeyHash paymentPkh3
       txConsts =
         -- Pay the same datum to the script, but with more ada.
-        Constraints.mustPayToOtherScript valHash scrDatum (scrValue <> Ada.lovelaceValueOf 1_000_000)
+        Constraints.mustPayToOtherScript valHash scrDatum (scrValue <> Ada.lovelaceValueOf 500)
+          -- <> Constraints.mustPayToOtherScript valHash scrDatum (Ada.lovelaceValueOf 1_000_000)
+          <> Constraints.mustPayToPubKey paymentPkh3 (Ada.lovelaceValueOf 1_000_000)
           <> Constraints.mustSpendScriptOutput txOutRef6 Ledger.unitRedeemer
           <> Constraints.mustSpendPubKeyOutput txOutRef7
       eunbalancedTx = Constraints.mkTx @Void scrLkups txConsts
@@ -202,12 +205,15 @@ dontAddChangeToDatum = do
         (Left txt) -> assertFailure ("PAB effect error: " <> Text.unpack txt)
         (Right (Left txt)) -> assertFailure $ "Balancing error: " <> Text.unpack txt -- <> "\n(Tx: " <> show unbalancedTx <> ")"
         (Right (Right trx)) -> do
-          -- TODO: Write the actual test.
+          let scrTxOut'' = scrTxOut' & Ledger.ciTxOutValue <>~ Ada.lovelaceValueOf 500
+              scrTxOutNew = Ledger.toTxOut scrTxOut''
           assertBool
             ( "Original UTxO not in output Tx."
                 <> "\nOriginal UTxO: "
                 <> show scrTxOut
                 <> "\nNew UTxOs: "
                 <> show (txOutputs trx)
+                <> "\nUnbalanced UTxOs: "
+                <> show (txOutputs (unbalancedTx ^. OffChain.tx))
             )
-            (scrTxOut `elem` txOutputs trx)
+            (scrTxOutNew `elem` txOutputs trx)
