@@ -51,7 +51,7 @@ import Cardano.Api.Shelley (toShelleyTxOut)
 import Cardano.Ledger.Shelley.API.Wallet (
   CLI (evaluateMinLovelaceOutput),
  )
-import Cardano.Prelude (maybeToEither)
+import Cardano.Prelude (liftA2, maybeToEither)
 import Control.Lens (preview, (.~), (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
@@ -301,7 +301,13 @@ awaitTxStatusChange contractEnv txId = do
       cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
 
   fix $ \loop -> do
-    currBlock <- currentBlock contractEnv
+    (currBlock, currSlot) <- currentTip contractEnv
+    
+    helperLog $
+      "Current block: " ++ show currBlock
+        ++ ", current slot: "
+        ++ show currSlot
+
     txStatus <- getStatus
     case (txStatus, currBlock > cutOffBlock) of
       (status, True) -> do
@@ -342,7 +348,7 @@ awaitTxStatusChange contractEnv txId = do
           pure . Just $ fromTx blk tx'
         Nothing -> pure Nothing
 
-    helperLog = printBpiLog @w (Debug [CollateralLog]) . pretty
+    helperLog = printBpiLog @w (Debug [PABLog]) . pretty
 
 -- | This will FULLY balance a transaction
 balanceTx ::
@@ -490,21 +496,32 @@ awaitTime ce pTime = do
   where
     rightOrErr = either (error . show) id
 
+type Block = Integer
+
+currentTip ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Eff effs (Block, Slot)
+currentTip contractEnv = do
+  tip <-
+    either (error . Text.unpack) id
+      <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+  pure $ liftA2 (,) block (Slot . slot) tip
+
 currentSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
   Eff effs Slot
-currentSlot contractEnv =
-  Slot . slot . either (error . Text.unpack) id <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+currentSlot = fmap snd . currentTip
 
 currentBlock ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs Integer
-currentBlock contractEnv =
-  block . either (error . Text.unpack) id <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+  Eff effs Block
+currentBlock = fmap fst . currentTip
 
 currentTime ::
   forall (w :: Type) (effs :: [Type -> Type]).
