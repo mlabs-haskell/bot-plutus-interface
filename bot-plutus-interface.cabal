@@ -93,6 +93,7 @@ library
     BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
+    BotPlutusInterface.CardanoNode.Effects
     PlutusConfig.Base
     PlutusConfig.Cardano.Api
     PlutusConfig.Cardano.Api.Shelley
