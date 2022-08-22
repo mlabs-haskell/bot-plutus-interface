@@ -60,7 +60,8 @@ tests =
     [ testCase "Add utxos to cover fees" addUtxosForFees
     , testCase "Add utxos to cover native tokens" addUtxosForNativeTokens
     , testCase "Add utxos to cover change min utxo" addUtxosForChange
-    , testCase "Don't add change to UTxOs with datums" dontAddChangeToDatum
+    , testCase "Don't add change to UTxOs with datums (1)" dontAddChangeToDatum
+    , testCase "Don't add change to UTxOs with datums (2)" dontAddChangeToDatum2
     ]
 
 validator :: Scripts.Validator
@@ -107,6 +108,9 @@ utxo7 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 5_000_000) Nothing)
 
 scrValue :: Value.Value
 scrValue = Value.singleton "11223344" "Token" 200 <> Ada.lovelaceValueOf 500_000
+
+scrValue' :: Value.Value
+scrValue' = Value.singleton "11223344" "Token" 100 <> Ada.lovelaceValueOf 500_000
 
 scrDatum :: Ledger.Datum
 scrDatum = Ledger.Datum $ Api.toBuiltinData (23 :: Integer)
@@ -185,6 +189,25 @@ dontAddChangeToDatum = do
       -- contractEnv' :: ContractEnvironment ()
       contractEnv' = def {cePABConfig = pabConf}
 
+      -- Input UTxOs:
+      -- UTxO 1:
+      -- - From: User
+      -- - Amt : 1.001 ADA
+      -- UTxO 2:
+      -- - From: Script
+      -- - Amt : 0.5 ADA + 200 Tokens
+      --
+      -- Output UTxOs:
+      -- UTxO 1:
+      -- - To : User
+      -- - Amt: 1 ADA
+      -- UTxO 2:
+      -- - To : Script
+      -- - Amt: 1.0005 Ada + 200 Token
+      --
+      -- Fees   : 400 Lovelace
+      -- Change : 100 Lovelace
+
       scrLkups =
         Constraints.unspentOutputs (Map.fromList [(txOutRef6, scrTxOut'), (txOutRef7, usrTxOut')])
           <> Constraints.ownPaymentPubKeyHash paymentPkh3
@@ -208,9 +231,62 @@ dontAddChangeToDatum = do
           let scrTxOut'' = scrTxOut' & Ledger.ciTxOutValue <>~ Ada.lovelaceValueOf 500
               scrTxOutNew = Ledger.toTxOut scrTxOut''
           assertBool
-            ( "Original UTxO not in output Tx."
-                <> "\nOriginal UTxO: "
-                <> show scrTxOut
+            ( "Expected UTxO not in output Tx."
+                <> "\nExpected UTxO: "
+                <> show scrTxOutNew
+                <> "\nNew UTxOs: "
+                <> show (txOutputs trx)
+                <> "\nUnbalanced UTxOs: "
+                <> show (txOutputs (unbalancedTx ^. OffChain.tx))
+            )
+            (scrTxOutNew `elem` txOutputs trx)
+
+-- Like the first one, but
+-- only has inputs from the script.
+dontAddChangeToDatum2 :: Assertion
+dontAddChangeToDatum2 = do
+  let scrTxOut' =
+        ScriptChainIndexTxOut
+          valAddr
+          (Right validator) -- (valHash, Just validator)
+          (Right scrDatum) -- (scrDatumHash, Just scrDatum)
+          (scrValue <> Ada.lovelaceValueOf 1_500_000)
+      scrTxOut = Ledger.toTxOut scrTxOut'
+      -- initState :: MockContractState ()
+      initState =
+        def & utxos .~ [(txOutRef6, scrTxOut)]
+          & contractEnv .~ contractEnv'
+      pabConf :: PABConfig
+      pabConf = def {pcOwnPubKeyHash = pkh3}
+      -- contractEnv' :: ContractEnvironment ()
+      contractEnv' = def {cePABConfig = pabConf}
+
+      scrLkups =
+        Constraints.unspentOutputs (Map.fromList [(txOutRef6, scrTxOut')])
+          <> Constraints.ownPaymentPubKeyHash paymentPkh3
+      txConsts =
+        -- Pay the same datum to the script, but with LESS ada
+        -- and fewer tokens. This is to ensure that the excess
+        -- ADA and tokens are moved into their own UTxO(s),
+        -- (The extra ada is used to cover fees etc...)
+        Constraints.mustPayToOtherScript valHash scrDatum scrValue'
+          <> Constraints.mustSpendScriptOutput txOutRef6 Ledger.unitRedeemer
+      eunbalancedTx = Constraints.mkTx @Void scrLkups txConsts
+
+  case eunbalancedTx of
+    Left mkTxErr -> assertFailure ("MkTx Error: " <> show mkTxErr)
+    Right unbalancedTx -> do
+      let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
+      case eRslt of
+        (Left txt) -> assertFailure ("PAB effect error: " <> Text.unpack txt)
+        (Right (Left txt)) -> assertFailure $ "Balancing error: " <> Text.unpack txt -- <> "\n(Tx: " <> show unbalancedTx <> ")"
+        (Right (Right trx)) -> do
+          let scrTxOut'' = scrTxOut' & Ledger.ciTxOutValue .~ scrValue'
+              scrTxOutNew = Ledger.toTxOut scrTxOut''
+          assertBool
+            ( "Expected UTxO not in output Tx."
+                <> "\nExpected UTxO: "
+                <> show scrTxOutNew
                 <> "\nNew UTxOs: "
                 <> show (txOutputs trx)
                 <> "\nUnbalanced UTxOs: "
