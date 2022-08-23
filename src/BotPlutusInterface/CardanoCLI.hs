@@ -143,22 +143,18 @@ calculateMinUtxo ::
   TxOut ->
   Eff effs (Either Text Integer)
 calculateMinUtxo pabConf datums txOut = do
-  let outs = txOutOpts pabConf datums [txOut]
-  case outs of
-    [] -> pure $ Left "When constructing the transaction, no output values were specified."
-    _ ->
-      join
-        <$> callCommand @w
-          ShellArgs
-            { cmdName = "cardano-cli"
-            , cmdArgs =
-                mconcat
-                  [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
-                  , outs
-                  , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-                  ]
-            , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
-            }
+  join
+    <$> callCommand @w
+      ShellArgs
+        { cmdName = "cardano-cli"
+        , cmdArgs =
+            mconcat
+              [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
+              , txOutOpts pabConf datums [txOut]
+              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+              ]
+        , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
+        }
 
 -- | Calculating fee for an unbalanced transaction
 calculateMinFee ::
@@ -212,6 +208,7 @@ buildTx pabConf privKeys txBudget tx = do
                     []
         )
         (Map.keys (Ledger.txSignatures tx))
+
     opts ins mints =
       mconcat
         [ ["transaction", "build-raw", "--alonzo-era"]
