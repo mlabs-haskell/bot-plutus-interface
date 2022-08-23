@@ -302,7 +302,7 @@ awaitTxStatusChange contractEnv txId = do
 
   fix $ \loop -> do
     (currBlock, currSlot) <- currentTip contractEnv
-
+    
     helperLog $
       "Current block: " ++ show currBlock
         ++ ", current slot: "

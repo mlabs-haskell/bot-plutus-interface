@@ -128,6 +128,14 @@ sendAda = do
       [
         ( 0
         , [text|
+          cardano-cli query utxo
+          --address ${addr1}
+          --mainnet
+         |]
+        )
+      ,
+        ( 1
+        , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-out ${addr2}+1000
@@ -137,7 +145,7 @@ sendAda = do
           |]
         )
       ,
-        ( 2
+        ( 3
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -150,7 +158,7 @@ sendAda = do
         )
       , -- Steps 3 to 10 are near repeats of 1, 2 and 3, to ensure min utxo values are met, and change is dispursed
 
-        ( 13
+        ( 14
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -162,7 +170,7 @@ sendAda = do
         |]
         )
       ,
-        ( 14
+        ( 15
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
@@ -223,6 +231,14 @@ sendAdaStaking = do
       [
         ( 0
         , [text|
+          cardano-cli query utxo
+          --address ${addr1}
+          --mainnet
+         |]
+        )
+      ,
+        ( 1
+        , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-out ${addr2Staking}+1000
@@ -232,7 +248,7 @@ sendAdaStaking = do
           |]
         )
       ,
-        ( 2
+        ( 3
         , [text|
           cardano-cli transaction calculate-min-fee
           --tx-body-file ./txs/tx-?
@@ -244,7 +260,7 @@ sendAdaStaking = do
           |]
         )
       ,
-        ( 7
+        ( 8
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -255,7 +271,7 @@ sendAdaStaking = do
         |]
         )
       ,
-        ( 8
+        ( 9
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
@@ -284,7 +300,7 @@ multisigSupport = do
     assertCommandHistory
       state
       [
-        ( 7
+        ( 8
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -296,7 +312,7 @@ multisigSupport = do
           |]
         )
       ,
-        ( 8
+        ( 9
         , [text|
           cardano-cli transaction sign
           --tx-body-file ./txs/tx-?.raw
@@ -334,7 +350,7 @@ withoutSigning = do
     assertCommandHistory
       state
       [
-        ( 7
+        ( 8
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -462,7 +478,7 @@ mintTokens = do
     assertCommandHistory
       state
       [
-        ( 1
+        ( 2
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -478,7 +494,7 @@ mintTokens = do
           |]
         )
       ,
-        ( 13
+        ( 14
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -556,7 +572,7 @@ spendToValidator = do
     assertCommandHistory
       state
       [
-        ( 1
+        ( 2
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -568,7 +584,7 @@ spendToValidator = do
           |]
         )
       ,
-        ( 13
+        ( 14
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -652,7 +668,7 @@ redeemFromValidator = do
     assertCommandHistory
       state
       [
-        ( 1
+        ( 2
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#1
@@ -667,7 +683,7 @@ redeemFromValidator = do
           |]
         )
       ,
-        ( 13
+        ( 14
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#1
@@ -742,7 +758,7 @@ withValidRange = do
     assertCommandHistory
       state
       [
-        ( 0
+        ( 1
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
@@ -755,7 +771,7 @@ withValidRange = do
           |]
         )
       ,
-        ( 7
+        ( 8
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
