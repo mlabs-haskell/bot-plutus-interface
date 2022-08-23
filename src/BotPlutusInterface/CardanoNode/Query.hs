@@ -56,7 +56,7 @@ queryBabbageEra query =
             CApi.QueryInShelleyBasedEra CApi.ShelleyBasedEraBabbage query
     case result of
       Right a -> return a
-      Left e -> throwE $ NodeQueryError $ Text.pack $ show e
+      Left e -> throwE $ toQueryError e
 
 -- data NodeInfo = NodeInfo
 --   { niNetworkId :: C.NetworkId

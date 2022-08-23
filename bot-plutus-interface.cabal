@@ -94,6 +94,7 @@ library
     BotPlutusInterface.UtxoParser
     BotPlutusInterface.CardanoNode.Effects
     BotPlutusInterface.CardanoNode.Query
+    BotPlutusInterface.CardanoAPI
     PlutusConfig.Base
     PlutusConfig.Cardano.Api
     PlutusConfig.Cardano.Api.Shelley

@@ -62,7 +62,7 @@ import Prelude
 
 -- | Error returned by the functions of this module
 data TimeSlotConversionError
-  = TimeSlotConversionError !Text
+  = TimeSlotConversionError Text
   deriving stock (Show)
 
 -- Analogous to `slotToBeginPOSIXTime` from plutus-ledger
