@@ -122,10 +122,6 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       let utxoIndex :: Map TxOutRef TxOut
           utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
 
-          -- Partition UTxOs into those with and without datums.
-          -- utxoIndexD, utxoIndexS :: Map TxOutRef TxOut
-          -- (utxoIndexD, utxoIndexS) = splitUtxos utxoIndex
-
           requiredSigs :: [PubKeyHash]
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Map.keys (unBalancedTxRequiredSignatories unbalancedTx)
 
