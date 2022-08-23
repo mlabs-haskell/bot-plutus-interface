@@ -1,30 +1,29 @@
-module BotPlutusInterface.CardanoAPI
-  (fromCardanoTxOut,
-   fromCardanoTxOutDatum,
-   addressInEraToAny,
-   toCardanoSlotNo,
-   fromCardanoSlotNo,
-   fromCardanoEpochInfo,
-   posixTimeToSlot
-  ) where
+module BotPlutusInterface.CardanoAPI (
+  fromCardanoTxOut,
+  fromCardanoTxOutDatum,
+  addressInEraToAny,
+  toCardanoSlotNo,
+  fromCardanoSlotNo,
+  fromCardanoEpochInfo,
+  posixTimeToSlot,
+) where
 
-
-import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Data.Time (UTCTime, secondsToNominalDiffTime)
-import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
+import Cardano.Api qualified as CApi
+import Cardano.Ledger.Slot (EpochInfo)
+import Cardano.Slotting.EpochInfo (hoistEpochInfo)
 import Cardano.Slotting.Time (SystemStart, toRelativeTime)
+import Control.Monad.Trans.Except (runExcept)
+import Data.Bifunctor (first)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Bifunctor (first)
-import Control.Monad.Trans.Except (runExcept)
-import Cardano.Slotting.EpochInfo (hoistEpochInfo)
-import Cardano.Ledger.Slot (EpochInfo)
-import Cardano.Api qualified as CApi
+import Data.Time (UTCTime, secondsToNominalDiffTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Ledger qualified
 import Ledger.Tx.CardanoAPI qualified as TxApi
+import Ouroboros.Consensus.HardFork.History qualified as Consensus
+import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
 import Plutus.ChainIndex.Types (ChainIndexTxOut (..))
 import Plutus.Contract.CardanoAPI qualified as TxApi
-import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import Plutus.V2.Ledger.Tx qualified as V2
 import PlutusTx.Prelude qualified as PlutusTx
 import Prelude
