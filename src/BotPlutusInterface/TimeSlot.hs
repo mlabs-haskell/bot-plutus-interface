@@ -11,7 +11,7 @@ module BotPlutusInterface.TimeSlot (
   posixTimeRangeToContainedSlotRangeIO,
 ) where
 
-import BotPlutusInterface.QueryNode (
+import BotPlutusInterface.CardanoNode.Query (
   NodeInfo (NodeInfo),
   queryEraHistory,
   querySystemStart,

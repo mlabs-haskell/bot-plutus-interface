@@ -88,12 +88,12 @@ library
     BotPlutusInterface.ExBudget
     BotPlutusInterface.Files
     BotPlutusInterface.Helpers
-    BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
     BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
     BotPlutusInterface.CardanoNode.Effects
+    BotPlutusInterface.CardanoNode.Query
     PlutusConfig.Base
     PlutusConfig.Cardano.Api
     PlutusConfig.Cardano.Api.Shelley
