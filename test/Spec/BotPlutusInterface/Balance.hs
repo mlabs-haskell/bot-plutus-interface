@@ -12,6 +12,8 @@ import BotPlutusInterface.Types (
  )
 import Control.Lens ((&), (.~), (<>~), (^.))
 import Data.Default (Default (def))
+import Data.Function (on)
+import Data.List (delete, partition)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as Text
@@ -33,6 +35,7 @@ import Ledger.Tx (
   TxOut (..),
   TxOutRef (..),
  )
+import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api qualified as Api
 import PlutusTx qualified
@@ -101,22 +104,32 @@ utxo1, utxo2, utxo3, utxo4, utxo7 :: (TxOutRef, TxOut)
 utxo1 = (txOutRef1, TxOut addr1 (Ada.lovelaceValueOf 1_100_000) Nothing)
 utxo2 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 1_000_000) Nothing)
 utxo3 = (txOutRef3, TxOut addr1 (Ada.lovelaceValueOf 900_000) Nothing)
-utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton "11223344" "Token" 200) Nothing)
+utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.assetClassValue tokenAsset 200) Nothing)
 -- utxo5 = (txOutRef5, TxOut addr3 (Ada.lovelaceValueOf 900_000) (Just $ Ledger.DatumHash ""))
 -- utxo6 = (txOutRef6, TxOut addr3 (Value.singleton "11223344" "Token" 200) Nothing)
 utxo7 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 5_000_000) Nothing)
 
 scrValue :: Value.Value
-scrValue = Value.singleton "11223344" "Token" 200 <> Ada.lovelaceValueOf 500_000
+scrValue = Value.assetClassValue tokenAsset 200 <> Ada.lovelaceValueOf 500_000
 
 scrValue' :: Value.Value
-scrValue' = Value.singleton "11223344" "Token" 100 <> Ada.lovelaceValueOf 500_000
+scrValue' = Value.assetClassValue tokenAsset 120 <> Ada.lovelaceValueOf 500_000
 
 scrDatum :: Ledger.Datum
 scrDatum = Ledger.Datum $ Api.toBuiltinData (23 :: Integer)
 
 scrDatumHash :: Ledger.DatumHash
 scrDatumHash = Ledger.datumHash scrDatum
+
+acValueOf :: AssetClass -> Value -> Integer
+acValueOf = flip Value.assetClassValueOf
+
+-- | Get the amount of lovelace in a `Value`.
+lovelaceInValue :: Value -> Integer
+lovelaceInValue = acValueOf (Value.assetClass Api.adaSymbol Api.adaToken)
+
+tokenAsset :: Value.AssetClass
+tokenAsset = Value.assetClass "11223344" "Token"
 
 addUtxosForFees :: Assertion
 addUtxosForFees = do
@@ -229,12 +242,17 @@ dontAddChangeToDatum = do
         (Right (Right trx)) -> do
           let scrTxOut'' = scrTxOut' & Ledger.ciTxOutValue <>~ Ada.lovelaceValueOf 500
               scrTxOutExpected = Ledger.toTxOut scrTxOut''
+              isScrUtxo :: TxOut -> Bool
+              isScrUtxo utxo = txOutAddress utxo == txOutAddress scrTxOutExpected
+              (balScrUtxos, balOtherUtxos) = partition isScrUtxo (txOutputs trx)
           assertBool
             ( "Expected UTxO not in output Tx."
                 <> "\nExpected UTxO: "
                 <> show scrTxOutExpected
-                <> "\nNew UTxOs: "
-                <> show (txOutputs trx)
+                <> "\nBalanced Script UTxOs: "
+                <> show balScrUtxos
+                <> "\nOther Balanced UTxOs: "
+                <> show balOtherUtxos
                 <> "\nUnbalanced UTxOs: "
                 <> show (txOutputs (unbalancedTx ^. OffChain.tx))
             )
@@ -265,10 +283,10 @@ dontAddChangeToDatum2 = do
       -- - 200 tokens
       -- Output UTxO :
       -- - 0.5 ADA
-      -- - 100 tokens
+      -- - 120 tokens
       -- Change:
       -- - 1.5 ADA (400 Lovelace to fees)
-      -- - 100 tokens
+      -- - 80 tokens
 
       scrLkups =
         Constraints.unspentOutputs (Map.fromList [(txOutRef6, scrTxOut')])
@@ -293,13 +311,54 @@ dontAddChangeToDatum2 = do
         (Right (Right trx)) -> do
           let scrTxOut'' = scrTxOut' & Ledger.ciTxOutValue .~ scrValue'
               scrTxOutExpected = Ledger.toTxOut scrTxOut''
+              isScrUtxo :: TxOut -> Bool
+              isScrUtxo utxo = txOutAddress utxo == txOutAddress scrTxOutExpected
+              (balScrUtxos, balOtherUtxos) = partition isScrUtxo (txOutputs trx)
+          -- Check that the expected script UTxO
+          -- is in the output.
           assertBool
             ( "Expected UTxO not in output Tx."
                 <> "\nExpected UTxO: "
                 <> show scrTxOutExpected
-                <> "\nNew UTxOs: "
-                <> show (txOutputs trx)
+                <> "\nBalanced Script UTxOs: "
+                <> show balScrUtxos
+                <> "\nOther Balanced UTxOs: "
+                <> show balOtherUtxos
                 <> "\nUnbalanced UTxOs: "
                 <> show (txOutputs (unbalancedTx ^. OffChain.tx))
             )
             (scrTxOutExpected `elem` txOutputs trx)
+          -- Check that the output has the remaining change
+          let trxFee = txFee trx
+              adaChange' :: Integer
+              adaChange' = ((-) `on` (lovelaceInValue . txOutValue)) scrTxOut scrTxOutExpected
+              adaChange :: Integer
+              adaChange = adaChange' - lovelaceInValue trxFee
+              tokChange :: Integer
+              tokChange = ((-) `on` (acValueOf tokenAsset . txOutValue)) scrTxOut scrTxOutExpected
+              remainingTxOuts :: [TxOut]
+              remainingTxOuts = delete scrTxOutExpected (txOutputs trx)
+              remainingValue :: Value.Value
+              remainingValue = foldMap txOutValue remainingTxOuts
+          -- Check for ADA change
+          assertBool
+            ( "Other UTxOs do not contain expected ADA change."
+                <> "\nExpected Amount : "
+                <> show adaChange
+                <> " Lovelace"
+                <> "\nActual Amount : "
+                <> show (lovelaceInValue remainingValue)
+                <> " Lovelace"
+            )
+            (adaChange == lovelaceInValue remainingValue)
+          -- Check for Token change
+          assertBool
+            ( "Other UTxOs do not contain expected Token change."
+                <> "\nExpected Amount : "
+                <> show tokChange
+                <> " tokens"
+                <> "\nActual Amount : "
+                <> show (acValueOf tokenAsset remainingValue)
+                <> " tokens"
+            )
+            (tokChange == acValueOf tokenAsset remainingValue)
