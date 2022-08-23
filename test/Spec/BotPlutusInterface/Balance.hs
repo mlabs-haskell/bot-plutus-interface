@@ -8,7 +8,7 @@ import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.Effects (PABEffect)
 import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
-  PABConfig (pcOwnPubKeyHash, pcProtocolParams),
+  PABConfig (pcOwnPubKeyHash),
  )
 import Control.Lens ((&), (.~), (<>~), (^.))
 import Data.Default (Default (def))
@@ -93,21 +93,17 @@ txOutRef5 = TxOutRef "52a003b3f4956433429631afe4002f82a924a5a7a891db7ae1f6434797
 txOutRef6 = TxOutRef "52a003b3f4956433429631afe4002f82a924a5a7a891db7ae1f6434797a57dff" 3
 txOutRef7 = TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 1
 
-txIn1, txIn2, txIn3, txIn4, txIn5 :: TxIn
+txIn1, txIn2, txIn3, txIn4 :: TxIn
 txIn1 = TxIn txOutRef1 (Just ConsumePublicKeyAddress)
 txIn2 = TxIn txOutRef2 (Just ConsumePublicKeyAddress)
 txIn3 = TxIn txOutRef3 (Just ConsumePublicKeyAddress)
 txIn4 = TxIn txOutRef4 (Just ConsumePublicKeyAddress)
-txIn5 = TxIn txOutRef5 (Just ConsumeSimpleScriptAddress)
 
-utxo1, utxo2, utxo3, utxo4, utxo7 :: (TxOutRef, TxOut)
+utxo1, utxo2, utxo3, utxo4 :: (TxOutRef, TxOut)
 utxo1 = (txOutRef1, TxOut addr1 (Ada.lovelaceValueOf 1_100_000) Nothing)
 utxo2 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 1_000_000) Nothing)
 utxo3 = (txOutRef3, TxOut addr1 (Ada.lovelaceValueOf 900_000) Nothing)
 utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.assetClassValue tokenAsset 200) Nothing)
--- utxo5 = (txOutRef5, TxOut addr3 (Ada.lovelaceValueOf 900_000) (Just $ Ledger.DatumHash ""))
--- utxo6 = (txOutRef6, TxOut addr3 (Value.singleton "11223344" "Token" 200) Nothing)
-utxo7 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 5_000_000) Nothing)
 
 scrValue :: Value.Value
 scrValue = Value.assetClassValue tokenAsset 200 <> Ada.lovelaceValueOf 500_000
