@@ -266,7 +266,7 @@ adjustUnbalancedTx' contractEnv unbalancedTx = pure $ do
       maybeToEither (Tx.TxBodyError "No protocol params found in PAB config") $
         asBabbageBased toLedgerPParams
           <$> contractEnv.cePABConfig.pcProtocolParams
-    -- increasing the Ada amount can also increase the size in bytes, 
+    -- increasing the Ada amount can also increase the size in bytes,
     -- so adjustment loops till no missing Ada left after evaluation
     -- implementation mostly taken from `plutus-apps`
     adjustTxOut networkId pparams txOut = do
