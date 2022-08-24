@@ -13,6 +13,7 @@ module BotPlutusInterface.Balance (
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import BotPlutusInterface.CoinSelection (selectTxIns)
 import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import BotPlutusInterface.Effects (
@@ -21,6 +22,7 @@ import BotPlutusInterface.Effects (
   getInMemCollateral,
   posixTimeRangeToContainedSlotRange,
   printBpiLog,
+  queryNode,
  )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
@@ -37,7 +39,7 @@ import Control.Lens (folded, to, (^..))
 import Control.Monad (foldM, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (EitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
@@ -220,9 +222,9 @@ utxosAndCollateralAtAddress ::
   PABConfig ->
   Address ->
   Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
-utxosAndCollateralAtAddress balanceCfg pabConf changeAddr =
+utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
   runEitherT $ do
-    utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+    utxos <- firstEitherT (Text.pack . show) $ newEitherT $ queryNode @w (UtxosAt changeAddr)
     inMemCollateral <- lift $ getInMemCollateral @w
 
     -- check if `bcHasScripts` is true, if this is the case then we search of

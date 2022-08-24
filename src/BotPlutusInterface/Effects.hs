@@ -30,8 +30,10 @@ module BotPlutusInterface.Effects (
   posixTimeRangeToContainedSlotRange,
   getInMemCollateral,
   setInMemCollateral,
+  queryNode,
 ) where
 
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery, runNodeQuery)
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.ExBudget qualified as ExBudget
@@ -117,6 +119,7 @@ data PABEffect (w :: Type) (r :: Type) where
   ListDirectory :: FilePath -> PABEffect w [FilePath]
   UploadDir :: Text -> PABEffect w ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
+  QueryNode :: NodeQuery a -> PABEffect w a
   EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
   SaveBudget :: Ledger.TxId -> TxBudget -> PABEffect w ()
   SlotToPOSIXTime ::
@@ -178,6 +181,7 @@ handlePABEffect contractEnv =
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
           handleChainIndexReq contractEnv query
+        QueryNode query -> runNodeQuery contractEnv.cePABConfig (send query)
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
@@ -419,3 +423,10 @@ setInMemCollateral ::
   CollateralUtxo ->
   Eff effs ()
 setInMemCollateral = send @(PABEffect w) . SetInMemCollateral
+
+queryNode ::
+  forall (w :: Type) (a :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  NodeQuery a ->
+  Eff effs a
+queryNode = send @(PABEffect w) . QueryNode

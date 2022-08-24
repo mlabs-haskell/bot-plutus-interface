@@ -78,7 +78,10 @@ library
     BotPlutusInterface
     BotPlutusInterface.Balance
     BotPlutusInterface.BodyBuilder
+    BotPlutusInterface.CardanoAPI
     BotPlutusInterface.CardanoCLI
+    BotPlutusInterface.CardanoNode.Effects
+    BotPlutusInterface.CardanoNode.Query
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.CoinSelection
     BotPlutusInterface.Collateral
