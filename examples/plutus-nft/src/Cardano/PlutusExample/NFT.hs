@@ -103,7 +103,7 @@ $(deriveJSON defaultOptions ''MintParams)
 
 mintNft :: MintParams -> Contract (Last Text) NFTSchema Text ()
 mintNft MintParams {..} = do
-  pkh <- Contract.ownPaymentPubKeyHash
+  pkh <- Contract.ownFirstPaymentPubKeyHash
   utxos <- utxosAt (pubKeyHashAddress pkh Nothing)
   case Map.keys utxos of
     [] -> Contract.logError @Hask.String "no utxo found"
@@ -125,7 +125,7 @@ mintNft MintParams {..} = do
           --           }
           lookups =
             Hask.mconcat
-              [ Constraints.mintingPolicy (policy oref mpTokenName)
+              [ Constraints.plutusV1MintingPolicy (policy oref mpTokenName)
               , Constraints.unspentOutputs utxos
               ]
           tx =

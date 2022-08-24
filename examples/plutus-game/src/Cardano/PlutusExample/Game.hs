@@ -99,7 +99,7 @@ guess GuessParams {guessGameId = gameId, guessSecret = secret} = do
 
   utxos <- utxosAt valAddr
   let lookups =
-        Constraints.otherScript (TypedScripts.validatorScript validator)
+        Constraints.plutusV1OtherScript (TypedScripts.validatorScript validator)
           <> Constraints.unspentOutputs utxos
       tx = mconcat $ map (`Constraints.mustSpendScriptOutput` redeemer) $ Map.keys utxos
 
