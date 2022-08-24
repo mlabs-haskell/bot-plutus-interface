@@ -88,6 +88,7 @@ import Cardano.Api (
   serialiseToTextEnvelope,
   toScriptInAnyLang,
  )
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
@@ -372,8 +373,9 @@ runPABEffectPure initState req =
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
     go GetInMemCollateral = _collateralUtxo <$> get @(MockContractState w)
     go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
-    -- TODO: Implement this
-    go (QueryNode _query) = error "Not Implemented"
+    go (QueryNode (UtxosAt _addr)) = do
+      state <- get @(MockContractState w)
+      return $ return $ Map.fromList (state ^. utxos)
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
