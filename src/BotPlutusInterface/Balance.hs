@@ -136,20 +136,16 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
             (unBalancedTxValidityTimeRange unbalancedTx)
             (unBalancedTxTx unbalancedTx)
 
-      -- Checks that there is a non-zero output in the transaction.
       -- Adds required collaterals in the `Tx`, if `bcHasScripts`
       -- is true. Also adds signatures for fee calculation
       preBalancedTx <-
-        if all (Value.isZero . txOutValue) (Tx.txOutputs tx)
-          then throwE $ WAPI.OtherError "When constructing the transaction, no output values were specified."
-          else
-            if bcHasScripts balanceCfg
-              then
-                maybe
-                  (throwE $ WAPI.OtherError "Tx uses script but no collateral was provided.")
-                  (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
-                  mcollateral
-              else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
+        if bcHasScripts balanceCfg
+          then
+            maybe
+              (throwE $ WAPI.OtherError "Tx uses script but no collateral was provided.")
+              (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
+              mcollateral
+          else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
       -- Balance the tx
       (balancedTx, minUtxos) <- balanceTxLoop utxoIndex privKeys [] preBalancedTx

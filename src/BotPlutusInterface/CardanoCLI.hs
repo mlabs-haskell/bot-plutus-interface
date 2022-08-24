@@ -143,18 +143,23 @@ calculateMinUtxo ::
   TxOut ->
   Eff effs (Either Text Integer)
 calculateMinUtxo pabConf datums txOut = do
-  join
-    <$> callCommand @w
-      ShellArgs
-        { cmdName = "cardano-cli"
-        , cmdArgs =
-            mconcat
-              [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
-              , txOutOpts pabConf datums [txOut]
-              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-              ]
-        , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
-        }
+  let outs = txOutOpts pabConf datums [txOut]
+
+  case outs of
+    [] -> pure $ Left "When constructing the transaction, no output values were specified."
+    _ ->
+      join
+        <$> callCommand @w
+          ShellArgs
+            { cmdName = "cardano-cli"
+            , cmdArgs =
+                mconcat
+                  [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
+                  , outs
+                  , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+                  ]
+            , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
+            }
 
 -- | Calculating fee for an unbalanced transaction
 calculateMinFee ::
@@ -191,40 +196,46 @@ buildTx ::
   Tx ->
   Eff effs (Either Text ExBudget)
 buildTx pabConf privKeys txBudget tx = do
-  let (ins, valBudget) = txInOpts (spendBudgets txBudget) pabConf (txInputs tx)
-      (mints, mintBudget) = mintOpts (mintBudgets txBudget) pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
-  callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const $ valBudget <> mintBudget)
-  where
-    requiredSigners =
-      concatMap
-        ( \pubKey ->
-            let pkh = Ledger.pubKeyHash pubKey
-             in case Map.lookup pkh privKeys of
-                  Just (FromSKey _) ->
-                    ["--required-signer", signingKeyFilePath pabConf pkh]
-                  Just (FromVKey _) ->
-                    ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
-                  Nothing ->
-                    []
-        )
-        (Map.keys (Ledger.txSignatures tx))
+  let outs = txOutOpts pabConf (txData tx) (txOutputs tx)
 
-    opts ins mints =
-      mconcat
-        [ ["transaction", "build-raw", "--alonzo-era"]
-        , ins
-        , txInCollateralOpts (txCollateral tx)
-        , txOutOpts pabConf (txData tx) (txOutputs tx)
-        , mints
-        , validRangeOpts (txValidRange tx)
-        , metadataOpts pabConf (txMetadata tx)
-        , requiredSigners
-        , ["--fee", showText . getLovelace . fromValue $ txFee tx]
-        , mconcat
-            [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            , ["--out-file", txFilePath pabConf "raw" (txId tx)]
+  case outs of
+    [] -> pure $ Left "When constructing the transaction, no output values were specified."
+    _ ->
+      callCommand @w $ ShellArgs "cardano-cli" opts (const $ valBudget <> mintBudget)
+      where
+        (ins, valBudget) = txInOpts (spendBudgets txBudget) pabConf (txInputs tx)
+        (mints, mintBudget) = mintOpts (mintBudgets txBudget) pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
+
+        requiredSigners =
+          concatMap
+            ( \pubKey ->
+                let pkh = Ledger.pubKeyHash pubKey
+                 in case Map.lookup pkh privKeys of
+                      Just (FromSKey _) ->
+                        ["--required-signer", signingKeyFilePath pabConf pkh]
+                      Just (FromVKey _) ->
+                        ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
+                      Nothing ->
+                        []
+            )
+            (Map.keys (Ledger.txSignatures tx))
+
+        opts =
+          mconcat
+            [ ["transaction", "build-raw", "--alonzo-era"]
+            , ins
+            , txInCollateralOpts (txCollateral tx)
+            , outs
+            , mints
+            , validRangeOpts (txValidRange tx)
+            , metadataOpts pabConf (txMetadata tx)
+            , requiredSigners
+            , ["--fee", showText . getLovelace . fromValue $ txFee tx]
+            , mconcat
+                [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+                , ["--out-file", txFilePath pabConf "raw" (txId tx)]
+                ]
             ]
-        ]
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
 signTx ::
