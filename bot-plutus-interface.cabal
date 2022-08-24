@@ -78,7 +78,10 @@ library
     BotPlutusInterface
     BotPlutusInterface.Balance
     BotPlutusInterface.BodyBuilder
+    BotPlutusInterface.CardanoAPI
     BotPlutusInterface.CardanoCLI
+    BotPlutusInterface.CardanoNode.Effects
+    BotPlutusInterface.CardanoNode.Query
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.CoinSelection
     BotPlutusInterface.Collateral
@@ -92,9 +95,6 @@ library
     BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
     BotPlutusInterface.UtxoParser
-    BotPlutusInterface.CardanoNode.Effects
-    BotPlutusInterface.CardanoNode.Query
-    BotPlutusInterface.CardanoAPI
     PlutusConfig.Base
     PlutusConfig.Cardano.Api
     PlutusConfig.Cardano.Api.Shelley
