@@ -1,5 +1,13 @@
 {-# LANGUAGE RankNTypes #-}
 
+{- This is ongoing effort on replacing `cardano-cli` calls with `Cardano.Api` queries, see issues
+  https://github.com/mlabs-haskell/bot-plutus-interface/issues/109
+  https://github.com/mlabs-haskell/bot-plutus-interface/issues/101
+  We decided to provide single replacement for `BotPlutusInterface.CardanoCLI.utxosAt`
+  early on to enable inline Datum support from one side and avoid extending
+  `cardano-cli` output parser from the other side.
+  See https://github.com/mlabs-haskell/bot-plutus-interface/issues/145
+-}
 module BotPlutusInterface.CardanoNode.Effects (
   utxosAt,
   handleNodeQuery,

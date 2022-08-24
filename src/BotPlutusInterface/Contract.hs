@@ -22,6 +22,7 @@ import BotPlutusInterface.Effects (
   posixTimeToSlot,
   printBpiLog,
   queryChainIndex,
+  queryNode,
   readFileTextEnvelope,
   saveBudget,
   setInMemCollateral,
@@ -88,6 +89,7 @@ import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
 
 -- import Plutus.Contract.CardanoAPI (toCardanoTxOutBabbage, toCardanoTxOutDatumHashBabbage)
 
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (
   BalanceTxResponse (..),
@@ -235,14 +237,15 @@ handlePABReq contractEnv req = do
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
 
--- -- do-not-remove yet, need fo comparison with "own" implementation below
+-- do-not-remove yet, could be handy for debugging of "own" implementation below
+-- "own" implementation will be tested with https://github.com/mlabs-haskell/plutip/issues/119
+-- on local network
 -- adjustUnbalancedTx' ::
 --   forall (w :: Type) (effs :: [Type -> Type]).
 --   ContractEnvironment w ->
 --   UnbalancedTx ->
 --   Eff effs (Either Tx.ToCardanoError UnbalancedTx)
 -- adjustUnbalancedTx' contractEnv unbalancedTx = do
---   -- error "LOL"
 --   let slotConfig = SlotConfig 200 1654524000
 --       networkId = contractEnv.cePABConfig.pcNetwork
 --       maybeParams = contractEnv.cePABConfig.pcProtocolParams >>= \pparams -> pure $ Params slotConfig pparams networkId
@@ -625,7 +628,9 @@ findCollateralAtOwnPKH cEnv =
               (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
               pabConf.pcOwnStakePubKeyHash
 
-      r <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+      r <-
+        firstEitherT (Text.pack . show) $
+          newEitherT $ queryNode @w (UtxosAt changeAddr)
       let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
       hoistEither $ case filter check refsAndOuts of
         [] -> Left "Couldn't find collateral UTxO"
