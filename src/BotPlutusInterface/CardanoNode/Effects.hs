@@ -16,7 +16,7 @@ import BotPlutusInterface.CardanoNode.Query (
   toQueryError,
  )
 
-import BotPlutusInterface.CardanoAPI qualified as CApi (
+import BotPlutusInterface.CardanoAPI (
   addressInEraToAny,
   fromCardanoTxOut,
  )
@@ -69,7 +69,7 @@ handleUtxosAt addr = runEitherT $ do
         TxApi.toCardanoAddressInEra (localNodeNetworkId conn) addr
 
   let query :: CApi.QueryInShelleyBasedEra era (CApi.UTxO era)
-      query = CApi.QueryUTxO $ CApi.QueryUTxOByAddress $ Set.singleton $ CApi.addressInEraToAny caddr
+      query = CApi.QueryUTxO $ CApi.QueryUTxOByAddress $ Set.singleton $ addressInEraToAny caddr
 
   (CApi.UTxO result) <- newEitherT $ queryBabbageEra query
 
@@ -77,7 +77,7 @@ handleUtxosAt addr = runEitherT $ do
     firstEitherT toQueryError $
       hoistEither $
         sequenceA $
-          result ^.. folded . to CApi.fromCardanoTxOut
+          result ^.. folded . to fromCardanoTxOut
 
   let txOutRefs :: [V2.TxOutRef]
       txOutRefs = TxApi.fromCardanoTxIn <$> Map.keys result
