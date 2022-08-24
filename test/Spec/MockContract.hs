@@ -372,6 +372,8 @@ runPABEffectPure initState req =
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
     go GetInMemCollateral = _collateralUtxo <$> get @(MockContractState w)
     go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
+    -- TODO: Implement this
+    go (QueryNode _query) = error "Not Implemented"
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)

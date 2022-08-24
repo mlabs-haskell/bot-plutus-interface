@@ -10,6 +10,7 @@ module BotPlutusInterface.CardanoAPI (
 
 import Cardano.Api qualified as CApi
 import Cardano.Ledger.Slot (EpochInfo)
+import Cardano.Prelude (maybeToEither)
 import Cardano.Slotting.EpochInfo (hoistEpochInfo)
 import Cardano.Slotting.Time (SystemStart, toRelativeTime)
 import Control.Monad.Trans.Except (runExcept)
@@ -19,22 +20,37 @@ import Data.Text qualified as Text
 import Data.Time (UTCTime, secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Ledger qualified
+import Ledger.Tx (ChainIndexTxOut (..))
 import Ledger.Tx.CardanoAPI qualified as TxApi
 import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
-import Plutus.ChainIndex.Types (ChainIndexTxOut (..))
-import Plutus.Contract.CardanoAPI qualified as TxApi
+import Plutus.Script.Utils.Scripts qualified as ScriptUtils
+import Plutus.V1.Ledger.Api (Credential (..))
 import Plutus.V2.Ledger.Tx qualified as V2
 import PlutusTx.Prelude qualified as PlutusTx
 import Prelude
 
 fromCardanoTxOut :: CApi.TxOut CApi.CtxUTxO CApi.BabbageEra -> Either TxApi.FromCardanoError ChainIndexTxOut
-fromCardanoTxOut (CApi.TxOut addr val datum refScript) =
-  ChainIndexTxOut
-    <$> TxApi.fromCardanoAddressInEra addr
-    <*> pure (TxApi.fromCardanoValue $ CApi.txOutValueToValue val)
-    <*> pure (fromCardanoTxOutDatum datum)
-    <*> pure (TxApi.fromCardanoTxOutRefScript refScript)
+fromCardanoTxOut (CApi.TxOut caddr val cdatum _refScript) = do
+  addr <- TxApi.fromCardanoAddressInEra caddr
+
+  case Ledger.addressCredential addr of
+    ScriptCredential valHash -> do
+      dat <- maybeToEither TxApi.SimpleScriptsNotSupported $ convertOutputDatum (fromCardanoTxOutDatum cdatum)
+      return $
+        ScriptChainIndexTxOut
+          addr
+          (TxApi.fromCardanoValue $ CApi.txOutValueToValue val)
+          dat
+          Nothing
+          (valHash, Nothing)
+    PubKeyCredential _ -> do
+      return $
+        PublicKeyChainIndexTxOut
+          addr
+          (TxApi.fromCardanoValue $ CApi.txOutValueToValue val)
+          (convertOutputDatum $ fromCardanoTxOutDatum cdatum)
+          Nothing
 
 fromCardanoTxOutDatum :: CApi.TxOutDatum CApi.CtxUTxO CApi.BabbageEra -> V2.OutputDatum
 fromCardanoTxOutDatum CApi.TxOutDatumNone = V2.NoOutputDatum
@@ -77,3 +93,9 @@ posixTimeToSlot sysStart eraHist pTime = do
       posixSecondsToUTCTime
         . secondsToNominalDiffTime
         $ fromInteger milliseconds / 1000
+
+convertOutputDatum :: V2.OutputDatum -> Maybe (Ledger.DatumHash, Maybe Ledger.Datum)
+convertOutputDatum = \case
+  V2.NoOutputDatum -> Nothing
+  V2.OutputDatumHash dh -> Just (dh, Nothing)
+  V2.OutputDatum d -> Just (ScriptUtils.datumHash d, Just d)

@@ -235,23 +235,21 @@ handlePABReq contractEnv req = do
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
 
--- do-not-remove yet, need fo comparison with "own" implementation below
--- minAda calculated fo 1 Lovelace output for this version is 999978
+-- -- do-not-remove yet, need fo comparison with "own" implementation below
 -- adjustUnbalancedTx' ::
 --   forall (w :: Type) (effs :: [Type -> Type]).
 --   ContractEnvironment w ->
 --   UnbalancedTx ->
 --   Eff effs (Either Tx.ToCardanoError UnbalancedTx)
 -- adjustUnbalancedTx' contractEnv unbalancedTx = do
---   let slotConfig = SlotConfig 20000 1654524000
+--   -- error "LOL"
+--   let slotConfig = SlotConfig 200 1654524000
 --       networkId = contractEnv.cePABConfig.pcNetwork
 --       maybeParams = contractEnv.cePABConfig.pcProtocolParams >>= \pparams -> pure $ Params slotConfig pparams networkId
 --   case maybeParams of
 --     Just params -> pure $ snd <$> adjustUnbalancedTx params unbalancedTx
 --     _ -> pure . Left $ Tx.TxBodyError "no protocol params"
 
--- minAda calculated fo 1 Lovelace output for this version is 840450
--- if switch all babbage related things to alonzo, it will calculate 999978 as ^ above
 adjustUnbalancedTx' ::
   forall (w :: Type) (effs :: [Type -> Type]).
   ContractEnvironment w ->
@@ -268,12 +266,20 @@ adjustUnbalancedTx' contractEnv unbalancedTx = pure $ do
       maybeToEither (Tx.TxBodyError "No protocol params found in PAB config") $
         asBabbageBased toLedgerPParams
           <$> contractEnv.cePABConfig.pcProtocolParams
-
+    -- increasing the Ada amount can also increase the size in bytes,
+    -- so adjustment loops till no missing Ada left after evaluation
+    -- implementation mostly taken from `plutus-apps`
     adjustTxOut networkId pparams txOut = do
       txOut' <- toCardanoTxOut networkId toCardanoTxOutDatumHash txOut
       let (Coin minTxOut) = evaluateMinLovelaceOutput pparams (asBabbageBased toShelleyTxOut txOut')
-          missingLovelace = max 0 (Ada.lovelaceOf minTxOut - Ada.fromValue (txOutValue txOut))
-      pure $ txOut {txOutValue = txOutValue txOut <> Ada.toValue missingLovelace}
+          missingLovelace = Ada.lovelaceOf minTxOut - Ada.fromValue (txOutValue txOut)
+      if missingLovelace > 0
+        then
+          adjustTxOut
+            networkId
+            pparams
+            (txOut {txOutValue = txOutValue txOut <> Ada.toValue missingLovelace})
+        else Right txOut
 
     asBabbageBased f = f ShelleyBasedEraBabbage
 

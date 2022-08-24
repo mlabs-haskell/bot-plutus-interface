@@ -11,7 +11,7 @@ module BotPlutusInterface.TimeSlot (
   posixTimeRangeToContainedSlotRangeIO,
 ) where
 
-import BotPlutusInterface.CardanoNode.Query (
+import BotPlutusInterface.QueryNode (
   NodeInfo (NodeInfo),
   queryEraHistory,
   querySystemStart,
@@ -62,7 +62,7 @@ import Prelude
 
 -- | Error returned by the functions of this module
 data TimeSlotConversionError
-  = TimeSlotConversionError Text
+  = TimeSlotConversionError !Text
   deriving stock (Show)
 
 -- Analogous to `slotToBeginPOSIXTime` from plutus-ledger

@@ -91,6 +91,7 @@ library
     BotPlutusInterface.ExBudget
     BotPlutusInterface.Files
     BotPlutusInterface.Helpers
+    BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
     BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types

@@ -13,6 +13,7 @@ module BotPlutusInterface.Balance (
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import BotPlutusInterface.CoinSelection (selectTxIns)
 import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import BotPlutusInterface.Effects (
@@ -21,7 +22,7 @@ import BotPlutusInterface.Effects (
   getInMemCollateral,
   posixTimeRangeToContainedSlotRange,
   printBpiLog,
-  queryChainIndex,
+  queryNode,
  )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
@@ -38,11 +39,10 @@ import Control.Lens (folded, to, (^..))
 import Control.Monad (foldM, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (EitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
-import Data.Default (def)
 import Data.Kind (Type)
 import Data.List qualified as List
 import Data.Map (Map)
@@ -75,8 +75,6 @@ import Ledger.Tx qualified as Tx
 import Ledger.Tx.CardanoAPI (CardanoBuildTx)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
-import Plutus.ChainIndex.Api (collectQueryResponse)
-import Plutus.Contract.Effects (ChainIndexQuery (UnspentTxOutSetAtAddress), ChainIndexResponse (UnspentTxOutsAtResponse))
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   TokenName (..),
@@ -224,22 +222,10 @@ utxosAndCollateralAtAddress ::
   PABConfig ->
   Address ->
   Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
-utxosAndCollateralAtAddress balanceCfg _ changeAddr =
+utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
   runEitherT $ do
+    utxos <- firstEitherT (Text.pack . show) $ newEitherT $ queryNode @w (UtxosAt changeAddr)
     inMemCollateral <- lift $ getInMemCollateral @w
-
-    -- TODO: Add tests for this is MockContract
-    queryResp <- lift $ queryChainIndex @w @effs (UnspentTxOutSetAtAddress def $ addressCredential changeAddr)
-
-    resp <- case queryResp of
-      UnspentTxOutsAtResponse resp ->
-        return resp
-      otherresp ->
-        throwE $
-          "Not a valid response, Expected: UnspentTxOutsAtResponse but Got: "
-            <> Text.pack (show otherresp)
-
-    let utxos = Map.fromList $ head $ collectQueryResponse (const id) resp
 
     -- check if `bcHasScripts` is true, if this is the case then we search of
     -- collateral UTxO in the environment, if such collateral is not present we throw Error.
