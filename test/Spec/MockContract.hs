@@ -53,6 +53,7 @@ module Spec.MockContract (
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import BotPlutusInterface.Collateral (removeCollateralFromPage)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
@@ -88,7 +89,6 @@ import Cardano.Api (
   serialiseToTextEnvelope,
   toScriptInAnyLang,
  )
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
