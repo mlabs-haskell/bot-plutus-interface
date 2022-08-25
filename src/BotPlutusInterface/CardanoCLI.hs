@@ -9,7 +9,6 @@ module BotPlutusInterface.CardanoCLI (
   validatorScriptFilePath,
   unsafeSerialiseAddress,
   policyScriptFilePath,
-  utxosAt,
   queryTip,
 ) where
 
@@ -44,7 +43,6 @@ import Data.Attoparsec.Text (parseOnly)
 import Data.Bifunctor (first)
 import Data.Bool (bool)
 import Data.ByteString.Lazy.Char8 qualified as Char8
-import Data.Either (fromRight)
 import Data.Either.Combinators (mapLeft)
 import Data.Hex (hex)
 import Data.Kind (Type)
@@ -69,7 +67,7 @@ import Ledger.Interval (
  )
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
-import Ledger.Tx (ChainIndexTxOut, RedeemerPtr (..), Redeemers, ScriptTag (..), Tx (..), TxId (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..), txId)
+import Ledger.Tx (RedeemerPtr (..), Redeemers, ScriptTag (..), Tx (..), TxId (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..), txId)
 import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
@@ -96,30 +94,6 @@ queryTip config =
       { cmdName = "cardano-cli"
       , cmdArgs = mconcat [["query", "tip"], networkOpt config]
       , cmdOutParser = fromMaybe (error "Couldn't parse chain tip") . JSON.decode . Char8.pack
-      }
-
--- | Getting all available UTXOs at an address (all utxos are assumed to be PublicKeyChainIndexTxOut)
-utxosAt ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  PABConfig ->
-  Address ->
-  Eff effs (Either Text (Map TxOutRef ChainIndexTxOut))
-utxosAt pabConf address =
-  callCommand @w
-    ShellArgs
-      { cmdName = "cardano-cli"
-      , cmdArgs =
-          mconcat
-            [ ["query", "utxo"]
-            , ["--address", unsafeSerialiseAddress pabConf.pcNetwork address]
-            , networkOpt pabConf
-            ]
-      , cmdOutParser =
-          Map.fromList
-            . fromRight []
-            . parseOnly (UtxoParser.utxoMapParser address)
-            . Text.pack
       }
 
 -- | Calculating fee for an unbalanced transaction
