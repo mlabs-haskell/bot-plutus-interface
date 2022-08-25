@@ -85,7 +85,6 @@ import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
-import Wallet.API qualified as WAPI
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
 
@@ -293,7 +292,7 @@ balanceTx contractEnv unbalancedTx = do
   result <- handleCollateral @w contractEnv
 
   case result of
-    Left e -> pure $ BalanceTxFailed e
+    Left e -> pure $ BalanceTxFailed (OtherError e)
     _ -> do
       uploadDir @w pabConf.pcSigningKeyFileDir
       eitherBalancedTx <-
@@ -305,7 +304,7 @@ balanceTx contractEnv unbalancedTx = do
           pabConf.pcOwnPubKeyHash
           unbalancedTx
 
-      pure $ either BalanceTxFailed (BalanceTxSuccess . Right) eitherBalancedTx
+      pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherBalancedTx
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -451,7 +450,7 @@ handleCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs (Either WAPI.WalletAPIError ())
+  Eff effs (Either Text ())
 handleCollateral cEnv = do
   result <- (fmap swapEither . runEitherT) $
     do
@@ -474,13 +473,13 @@ handleCollateral cEnv = do
       helperLog
         ("Failed to create collateral UTxO: " <> pretty notCreatedCollateral)
 
-      pure notCreatedCollateral
+      pure ("Failed to create collateral UTxO: " <> notCreatedCollateral)
 
   case result of
     Right collteralUtxo ->
       setInMemCollateral @w collteralUtxo
         >> Right <$> printBpiLog @w (Debug [CollateralLog]) "successfully set the collateral utxo in env."
-    Left err -> pure $ Left err
+    Left err -> pure $ Left $ "Failed to make collateral: " <> err
   where
     --
     helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
@@ -493,13 +492,13 @@ makeCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs (Either WAPI.WalletAPIError CollateralUtxo)
+  Eff effs (Either Text CollateralUtxo)
 makeCollateral cEnv = runEitherT $ do
   lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
   let pabConf = cEnv.cePABConfig
   unbalancedTx <-
-    firstEitherT (WAPI.OtherError . T.pack . show) $
+    firstEitherT (T.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
 
   balancedTx <-
@@ -511,7 +510,7 @@ makeCollateral cEnv = runEitherT $ do
 
   wbr <- lift $ writeBalancedTx cEnv (Right balancedTx)
   case wbr of
-    WriteBalancedTxFailed e -> throwE . WAPI.OtherError $ T.pack $ "Failed to create collateral output: " <> show e
+    WriteBalancedTxFailed e -> throwE . T.pack $ "Failed to create collateral output: " <> show e
     WriteBalancedTxSuccess cTx -> do
       status <- lift $ awaitTxStatusChange cEnv (getCardanoTxId cTx)
       lift $ printBpiLog @w (Notice [CollateralLog]) $ "Collateral Tx Status: " <> pretty status
@@ -522,7 +521,7 @@ findCollateralAtOwnPKH ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs (Either WAPI.WalletAPIError CollateralUtxo)
+  Eff effs (Either Text CollateralUtxo)
 findCollateralAtOwnPKH cEnv =
   runEitherT $
     CollateralUtxo <$> do
@@ -532,10 +531,10 @@ findCollateralAtOwnPKH cEnv =
               (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
               pabConf.pcOwnStakePubKeyHash
 
-      r <- firstEitherT WAPI.OtherError $ newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+      r <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
       let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
       hoistEither $ case filter check refsAndOuts of
-        [] -> Left $ WAPI.OtherError "Couldn't find collateral UTxO"
+        [] -> Left "Couldn't find collateral UTxO"
         ((oref, _) : _) -> Right oref
   where
     check (_, txOut) = Tx.txOutValue txOut == collateralValue (cePABConfig cEnv)
