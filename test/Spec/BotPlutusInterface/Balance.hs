@@ -228,31 +228,27 @@ dontAddChangeToDatum = do
           <> Constraints.mustSpendPubKeyOutput txOutRef7
       eunbalancedTx = Constraints.mkTx @Void scrLkups txConsts
 
-  case eunbalancedTx of
-    Left mkTxErr -> assertFailure ("MkTx Error: " <> show mkTxErr)
-    Right unbalancedTx -> do
-      let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
-      case eRslt of
-        (Left txt) -> assertFailure ("PAB effect error: " <> Text.unpack txt)
-        (Right (Left txt)) -> assertFailure $ "Balancing error: " <> Text.unpack txt
-        (Right (Right trx)) -> do
-          let scrTxOut'' = scrTxOut' & Ledger.ciTxOutValue <>~ Ada.lovelaceValueOf 500
-              scrTxOutExpected = Ledger.toTxOut scrTxOut''
-              isScrUtxo :: TxOut -> Bool
-              isScrUtxo utxo = txOutAddress utxo == txOutAddress scrTxOutExpected
-              (balScrUtxos, balOtherUtxos) = partition isScrUtxo (txOutputs trx)
-          assertBool
-            ( "Expected UTxO not in output Tx."
-                <> "\nExpected UTxO: "
-                <> show scrTxOutExpected
-                <> "\nBalanced Script UTxOs: "
-                <> show balScrUtxos
-                <> "\nOther Balanced UTxOs: "
-                <> show balOtherUtxos
-                <> "\nUnbalanced UTxOs: "
-                <> show (txOutputs (unbalancedTx ^. OffChain.tx))
-            )
-            (scrTxOutExpected `elem` txOutputs trx)
+  unbalancedTx <- liftAssertFailure eunbalancedTx (\err -> "MkTx Error: " <> show err)
+  let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
+  eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> Text.unpack txt)
+  trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> Text.unpack txt)
+  let scrTxOut'' = scrTxOut' & Ledger.ciTxOutValue <>~ Ada.lovelaceValueOf 500
+      scrTxOutExpected = Ledger.toTxOut scrTxOut''
+      isScrUtxo :: TxOut -> Bool
+      isScrUtxo utxo = txOutAddress utxo == txOutAddress scrTxOutExpected
+      (balScrUtxos, balOtherUtxos) = partition isScrUtxo (txOutputs trx)
+  assertBool
+    ( "Expected UTxO not in output Tx."
+        <> "\nExpected UTxO: "
+        <> show scrTxOutExpected
+        <> "\nBalanced Script UTxOs: "
+        <> show balScrUtxos
+        <> "\nOther Balanced UTxOs: "
+        <> show balOtherUtxos
+        <> "\nUnbalanced UTxOs: "
+        <> show (txOutputs (unbalancedTx ^. OffChain.tx))
+    )
+    (scrTxOutExpected `elem` txOutputs trx)
 
 -- Like the first one, but
 -- only has inputs from the script.
@@ -297,64 +293,65 @@ dontAddChangeToDatum2 = do
           <> Constraints.mustSpendScriptOutput txOutRef6 Ledger.unitRedeemer
       eunbalancedTx = Constraints.mkTx @Void scrLkups txConsts
 
-  case eunbalancedTx of
-    Left mkTxErr -> assertFailure ("MkTx Error: " <> show mkTxErr)
-    Right unbalancedTx -> do
-      let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
-      case eRslt of
-        (Left txt) -> assertFailure ("PAB effect error: " <> Text.unpack txt)
-        (Right (Left txt)) -> assertFailure $ "Balancing error: " <> Text.unpack txt
-        (Right (Right trx)) -> do
-          let scrTxOut'' = scrTxOut' & Ledger.ciTxOutValue .~ scrValue'
-              scrTxOutExpected = Ledger.toTxOut scrTxOut''
-              isScrUtxo :: TxOut -> Bool
-              isScrUtxo utxo = txOutAddress utxo == txOutAddress scrTxOutExpected
-              (balScrUtxos, balOtherUtxos) = partition isScrUtxo (txOutputs trx)
-          -- Check that the expected script UTxO
-          -- is in the output.
-          assertBool
-            ( "Expected UTxO not in output Tx."
-                <> "\nExpected UTxO: "
-                <> show scrTxOutExpected
-                <> "\nBalanced Script UTxOs: "
-                <> show balScrUtxos
-                <> "\nOther Balanced UTxOs: "
-                <> show balOtherUtxos
-                <> "\nUnbalanced UTxOs: "
-                <> show (txOutputs (unbalancedTx ^. OffChain.tx))
-            )
-            (scrTxOutExpected `elem` txOutputs trx)
-          -- Check that the output has the remaining change
-          let trxFee = txFee trx
-              adaChange' :: Integer
-              adaChange' = ((-) `on` (lovelaceInValue . txOutValue)) scrTxOut scrTxOutExpected
-              adaChange :: Integer
-              adaChange = adaChange' - lovelaceInValue trxFee
-              tokChange :: Integer
-              tokChange = ((-) `on` (acValueOf tokenAsset . txOutValue)) scrTxOut scrTxOutExpected
-              remainingTxOuts :: [TxOut]
-              remainingTxOuts = delete scrTxOutExpected (txOutputs trx)
-              remainingValue :: Value.Value
-              remainingValue = foldMap txOutValue remainingTxOuts
-          -- Check for ADA change
-          assertBool
-            ( "Other UTxOs do not contain expected ADA change."
-                <> "\nExpected Amount : "
-                <> show adaChange
-                <> " Lovelace"
-                <> "\nActual Amount : "
-                <> show (lovelaceInValue remainingValue)
-                <> " Lovelace"
-            )
-            (adaChange == lovelaceInValue remainingValue)
-          -- Check for Token change
-          assertBool
-            ( "Other UTxOs do not contain expected Token change."
-                <> "\nExpected Amount : "
-                <> show tokChange
-                <> " tokens"
-                <> "\nActual Amount : "
-                <> show (acValueOf tokenAsset remainingValue)
-                <> " tokens"
-            )
-            (tokChange == acValueOf tokenAsset remainingValue)
+  unbalancedTx <- liftAssertFailure eunbalancedTx (\err -> "MkTx Error: " <> show err)
+  let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
+  eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> Text.unpack txt)
+  trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> Text.unpack txt)
+  let scrTxOut'' = scrTxOut' & Ledger.ciTxOutValue .~ scrValue'
+      scrTxOutExpected = Ledger.toTxOut scrTxOut''
+      isScrUtxo :: TxOut -> Bool
+      isScrUtxo utxo = txOutAddress utxo == txOutAddress scrTxOutExpected
+      (balScrUtxos, balOtherUtxos) = partition isScrUtxo (txOutputs trx)
+  -- Check that the expected script UTxO
+  -- is in the output.
+  assertBool
+    ( "Expected UTxO not in output Tx."
+        <> "\nExpected UTxO: "
+        <> show scrTxOutExpected
+        <> "\nBalanced Script UTxOs: "
+        <> show balScrUtxos
+        <> "\nOther Balanced UTxOs: "
+        <> show balOtherUtxos
+        <> "\nUnbalanced UTxOs: "
+        <> show (txOutputs (unbalancedTx ^. OffChain.tx))
+    )
+    (scrTxOutExpected `elem` txOutputs trx)
+  -- Check that the output has the remaining change
+  let trxFee = txFee trx
+      adaChange' :: Integer
+      adaChange' = ((-) `on` (lovelaceInValue . txOutValue)) scrTxOut scrTxOutExpected
+      adaChange :: Integer
+      adaChange = adaChange' - lovelaceInValue trxFee
+      tokChange :: Integer
+      tokChange = ((-) `on` (acValueOf tokenAsset . txOutValue)) scrTxOut scrTxOutExpected
+      remainingTxOuts :: [TxOut]
+      remainingTxOuts = delete scrTxOutExpected (txOutputs trx)
+      remainingValue :: Value.Value
+      remainingValue = foldMap txOutValue remainingTxOuts
+  -- Check for ADA change
+  assertBool
+    ( "Other UTxOs do not contain expected ADA change."
+        <> "\nExpected Amount : "
+        <> show adaChange
+        <> " Lovelace"
+        <> "\nActual Amount : "
+        <> show (lovelaceInValue remainingValue)
+        <> " Lovelace"
+    )
+    (adaChange == lovelaceInValue remainingValue)
+  -- Check for Token change
+  assertBool
+    ( "Other UTxOs do not contain expected Token change."
+        <> "\nExpected Amount : "
+        <> show tokChange
+        <> " tokens"
+        <> "\nActual Amount : "
+        <> show (acValueOf tokenAsset remainingValue)
+        <> " tokens"
+    )
+    (tokChange == acValueOf tokenAsset remainingValue)
+
+-- | Lift an `Either` value into an `assertFailure`.
+liftAssertFailure :: Either a b -> (a -> String) -> IO b
+liftAssertFailure (Left err) fstr = assertFailure (fstr err)
+liftAssertFailure (Right rslt) _ = return rslt
