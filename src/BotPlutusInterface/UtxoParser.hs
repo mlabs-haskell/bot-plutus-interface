@@ -1,4 +1,6 @@
-module BotPlutusInterface.UtxoParser (
+module BotPlutusInterface.UtxoParser
+  {-# DEPRECATED "This parser doesn't parses utxo(s) with inline datum, use 'utxosAt' from BotPlutusInterface.CardanoNode.Effects.hs instead." #-}
+  (
   chainIndexTxOutParser,
   feeParser,
   utxoParser,
@@ -46,6 +48,7 @@ import Plutus.V2.Ledger.Api (OutputDatum (NoOutputDatum, OutputDatum, OutputDatu
 import PlutusTx.Builtins (toBuiltin)
 import Prelude hiding (takeWhile)
 
+{-# DEPRECATED utxoMapParser "use 'utxosAt' from BotPlutusInterface.CardanoNode.Effects.hs" #-}
 utxoMapParser :: Address -> Parser [(TxOutRef, ChainIndexTxOut)]
 utxoMapParser address = do
   skipLine 2
@@ -127,13 +130,12 @@ convertOutputDatum = \case
   OutputDatumHash dh -> Just (dh, Nothing)
   OutputDatum d -> Just (ScriptUtils.datumHash d, Just d)
 
--- TODO: Handle inline datums, if we need them here
+{-# DEPRECATED outputDatumParser "This will fail on inline datum, since we don't parse that utxo(s)." #-}
 outputDatumParser :: Parser OutputDatum
 outputDatumParser =
   OutputDatumHash <$> datumHashParser
     <|> "TxOutDatumNone" $> NoOutputDatum
 
--- FIXME: will it fail for "TxOutDatumInline ..."?
 datumHashParser :: Parser DatumHash
 datumHashParser = do
   void "TxOutDatumHash"
