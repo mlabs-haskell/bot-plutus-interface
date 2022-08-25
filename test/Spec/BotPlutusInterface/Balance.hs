@@ -51,6 +51,7 @@ import Spec.MockContract (
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
+import Text.Printf (printf)
 import Prelude
 
 {- | Tests for 'cardano-cli query utxo' result parsers
@@ -239,13 +240,13 @@ dontAddChangeToDatum = do
       (balScrUtxos, balOtherUtxos) = partition isScrUtxo (txOutputs trx)
   assertBool
     ( "Expected UTxO not in output Tx."
-        <> "\nExpected UTxO: "
+        <> "\nExpected UTxO: \n"
         <> show scrTxOutExpected
-        <> "\nBalanced Script UTxOs: "
+        <> "\nBalanced Script UTxOs: \n"
         <> show balScrUtxos
-        <> "\nOther Balanced UTxOs: "
+        <> "\nOther Balanced UTxOs: \n"
         <> show balOtherUtxos
-        <> "\nUnbalanced UTxOs: "
+        <> "\nUnbalanced UTxOs: \n"
         <> show (txOutputs (unbalancedTx ^. OffChain.tx))
     )
     (scrTxOutExpected `elem` txOutputs trx)
@@ -306,13 +307,13 @@ dontAddChangeToDatum2 = do
   -- is in the output.
   assertBool
     ( "Expected UTxO not in output Tx."
-        <> "\nExpected UTxO: "
+        <> "\nExpected UTxO: \n"
         <> show scrTxOutExpected
-        <> "\nBalanced Script UTxOs: "
+        <> "\nBalanced Script UTxOs: \n"
         <> show balScrUtxos
-        <> "\nOther Balanced UTxOs: "
+        <> "\nOther Balanced UTxOs: \n"
         <> show balOtherUtxos
-        <> "\nUnbalanced UTxOs: "
+        <> "\nUnbalanced UTxOs: \n"
         <> show (txOutputs (unbalancedTx ^. OffChain.tx))
     )
     (scrTxOutExpected `elem` txOutputs trx)
@@ -331,23 +332,15 @@ dontAddChangeToDatum2 = do
   -- Check for ADA change
   assertBool
     ( "Other UTxOs do not contain expected ADA change."
-        <> "\nExpected Amount : "
-        <> show adaChange
-        <> " Lovelace"
-        <> "\nActual Amount : "
-        <> show (lovelaceInValue remainingValue)
-        <> " Lovelace"
+        <> printf "\nExpected Amount : %d Lovelace" adaChange
+        <> printf "\nActual Amount   : %d Lovelace" (lovelaceInValue remainingValue)
     )
     (adaChange == lovelaceInValue remainingValue)
   -- Check for Token change
   assertBool
     ( "Other UTxOs do not contain expected Token change."
-        <> "\nExpected Amount : "
-        <> show tokChange
-        <> " tokens"
-        <> "\nActual Amount : "
-        <> show (acValueOf tokenAsset remainingValue)
-        <> " tokens"
+        <> printf "\nExpected Amount : %d tokens" tokChange
+        <> printf "\nActual Amount   : %d tokens" (acValueOf tokenAsset remainingValue)
     )
     (tokChange == acValueOf tokenAsset remainingValue)
 
