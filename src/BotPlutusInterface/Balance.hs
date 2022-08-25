@@ -118,14 +118,23 @@ balanceTxIO' ::
 balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
   runEitherT $
     do
-      (utxos, mcollateral) <- newEitherT $ utxosAndCollateralAtAddress @w balanceCfg pabConf changeAddr
+      (utxos, mcollateral) <-
+        newEitherT $
+          utxosAndCollateralAtAddress
+            @w
+            balanceCfg
+            pabConf
+            changeAddr
+
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
       let utxoIndex :: Map TxOutRef TxOut
           utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
 
           requiredSigs :: [PubKeyHash]
-          requiredSigs = map Ledger.unPaymentPubKeyHash $ Set.toList (unBalancedTxRequiredSignatories unbalancedTx)
+          requiredSigs =
+            map Ledger.unPaymentPubKeyHash $
+              Set.toList (unBalancedTxRequiredSignatories unbalancedTx)
 
       lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxoIndex
 
@@ -184,7 +193,10 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
     changeAddr :: Address
-    changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) pabConf.pcOwnStakePubKeyHash
+    changeAddr =
+      Ledger.pubKeyHashAddress
+        (Ledger.PaymentPubKeyHash ownPkh)
+        pabConf.pcOwnStakePubKeyHash
 
     balanceTxLoop ::
       Map TxOutRef TxOut ->
@@ -444,7 +456,8 @@ modifyFirst ::
   forall (a :: Type).
   -- | Predicate for value to update
   (a -> Bool) ->
-  -- | Modifier, input Maybe representing existing value (or Nothing if missing), output value representing new value (or Nothing to remove)
+  -- | Modifier, input Maybe representing existing value (or Nothing if missing),
+  --   output value representing new value (or Nothing to remove)
   (Maybe a -> Maybe a) ->
   [a] ->
   [a]
