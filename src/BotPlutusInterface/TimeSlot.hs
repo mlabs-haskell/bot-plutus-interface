@@ -24,8 +24,6 @@ import BotPlutusInterface.Types (
 import Cardano.Api (CardanoMode, EraHistory)
 import Cardano.Api qualified as CAPI
 
--- import Cardano.Ledger.Alonzo (AlonzoEra)
-
 import Cardano.Ledger.Alonzo.TxInfo (slotToPOSIXTime)
 import Cardano.Ledger.Babbage (BabbageEra)
 import Cardano.Ledger.Babbage.PParams (PParams, _protocolVersion)

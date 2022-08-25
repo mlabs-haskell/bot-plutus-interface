@@ -65,7 +65,6 @@ instance HasDefinitions MyContracts where
 3. Write your main entrypoint for the application and the configuration file
 
 ```haskell
-d601900dab2e364aea1084bcb8281116e4724309
 import Prelude
 
 main :: IO ()
