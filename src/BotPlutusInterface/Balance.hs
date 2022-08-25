@@ -36,7 +36,7 @@ import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Monad (foldM, void, zipWithM)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (EitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
 import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
@@ -52,12 +52,10 @@ import Data.Text qualified as Text
 import GHC.Real (Ratio ((:%)))
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Address (Address (..))
+import Ledger.Address (Address (..), PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
-import Ledger.Crypto (PubKeyHash)
 import Ledger.Interval (
   Extended (Finite, NegInf, PosInf),
-  Interval (Interval),
   LowerBound (LowerBound),
   UpperBound (UpperBound),
  )
@@ -71,6 +69,7 @@ import Ledger.Tx (
   TxOutRef (..),
  )
 import Ledger.Tx qualified as Tx
+import Ledger.Tx.CardanoAPI (ToCardanoError (InvalidValidityRange))
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
@@ -78,6 +77,7 @@ import Plutus.V1.Ledger.Api (
   TokenName (..),
  )
 import Prettyprinter (pretty, viaShow, (<+>))
+import Wallet.API as WAPI
 import Prelude
 
 -- Config for balancing a `Tx`.
@@ -101,7 +101,7 @@ balanceTxIO ::
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
-  Eff effs (Either Text Tx)
+  Eff effs (Either WAPI.WalletAPIError Tx)
 balanceTxIO = balanceTxIO' @w defaultBalanceConfig
 
 -- | `balanceTxIO'` is more flexible version of `balanceTxIO`, this let us specify custom `BalanceConfig`.
@@ -112,12 +112,12 @@ balanceTxIO' ::
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
-  Eff effs (Either Text Tx)
+  Eff effs (Either WAPI.WalletAPIError Tx)
 balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
   runEitherT $
     do
       (utxos, mcollateral) <- newEitherT $ utxosAndCollateralAtAddress @w balanceCfg pabConf changeAddr
-      privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
+      privKeys <- firstEitherT WAPI.OtherError $ newEitherT $ Files.readPrivateKeys @w pabConf
 
       let utxoIndex :: Map TxOutRef TxOut
           utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
@@ -142,7 +142,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
         if bcHasScripts balanceCfg
           then
             maybe
-              (throwE "Tx uses script but no collateral was provided.")
+              (throwE $ WAPI.OtherError "Tx uses script but no collateral was provided.")
               (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
               mcollateral
           else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
@@ -189,12 +189,13 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       Map PubKeyHash DummyPrivKey ->
       [(TxOut, Integer)] ->
       Tx ->
-      EitherT Text (Eff effs) (Tx, [(TxOut, Integer)])
+      EitherT WAPI.WalletAPIError (Eff effs) (Tx, [(TxOut, Integer)])
     balanceTxLoop utxoIndex privKeys prevMinUtxos tx = do
       void $ lift $ Files.writeAll @w pabConf tx
       nextMinUtxos <-
-        newEitherT $
-          calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
+        firstEitherT WAPI.OtherError $
+          newEitherT $
+            calculateMinUtxos @w pabConf (Tx.txData tx) $ Tx.txOutputs tx \\ map fst prevMinUtxos
 
       let minUtxos = prevMinUtxos ++ nextMinUtxos
 
@@ -204,9 +205,9 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       txWithoutFees <-
         newEitherT $ balanceTxStep @w balanceCfg minUtxos utxoIndex changeAddr $ tx `withFee` 0
 
-      exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
+      exBudget <- firstEitherT WAPI.OtherError $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
 
-      nonBudgettedFees <- newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
+      nonBudgettedFees <- firstEitherT WAPI.OtherError $ newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
       let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
@@ -227,10 +228,10 @@ utxosAndCollateralAtAddress ::
   BalanceConfig ->
   PABConfig ->
   Address ->
-  Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
+  Eff effs (Either WAPI.WalletAPIError (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
 utxosAndCollateralAtAddress balanceCfg pabConf changeAddr =
   runEitherT $ do
-    utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+    utxos <- firstEitherT WAPI.OtherError $ newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
     inMemCollateral <- lift $ getInMemCollateral @w
 
     -- check if `bcHasScripts` is true, if this is the case then we search of
@@ -239,8 +240,9 @@ utxosAndCollateralAtAddress balanceCfg pabConf changeAddr =
       then
         maybe
           ( throwE $
-              "The given transaction uses script, but there's no collateral provided."
-                <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
+              WAPI.OtherError $
+                "The given transaction uses script, but there's no collateral provided."
+                  <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
           )
           (const $ pure (removeCollateralFromMap inMemCollateral utxos, inMemCollateral))
           inMemCollateral
@@ -288,7 +290,7 @@ balanceTxStep ::
   Map TxOutRef TxOut ->
   Address ->
   Tx ->
-  Eff effs (Either Text Tx)
+  Eff effs (Either WAPI.WalletAPIError Tx)
 balanceTxStep balanceCfg minUtxos utxos changeAddr tx =
   runEitherT $
     (newEitherT . balanceTxIns @w utxos) (addLovelaces minUtxos tx)
@@ -336,7 +338,7 @@ balanceTxIns ::
   Member (PABEffect w) effs =>
   Map TxOutRef TxOut ->
   Tx ->
-  Eff effs (Either Text Tx)
+  Eff effs (Either WAPI.WalletAPIError Tx)
 balanceTxIns utxos tx = do
   runEitherT $ do
     let txOuts = Tx.txOutputs tx
@@ -346,7 +348,7 @@ balanceTxIns utxos tx = do
             [ txFee tx
             , nonMintedValue
             ]
-    txIns <- newEitherT $ selectTxIns @w (txInputs tx) utxos minSpending
+    txIns <- firstEitherT WAPI.OtherError $ newEitherT $ selectTxIns @w (txInputs tx) utxos minSpending
     pure $ tx {txInputs = txIns <> txInputs tx}
 
 -- | Set collateral or fail in case it's required but not available
@@ -363,7 +365,7 @@ txUsesScripts Tx {txInputs, txMintScripts} =
       (Set.toList txInputs)
 
 -- | Ensures all non ada change goes back to user
-handleNonAdaChange :: BalanceConfig -> Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+handleNonAdaChange :: BalanceConfig -> Address -> Map TxOutRef TxOut -> Tx -> Either WAPI.WalletAPIError Tx
 handleNonAdaChange balanceCfg changeAddr utxos tx =
   let nonAdaChange = getNonAdaChange utxos tx
       predicate =
@@ -387,7 +389,7 @@ handleNonAdaChange balanceCfg changeAddr utxos tx =
           (txOutputs tx)
    in if isValueNat nonAdaChange
         then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
-        else Left "Not enough inputs to balance tokens."
+        else Left $ WAPI.InsufficientFunds "Not enough inputs to balance tokens."
 
 {- | `addAdaChange` checks if `bcSeparateChange` is true,
       if it is then we add the ada change to seperate `TxOut` at changeAddr that contains only ada,
@@ -431,13 +433,13 @@ addOutput changeAddr tx = tx {txOutputs = txOutputs tx ++ [changeTxOut]}
 {- | Add the required signatories to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
 -}
-addSignatories :: PubKeyHash -> Map PubKeyHash DummyPrivKey -> [PubKeyHash] -> Tx -> Either Text Tx
+addSignatories :: PubKeyHash -> Map PubKeyHash DummyPrivKey -> [PubKeyHash] -> Tx -> Either WAPI.WalletAPIError Tx
 addSignatories ownPkh privKeys pkhs tx =
   foldM
     ( \tx' pkh ->
         case Map.lookup pkh privKeys of
           Just privKey -> Right $ Tx.addSignature' (unDummyPrivateKey privKey) tx'
-          Nothing -> Left "Signing key not found."
+          Nothing -> Left $ WAPI.PaymentPrivateKeyNotFound $ PaymentPubKeyHash pkh
     )
     tx
     (ownPkh : pkhs)
@@ -447,13 +449,13 @@ addValidRange ::
   Member (PABEffect w) effs =>
   POSIXTimeRange ->
   Tx ->
-  Eff effs (Either Text Tx)
+  Eff effs (Either WAPI.WalletAPIError Tx)
 addValidRange timeRange tx =
   if validateRange timeRange
     then
-      bimap (Text.pack . show) (setRange tx)
+      bimap (WAPI.OtherError . Text.pack . show) (setRange tx)
         <$> posixTimeRangeToContainedSlotRange @w timeRange
-    else pure $ Left "Invalid validity interval."
+    else pure $ Left $ WAPI.ToCardanoError InvalidValidityRange
   where
     setRange tx' range = tx' {txValidRange = range}
 
