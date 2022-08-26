@@ -71,11 +71,7 @@ slotToPOSIXTimeIO pabConf lSlot = runEitherT $ do
   nodeInfo <- liftIO $ mkNodeInfo pabConf
   eraHistory <- newET (queryEraHistory nodeInfo)
   sysStart <- newET $ querySystemStart nodeInfo
-  pparams <-
-    liftEither
-      . fmap (CAPI.toLedgerPParams CAPI.ShelleyBasedEraBabbage)
-      . maybeToEither (TimeSlotConversionError "No protocol params found")
-      $ pcProtocolParams pabConf
+  pparams <- mkPParams pabConf
   let epochInfo = toLedgerEpochInfo eraHistory
 
   firstEitherT toError . hoistEither $
@@ -111,11 +107,7 @@ posixTimeRangeToContainedSlotRangeIO
     nodeInfo <- liftIO $ mkNodeInfo pabConf
     sysStart <- newET $ querySystemStart nodeInfo
     eraHistory <- newET $ queryEraHistory nodeInfo
-    pparams <-
-      liftEither
-        . fmap (CAPI.toLedgerPParams CAPI.ShelleyBasedEraBabbage)
-        . maybeToEither (TimeSlotConversionError "No protocol params found")
-        $ pcProtocolParams pabConf
+    pparams <- mkPParams pabConf
     let epochInfo = toLedgerEpochInfo eraHistory
 
     let extTimeToExtSlot = convertExtended sysStart eraHistory
@@ -224,3 +216,12 @@ mkNodeInfo :: PABConfig -> IO NodeInfo
 mkNodeInfo pabConf =
   NodeInfo (pcNetwork pabConf)
     <$> getEnv "CARDANO_NODE_SOCKET_PATH"
+
+mkPParams ::
+  PABConfig ->
+  EitherT TimeSlotConversionError IO (PParams (BabbageEra StandardCrypto))
+mkPParams pabConf =
+  liftEither
+    . fmap (CAPI.toLedgerPParams CAPI.ShelleyBasedEraBabbage)
+    . maybeToEither (TimeSlotConversionError "No protocol params found")
+    $ pcProtocolParams pabConf
