@@ -13,8 +13,6 @@ import Test.Tasty (TestTree, defaultMain, testGroup)
 -- | @since 0.1
 main :: IO ()
 main = do
-  hSetBuffering stdin LineBuffering
-  hSetBuffering stdout LineBuffering
   defaultMain tests
 
 {- | Project wide tests
