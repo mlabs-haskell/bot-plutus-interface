@@ -53,7 +53,8 @@ module Spec.MockContract (
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (MinUtxo, PParams, UtxosAt))
+import BotPlutusInterface.CardanoNode.Query (toQueryError)
 import BotPlutusInterface.Collateral (removeCollateralFromPage)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
@@ -112,6 +113,7 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.ByteString.Short qualified as SBS
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight, mapLeft)
+import Data.Either.Extra (maybeToEither)
 import Data.Hex (hex, unhex)
 import Data.Kind (Type)
 import Data.List (isPrefixOf, sortOn)
@@ -375,7 +377,14 @@ runPABEffectPure initState req =
     go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
     go (QueryNode (UtxosAt _addr)) = do
       state <- get @(MockContractState w)
-      return $ return $ Map.fromList (state ^. utxos)
+      return $ Right $ Map.fromList (state ^. utxos)
+    go (QueryNode (MinUtxo utxo)) = return $ Right utxo
+    go (QueryNode PParams) =
+      maybeToEither (toQueryError @String "Not able to get ProtocolParameters.")
+        . pcProtocolParams
+        . cePABConfig
+        . _contractEnv
+        <$> get @(MockContractState w)
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)

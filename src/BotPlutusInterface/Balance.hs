@@ -13,7 +13,7 @@ module BotPlutusInterface.Balance (
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (MinUtxo, UtxosAt))
 import BotPlutusInterface.CoinSelection (selectTxIns)
 import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import BotPlutusInterface.Effects (
@@ -160,10 +160,11 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
       -- Balance the tx
       balancedTx <- balanceTxLoop utxoIndex privKeys preBalancedTx
+      changeTxOutWithMinAmt <- newEitherT $ addOutput @w changeAddr balancedTx
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
-          bTx = balanceTxLoop utxoIndex privKeys (addOutput changeAddr balancedTx)
+          bTx = balanceTxLoop utxoIndex privKeys changeTxOutWithMinAmt
 
       -- Checks if there's ada change left, if there is then we check
       -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
@@ -289,7 +290,7 @@ balanceTxStep ::
 balanceTxStep balanceCfg utxos changeAddr tx =
   runEitherT $
     (newEitherT . balanceTxIns @w utxos) tx
-      >>= hoistEither . handleNonAdaChange balanceCfg changeAddr utxos
+      >>= newEitherT . handleNonAdaChange @w balanceCfg changeAddr utxos
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
 getChange :: Map TxOutRef TxOut -> Tx -> Value
@@ -347,9 +348,19 @@ txUsesScripts Tx {txInputs, txMintScripts} =
       txInputs
 
 -- | Ensures all non ada change goes back to user
-handleNonAdaChange :: BalanceConfig -> Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
-handleNonAdaChange balanceCfg changeAddr utxos tx =
-  let nonAdaChange = getNonAdaChange utxos tx
+handleNonAdaChange ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  BalanceConfig ->
+  Address ->
+  Map TxOutRef TxOut ->
+  Tx ->
+  Eff effs (Either Text Tx)
+handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
+  let nonAdaChange :: Value
+      nonAdaChange = getNonAdaChange utxos tx
+
+      predicate :: TxOut -> Bool
       predicate =
         if bcSeparateChange balanceCfg
           then
@@ -358,20 +369,30 @@ handleNonAdaChange balanceCfg changeAddr utxos tx =
                   && not (justLovelace $ Tx.txOutValue txout)
             )
           else (\txout -> Tx.txOutAddress txout == changeAddr)
+
+      newOutput :: TxOut
       newOutput =
         TxOut
           { txOutAddress = changeAddr
           , txOutValue = nonAdaChange
           , txOutDatumHash = Nothing
           }
+
+  newOutputWithMinAmt <-
+    firstEitherT (Text.pack . show) $
+      newEitherT $
+        queryNode @w (MinUtxo newOutput)
+
+  let outputs :: [TxOut]
       outputs =
         modifyFirst
           predicate
-          (Just . maybe newOutput (addValueToTxOut nonAdaChange))
+          (Just . maybe newOutputWithMinAmt (addValueToTxOut nonAdaChange))
           (txOutputs tx)
-   in if isValueNat nonAdaChange
-        then Right $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
-        else Left "Not enough inputs to balance tokens."
+
+  if isValueNat nonAdaChange
+    then return $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
+    else throwE "Not enough inputs to balance tokens."
 
 {- | `addAdaChange` checks if `bcSeparateChange` is true,
       if it is then we add the ada change to seperate `TxOut` at changeAddr that contains only ada,
@@ -401,16 +422,29 @@ addAdaChange balanceCfg changeAddr change tx
 addValueToTxOut :: Value -> TxOut -> TxOut
 addValueToTxOut val txOut = txOut {txOutValue = txOutValue txOut <> val}
 
--- | Adds a 1 lovelace output to a transaction
-addOutput :: Address -> Tx -> Tx
-addOutput changeAddr tx = tx {txOutputs = txOutputs tx ++ [changeTxOut]}
-  where
-    changeTxOut =
-      TxOut
-        { txOutAddress = changeAddr
-        , txOutValue = Ada.lovelaceValueOf 1
-        , txOutDatumHash = Nothing
-        }
+-- | creates a Tx output with min lovelace.
+addOutput ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Address ->
+  Tx ->
+  Eff effs (Either Text Tx)
+addOutput changeAddr tx =
+  runEitherT $ do
+    let changeTxOut :: TxOut
+        changeTxOut =
+          TxOut
+            { txOutAddress = changeAddr
+            , txOutValue = Ada.lovelaceValueOf 1
+            , txOutDatumHash = Nothing
+            }
+
+    changeTxOutWithMinAmt <-
+      firstEitherT (Text.pack . show) $
+        newEitherT $
+          queryNode @w (MinUtxo changeTxOut)
+
+    return $ tx {txOutputs = txOutputs tx ++ [changeTxOutWithMinAmt]}
 
 {- | Add the required signatories to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
