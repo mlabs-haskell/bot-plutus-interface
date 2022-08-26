@@ -28,17 +28,6 @@ import Ledger (
 import Ledger.Address (StakePubKeyHash)
 import Ledger.Constraints as Constraints
 
--- import Ledger.Constraints.Metadata (
---   NftMetadata (NftMetadata),
---   NftMetadataToken (NftMetadataToken),
---   TxMetadata (TxMetadata),
---   nmtDescription,
---   nmtFiles,
---   nmtImage,
---   nmtMediaType,
---   nmtName,
---   nmtOtherFields,
---  )
 import Ledger.Scripts qualified as Scripts
 import Ledger.Typed.Scripts qualified as TypedScripts
 import Ledger.Value (flattenValue, singleton)
@@ -111,18 +100,8 @@ mintNft MintParams {..} = do
       tell $ Last $ Just $ "Using oref:" Hask.<> Text.pack (Hask.show oref)
       let cs = curSymbol oref mpTokenName
           val = singleton cs mpTokenName 1
-          -- meta =
-          --   NftMetadata $
-          --     Map.singleton cs $
-          --       Map.singleton mpTokenName $
-          --         NftMetadataToken
-          --           { nmtName = mpName
-          --           , nmtImage = mpImage
-          --           , nmtMediaType = Hask.pure "image/png"
-          --           , nmtDescription = mpDescription
-          --           , nmtFiles = Hask.mempty
-          --           , nmtOtherFields = Hask.mempty
-          --           }
+          -- TODO: Add metadata in the tx.
+          --       Currently this is not possible, as metadata is not supported.
           lookups =
             Hask.mconcat
               [ Constraints.plutusV1MintingPolicy (policy oref mpTokenName)
@@ -133,7 +112,6 @@ mintNft MintParams {..} = do
               [ Constraints.mustMintValue val
               , Constraints.mustSpendPubKeyOutput oref
               , Constraints.mustPayToPubKeyAddress mpPubKeyHash mpStakeHash val
-              -- , Constraints.mustIncludeMetadata $ TxMetadata (Just meta) Hask.mempty
               ]
       void $ submitTxConstraintsWith @Void lookups tx
       Contract.logInfo @Hask.String $ printf "forged %s" (Hask.show val)
