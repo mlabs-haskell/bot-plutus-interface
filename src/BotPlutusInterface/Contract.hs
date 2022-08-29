@@ -7,6 +7,7 @@ module BotPlutusInterface.Contract (runContract, handleContract) where
 import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (MinUtxo, UtxosAt))
 import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.Effects (
   PABEffect,
@@ -44,15 +45,9 @@ import BotPlutusInterface.Types (
 import Cardano.Api (
   AsType (..),
   EraInMode (..),
-  ShelleyBasedEra (ShelleyBasedEraBabbage),
   Tx (Tx),
-  toLedgerPParams,
  )
-import Cardano.Api.Shelley (toShelleyTxOut)
-import Cardano.Ledger.Shelley.API.Wallet (
-  CLI (evaluateMinLovelaceOutput),
- )
-import Cardano.Prelude (liftA2, maybeToEither)
+import Cardano.Prelude (liftA2)
 import Control.Lens (preview, (.~), (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
@@ -76,20 +71,13 @@ import Data.Text qualified as Text
 import Data.Vector qualified as V
 import Ledger (POSIXTime, getCardanoTxId)
 import Ledger qualified
-import Ledger.Ada qualified as Ada
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
 import Ledger.Slot (Slot (Slot))
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
 import Ledger.Tx qualified as Tx
-import Ledger.Tx.CardanoAPI (toCardanoTxOut, toCardanoTxOutDatumHash)
-import Ledger.Validation (Coin (Coin))
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
 import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
-
--- import Plutus.Contract.CardanoAPI (toCardanoTxOutBabbage, toCardanoTxOutDatumHashBabbage)
-
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import Plutus.Contract.Checkpoint (Checkpoint (..))
 import Plutus.Contract.Effects (
   BalanceTxResponse (..),
@@ -101,7 +89,6 @@ import Plutus.Contract.Effects (
  )
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
-import Plutus.V1.Ledger.Tx (TxOut (txOutValue))
 import PlutusTx.Builtins (fromBuiltin)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
@@ -223,7 +210,7 @@ handlePABReq contractEnv req = do
       either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
         <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
-    AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w contractEnv unbalancedTx
+    AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w @effs unbalancedTx
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -255,36 +242,17 @@ handlePABReq contractEnv req = do
 
 adjustUnbalancedTx' ::
   forall (w :: Type) (effs :: [Type -> Type]).
-  ContractEnvironment w ->
+  Member (PABEffect w) effs =>
   UnbalancedTx ->
   Eff effs (Either Tx.ToCardanoError UnbalancedTx)
-adjustUnbalancedTx' contractEnv unbalancedTx = pure $ do
-  pparams <- getPParams
-  let networkId = contractEnv.cePABConfig.pcNetwork
+adjustUnbalancedTx' unbalancedTx = runEitherT $ do
+  -- traverse (queryNode . MinUtxo)
+  updatedOuts <-
+    firstEitherT (Tx.TxBodyError . show) $
+      newEitherT $
+        sequence <$> traverse (queryNode @w . MinUtxo) (unbalancedTx ^. tx . outputs)
 
-  updatedOuts <- traverse (adjustTxOut networkId pparams) (unbalancedTx ^. tx . outputs)
   return $ unbalancedTx & (tx . outputs .~ updatedOuts)
-  where
-    getPParams =
-      maybeToEither (Tx.TxBodyError "No protocol params found in PAB config") $
-        asBabbageBased toLedgerPParams
-          <$> contractEnv.cePABConfig.pcProtocolParams
-    -- increasing the Ada amount can also increase the size in bytes,
-    -- so adjustment loops till no missing Ada left after evaluation
-    -- implementation mostly taken from `plutus-apps`
-    adjustTxOut networkId pparams txOut = do
-      txOut' <- toCardanoTxOut networkId toCardanoTxOutDatumHash txOut
-      let (Coin minTxOut) = evaluateMinLovelaceOutput pparams (asBabbageBased toShelleyTxOut txOut')
-          missingLovelace = Ada.lovelaceOf minTxOut - Ada.fromValue (txOutValue txOut)
-      if missingLovelace > 0
-        then
-          adjustTxOut
-            networkId
-            pparams
-            (txOut {txOutValue = txOutValue txOut <> Ada.toValue missingLovelace})
-        else Right txOut
-
-    asBabbageBased f = f ShelleyBasedEraBabbage
 
 {- | Await till transaction status change to something from `Unknown`.
  Uses `chain-index` to query transaction by id.

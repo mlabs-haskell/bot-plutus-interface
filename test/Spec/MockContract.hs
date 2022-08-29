@@ -375,6 +375,7 @@ runPABEffectPure initState req =
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
     go GetInMemCollateral = _collateralUtxo <$> get @(MockContractState w)
     go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
+    -- FIXME: These tests are temporary, a proper method is required to tests `NodeQuery` effect.
     go (QueryNode (UtxosAt _addr)) = do
       state <- get @(MockContractState w)
       return $ Right $ Map.fromList (state ^. utxos)
