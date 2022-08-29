@@ -30,12 +30,10 @@ import Servant.Client.Core.BaseUrl (BaseUrl (..), parseBaseUrl)
 import Data.Aeson (FromJSON, ToJSON, encode)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
-import Data.Proxy (Proxy (..))
 import Data.Text (pack, unpack)
-import Data.Void (Void, absurd)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import Prelude
+import Relude hiding (state)
 
 type RawTxEndpointResponse = Either ClientError RawTx
 type RawTxTest a = (TxId -> IO RawTxEndpointResponse) -> IO a

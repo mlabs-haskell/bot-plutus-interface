@@ -5,9 +5,8 @@ import BotPlutusInterface.Types (
   PABConfig (pcOwnPubKeyHash, pcTxStatusPolling),
   TxStatusPolling (spBlocksTimeOut),
  )
-import Control.Lens ((&), (.~), (^.))
+import Control.Lens ((.~), (^.))
 import Data.Default (def)
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger (ChainIndexTxOut (PublicKeyChainIndexTxOut), PaymentPubKeyHash (unPaymentPubKeyHash), getCardanoTxId)
 import Ledger.Ada qualified as Ada
@@ -35,7 +34,7 @@ import Spec.MockContract (
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
-import Prelude
+import Relude hiding (state)
 
 tests :: TestTree
 tests =

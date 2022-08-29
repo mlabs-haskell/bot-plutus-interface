@@ -150,7 +150,7 @@ handleResumable contractEnv =
     ( \case
         RRequest o -> handlePABReq @w contractEnv o
         RSelect -> pure True
-        RZero -> undefined
+        RZero -> error "undefined"
     )
 
 -- | Mocking checkpoint calls

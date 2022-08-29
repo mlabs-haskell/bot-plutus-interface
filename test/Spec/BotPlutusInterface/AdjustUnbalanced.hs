@@ -4,9 +4,8 @@ import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
   PABConfig (pcOwnPubKeyHash, pcProtocolParams),
  )
-import Control.Lens ((&), (.~), (^.))
+import Control.Lens ((.~), (^.))
 import Data.Default (def)
-import Data.Text (Text)
 import Ledger (
   ChainIndexTxOut (PublicKeyChainIndexTxOut),
   PaymentPubKeyHash (unPaymentPubKeyHash),
@@ -34,10 +33,8 @@ import Spec.MockContract (
  )
 import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase)
-import Prelude
+import Relude
 
-import Data.Foldable (find)
-import Data.Void (Void)
 import Ledger.Ada (fromValue)
 import Ledger.Constraints.OffChain (tx)
 

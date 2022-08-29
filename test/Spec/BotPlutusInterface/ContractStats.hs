@@ -4,9 +4,8 @@ import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
   PABConfig (pcCollectStats, pcOwnPubKeyHash),
  )
-import Control.Lens ((&), (.~), (^.))
+import Control.Lens ((.~), (^.))
 import Data.Default (def)
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger (ChainIndexTxOut (PublicKeyChainIndexTxOut), PaymentPubKeyHash (unPaymentPubKeyHash))
 import Ledger.Ada qualified as Ada
@@ -29,7 +28,7 @@ import Spec.MockContract (
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
-import Prelude
+import Relude hiding (state)
 
 tests :: TestTree
 tests =

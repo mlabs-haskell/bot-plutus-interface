@@ -11,17 +11,14 @@ module Spec.RandomLedger (
 
 import Plutus.PAB.Arbitrary ()
 
-import Control.Lens (folded, (%~), (&), (^..))
-import Control.Monad (replicateM)
+import Control.Lens (folded, (%~), (^..))
 import Data.List.Extra (mconcatMap)
-import Data.Set (Set)
 import Data.Set qualified as Set
-import GHC.Natural (Natural)
 import Ledger.Tx (TxOut (..), TxOutRef (..))
 import Ledger.Value (AssetClass (AssetClass), Value)
 import Ledger.Value qualified as Value
 import Test.QuickCheck (Arbitrary (arbitrary), Gen, elements)
-import Prelude
+import Relude
 
 deriving newtype instance Arbitrary AssetClass
 

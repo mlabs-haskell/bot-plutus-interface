@@ -6,13 +6,9 @@ import BotPlutusInterface.CoinSelection (selectTxIns, uniqueAssetClasses, values
 import BotPlutusInterface.Effects (PABEffect)
 import Control.Lens (filtered, foldOf, folded, to, (^..))
 import Data.Default (def)
-import Data.Either (isLeft)
-import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust)
-import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
@@ -32,7 +28,8 @@ import Test.QuickCheck (Gen, Property, forAll, withMaxSuccess)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
 import Test.Tasty.QuickCheck (testProperty)
-import Prelude
+import Relude.Unsafe (head, tail)
+import Relude hiding (head, tail)
 
 tests :: TestTree
 tests =

@@ -18,7 +18,7 @@ import Ledger.Value qualified as Value
 import Spec.MockContract (runPABEffectPure)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
-import Prelude
+import Relude
 
 {- | Tests for 'cardano-cli query utxo' result parsers
  @since 0.1

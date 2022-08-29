@@ -81,7 +81,7 @@ import Spec.MockContract (
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
-import Prelude
+import Relude
 
 {- | Contract tests
 

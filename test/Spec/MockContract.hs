@@ -94,38 +94,27 @@ import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Codec.Serialise (serialise)
-import Control.Applicative (liftA2)
-import Control.Concurrent.STM (newTVarIO)
-import Control.Lens (at, set, view, (%~), (&), (<|), (?~), (^.), (^..), _1)
+import Control.Lens (at, set, view, (%~), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
-import Control.Monad (join)
 import Control.Monad.Freer (Eff, reinterpret2, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
-import Control.Monad.Freer.State (State, get, modify, runState)
+import Control.Monad.Freer.State (get, modify, runState, State)
 import Data.Aeson (Result (Success), ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
-import Data.Bool (bool)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy qualified as LBS
 import Data.ByteString.Short qualified as SBS
 import Data.Default (Default (def))
-import Data.Either.Combinators (fromRight, mapLeft)
 import Data.Either.Extra (maybeToEither)
 import Data.Hex (hex, unhex)
-import Data.Kind (Type)
-import Data.List (isPrefixOf, sortOn)
-import Data.Map (Map)
+import Data.List qualified as List
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe)
 import Data.Row (Row)
 import Data.Set qualified as Set
-import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Encoding (decodeUtf8)
-import Data.Tuple.Extra (first)
 import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
 import Ledger (
@@ -171,9 +160,9 @@ import PlutusTx.Builtins (fromBuiltin)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import Prettyprinter qualified as PP
 import System.IO.Unsafe (unsafePerformIO)
-import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
-import Prelude
+import Relude hiding (State, get, modify, runState, state)
+import Data.Either.Combinators (mapLeft)
 
 signingKey1, signingKey2, signingKey3 :: SigningKey PaymentKey
 signingKey1 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 0
@@ -228,14 +217,14 @@ skeyToPubKey :: SigningKey PaymentKey -> PubKey
 skeyToPubKey =
   Ledger.toPublicKey
     . Files.unDummyPrivateKey
-    . either (error . Text.unpack) id
+    . either error id
     . Files.skeyToDummyPrivKey
 
 vkeyToPubKey :: VerificationKey PaymentKey -> PubKey
 vkeyToPubKey =
   Ledger.toPublicKey
     . Files.unDummyPrivateKey
-    . either (error . Text.unpack) id
+    . either error id
     . Files.vkeyToDummyPrivKey
 
 toSigningKeyFile :: FilePath -> SigningKey PaymentKey -> (FilePath, MockFile)
@@ -635,10 +624,10 @@ mockQueryChainIndex = \case
     throwError @Text "RedeemerFromHash is unimplemented"
   TxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
-    pure $ TxOutRefResponse $ lookup txOutRef (state ^. utxos)
+    pure $ TxOutRefResponse $ List.lookup txOutRef (state ^. utxos)
   UnspentTxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
-    pure $ UnspentTxOutResponse $ lookup txOutRef (state ^. utxos)
+    pure $ UnspentTxOutResponse $ List.lookup txOutRef (state ^. utxos)
   UnspentTxOutSetAtAddress _ _ -> do
     state <- get @(MockContractState w)
     pure $ UnspentTxOutsAtResponse $ QueryResponse (state ^. utxos) Nothing

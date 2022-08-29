@@ -231,6 +231,7 @@ test-suite bot-plutus-interface-test
     , prettyprinter
     , QuickCheck
     , quickcheck-instances
+    , relude
     , row-types
     , serialise
     , servant

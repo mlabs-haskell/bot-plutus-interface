@@ -3,11 +3,9 @@
 
 module Spec.BotPlutusInterface.Collateral where
 
-import Control.Lens ((&), (.~), (^.))
+import Control.Lens ((.~), (^.))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Default (def)
-import Data.Text (Text, pack)
-import Data.Void (Void)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
@@ -40,7 +38,6 @@ import BotPlutusInterface.Types (
   ContractEnvironment (ceCollateral, cePABConfig),
   PABConfig (pcCollateralSize),
  )
-import Control.Concurrent.STM (newTVarIO)
 
 import Spec.BotPlutusInterface.Contract (assertCommandHistory, assertContract)
 
@@ -49,7 +46,7 @@ import PlutusTx.Builtins (fromBuiltin)
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertEqual, testCase)
-import Prelude
+import Relude hiding (state)
 
 tests :: TestTree
 tests =
@@ -113,7 +110,7 @@ testTxCreatesCollateralCorrectly = do
       inTxId = encodeByteString $ fromBuiltin $ TxId.getTxId $ Tx.txOutRefId txOutRef1
 
       (_, state) = runContractPure mintContract initState
-      collatVal = pack $ show $ pcCollateralSize $ cePABConfig (state ^. contractEnv)
+      collatVal = show $ pcCollateralSize $ cePABConfig (state ^. contractEnv)
 
   assertCommandHistory
     state

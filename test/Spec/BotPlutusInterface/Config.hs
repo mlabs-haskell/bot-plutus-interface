@@ -33,7 +33,7 @@ import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
-import Prelude
+import Relude
 
 {- | Tests for PABConfig serialize/deserialize
 
