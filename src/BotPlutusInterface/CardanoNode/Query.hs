@@ -22,16 +22,22 @@ import System.Environment (getEnv)
 import Prelude
 
 {- | Error returned in case any error happened querying local node
- (wraps whatever received in `Text`)
+     (wraps whatever received in `Text`)
 -}
 data NodeQueryError
   = NodeQueryError Text
   deriving stock (Eq, Show)
 
+-- | Represents the connection to the local node.
 type NodeConn = CApi.LocalNodeConnectInfo CApi.CardanoMode
 
+-- | Constraints that are required to query local node.
 type QueryConstraint effs = (Member (Reader NodeConn) effs, LastMember IO effs)
 
+{- | 'queryInCardanoMode' establishes connection with local node and execute a single query.
+   The Query has a type of 'QueryInMode CardanoMode a', hence we don't need any information
+   about current era of the local node to execute certain queries, unlike `queryBabbageEra`.
+-}
 queryInCardanoMode ::
   forall effs a.
   (QueryConstraint effs) =>
@@ -45,6 +51,9 @@ queryInCardanoMode query =
         send $
           CApi.queryNodeLocalState conn Nothing query
 
+{- | 'queryBabbageEra' expects that every query must be in 'BabbageEra' and
+   it expects that the local node's current era should be 'BabbageEra'.
+-}
 queryBabbageEra ::
   forall effs a.
   (QueryConstraint effs) =>
@@ -61,7 +70,11 @@ queryBabbageEra query =
       Right a -> return a
       Left e -> throwE $ toQueryError e
 
-connectionInfo :: PABConfig -> IO (CApi.LocalNodeConnectInfo CApi.CardanoMode)
+{- | create connection info from 'PABConfig', this function excepts that there's
+   "CARDANO_NODE_SOCKET_PATH" environment variable present in the shell and has a
+   value that contains path for local node's socket.
+-}
+connectionInfo :: PABConfig -> IO NodeConn
 connectionInfo pabConf =
   CApi.LocalNodeConnectInfo
     (CApi.CardanoModeParams epochSlots)

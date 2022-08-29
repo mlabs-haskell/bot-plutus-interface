@@ -551,6 +551,9 @@ handleCollateral ::
 handleCollateral cEnv = do
   result <- (fmap swapEither . runEitherT) $
     do
+      let helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
+          helperLog msg = newEitherT $ Right <$> printBpiLog @w (Debug [CollateralLog]) msg
+
       collateralNotInMem <-
         newEitherT $
           maybeToLeft "Collateral UTxO not found in contract env."
@@ -577,10 +580,6 @@ handleCollateral cEnv = do
       setInMemCollateral @w collteralUtxo
         >> Right <$> printBpiLog @w (Debug [CollateralLog]) "successfully set the collateral utxo in env."
     Left err -> pure $ Left $ "Failed to make collateral: " <> err
-  where
-    --
-    helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
-    helperLog msg = newEitherT $ Right <$> printBpiLog @w (Debug [CollateralLog]) msg
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.

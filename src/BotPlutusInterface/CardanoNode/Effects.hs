@@ -1,12 +1,12 @@
 {-# LANGUAGE RankNTypes #-}
 
 {- This is ongoing effort on replacing `cardano-cli` calls with `Cardano.Api` queries, see issues
-  https://github.com/mlabs-haskell/bot-plutus-interface/issues/109
-  https://github.com/mlabs-haskell/bot-plutus-interface/issues/101
-  We decided to provide single replacement for `BotPlutusInterface.CardanoCLI.utxosAt`
-  early on to enable inline Datum support from one side and avoid extending
-  `cardano-cli` output parser from the other side.
-  See https://github.com/mlabs-haskell/bot-plutus-interface/issues/145
+   https://github.com/mlabs-haskell/bot-plutus-interface/issues/109
+   https://github.com/mlabs-haskell/bot-plutus-interface/issues/101
+   We decided to provide single replacement for `BotPlutusInterface.CardanoCLI.utxosAt`
+   early on to enable inline Datum support from one side and avoid extending
+   `cardano-cli` output parser from the other side.
+   See https://github.com/mlabs-haskell/bot-plutus-interface/issues/145
 -}
 module BotPlutusInterface.CardanoNode.Effects (
   utxosAt,
@@ -23,7 +23,6 @@ import BotPlutusInterface.CardanoNode.Query (
   QueryConstraint,
   connectionInfo,
   queryBabbageEra,
-  queryInCardanoMode,
   toQueryError,
  )
 
@@ -44,7 +43,6 @@ import Control.Monad.Freer (Eff, Members, interpret, runM, send, type (~>))
 import Control.Monad.Freer.Reader (Reader, ask, runReader)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (firstEitherT, hoistEither, newEitherT, runEitherT)
-import Control.Monad.Trans.Except (throwE)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
@@ -89,7 +87,7 @@ handleNodeQuery ::
 handleNodeQuery =
   interpret $ \case
     UtxosAt addr -> handleUtxosAt addr
-    PParams -> queryPParams
+    PParams -> queryBabbageEra CApi.QueryProtocolParameters
     MinUtxo txout -> handleMinUtxo txout
 
 handleUtxosAt ::
@@ -129,7 +127,7 @@ handleMinUtxo ::
 handleMinUtxo txout = runEitherT $ do
   conn <- lift $ ask @NodeConn
 
-  params <- newEitherT queryPParams
+  params <- newEitherT $ queryBabbageEra CApi.QueryProtocolParameters
 
   let pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage params
       netId = localNodeNetworkId conn
@@ -157,20 +155,3 @@ runNodeQuery conf effs = do
   runM $
     runReader conn $
       handleNodeQuery effs
-
--- Helpers
-
-queryPParams ::
-  forall effs.
-  QueryConstraint effs =>
-  Eff effs (Either NodeQueryError CApi.S.ProtocolParameters)
-queryPParams = runEitherT $ do
-  let query =
-        CApi.QueryInEra CApi.BabbageEraInCardanoMode $
-          CApi.QueryInShelleyBasedEra CApi.ShelleyBasedEraBabbage CApi.QueryProtocolParameters
-
-  result <- newEitherT $ queryInCardanoMode query
-
-  case result of
-    Right params -> return params
-    Left err -> throwE $ toQueryError err

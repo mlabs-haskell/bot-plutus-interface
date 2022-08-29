@@ -133,8 +133,8 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
 
           requiredSigs :: [PubKeyHash]
           requiredSigs =
-            map Ledger.unPaymentPubKeyHash $
-              Set.toList (unBalancedTxRequiredSignatories unbalancedTx)
+            unBalancedTxRequiredSignatories unbalancedTx
+              ^.. folded . to Ledger.unPaymentPubKeyHash
 
       lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxoIndex
 
