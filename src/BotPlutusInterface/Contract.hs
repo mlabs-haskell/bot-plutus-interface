@@ -60,6 +60,7 @@ import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Either.Combinators (swapEither)
 import Data.Map qualified as Map
 import Data.Row (Row)
+import Data.Text (unpack)
 import Data.Vector qualified as V
 import Ledger (POSIXTime, getCardanoTxId)
 import Ledger qualified
@@ -84,9 +85,8 @@ import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
-import Data.Text (unpack)
-import Wallet.Emulator.Error (WalletAPIError (..))
 import Relude
+import Wallet.Emulator.Error (WalletAPIError (..))
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).

@@ -43,6 +43,7 @@ import Data.ByteString.Lazy.Char8 qualified as Char8
 import Data.Either.Combinators (mapLeft)
 import Data.Hex (hex)
 import Data.Map qualified as Map
+import Data.Text qualified as Text
 import Ledger (Slot (Slot), SlotRange)
 import Ledger qualified
 import Ledger.Ada (fromValue, getLovelace)
@@ -69,7 +70,6 @@ import Plutus.V1.Ledger.Api (
   ExMemory (..),
   TokenName (..),
  )
-import Data.Text qualified as Text
 import PlutusTx.Builtins (fromBuiltin)
 import Relude
 

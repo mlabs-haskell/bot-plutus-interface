@@ -39,8 +39,8 @@ import Config.Schema (
  )
 import Config.Schema.Load.Error (prettyValueSpecMismatch)
 import Data.Text qualified as Text
-import Text.PrettyPrint (Style (lineLength), render, renderStyle, style)
 import Relude
+import Text.PrettyPrint (Style (lineLength), render, renderStyle, style)
 
 class ToValue a where
   toValue :: a -> Value ()

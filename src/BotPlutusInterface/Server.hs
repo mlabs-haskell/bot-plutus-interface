@@ -55,6 +55,7 @@ import Plutus.PAB.Webserver.Types (
  )
 import Plutus.V1.Ledger.Bytes (LedgerBytes (LedgerBytes), fromHex)
 import PlutusTx.Prelude (lengthOfByteString)
+import Relude hiding (state)
 import Servant.API (
   Capture,
   FromHttpApiData (parseUrlPiece),
@@ -72,7 +73,6 @@ import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath ((</>))
 import Test.QuickCheck (Arbitrary (arbitrary), elements, vectorOf)
 import Wallet.Types (ContractInstanceId (..))
-import Relude hiding (state)
 
 initState :: IO AppState
 initState = AppState <$> newTVarIO Map.empty

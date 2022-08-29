@@ -22,7 +22,6 @@ import BotPlutusInterface.Types (
   TxStatusPolling (TxStatusPolling, spBlocksTimeOut, spInterval),
  )
 
-import Data.Text qualified as Text
 import Cardano.Api (NetworkId (Mainnet, Testnet), unNetworkMagic)
 import Config (Section (Section), Value (Atom, Sections, Text))
 import Config.Schema (
@@ -37,6 +36,7 @@ import Config.Schema (
   (<!>),
  )
 import Data.Default (def)
+import Data.Text qualified as Text
 import PlutusConfig.Base (
   customRationalSpec,
   enumToAtom,

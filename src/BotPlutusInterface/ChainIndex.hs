@@ -27,6 +27,7 @@ import Plutus.ChainIndex.Api (
  )
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
+import Relude
 import Servant.Client (
   ClientError (FailureResponse),
   ClientM,
@@ -34,7 +35,6 @@ import Servant.Client (
   mkClientEnv,
   runClientM,
  )
-import Relude
 
 handleChainIndexReq :: forall (w :: Type). ContractEnvironment w -> ChainIndexQuery -> IO ChainIndexResponse
 handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =

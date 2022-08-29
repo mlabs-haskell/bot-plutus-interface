@@ -74,11 +74,11 @@ import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty)
 import Prettyprinter qualified as PP
 import Prettyprinter.Render.String qualified as Render
+import Relude hiding (stderr, stdout)
 import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.Process (readProcess, readProcessWithExitCode)
-import Text.Show qualified as Text (Show(..))
-import Relude hiding (stderr, stdout)
+import Text.Show qualified as Text (Show (..))
 
 data ShellArgs a = ShellArgs
   { cmdName :: Text

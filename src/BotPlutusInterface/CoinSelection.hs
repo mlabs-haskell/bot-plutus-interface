@@ -421,7 +421,7 @@ l2norm v1 v2
           <> show @Text (length v1)
           <> " "
           <> "length of vector v2: "
-          <> show @Text(length v2)
+          <> show @Text (length v2)
           <> "."
   where
     formula :: Integer -> Integer -> Integer

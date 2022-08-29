@@ -72,7 +72,7 @@ getScaledBudget maxUnits scaler budget =
     else
       Left $
         BudgetEstimationError $
-            "Exceeded global transaction budget\nCalculated: " <> show budgetSum <> "\nLimit: " <> show maxUnits
+          "Exceeded global transaction budget\nCalculated: " <> show budgetSum <> "\nLimit: " <> show maxUnits
   where
     budgetSum = foldr addBudgets (CApi.ExecutionUnits 0 0) $ rights $ Map.elems budget
     scalers =

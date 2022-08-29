@@ -58,8 +58,9 @@ import Data.ByteString qualified as ByteString
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
-import Data.List (unzip4, foldl)
+import Data.List (foldl, unzip4)
 import Data.Map qualified as Map
+import Data.Text (pack, unpack)
 import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
 import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
@@ -83,9 +84,8 @@ import Plutus.V1.Ledger.Api (
 import Plutus.V1.Ledger.Api qualified as Ledger
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
-import System.FilePath (takeExtension, (</>))
-import Data.Text (unpack, pack)
 import Relude
+import System.FilePath (takeExtension, (</>))
 
 -- | Filename of a minting policy script
 policyScriptFilePath :: PABConfig -> CurrencySymbol -> Text

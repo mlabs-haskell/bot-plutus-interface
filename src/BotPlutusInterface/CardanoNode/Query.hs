@@ -16,8 +16,8 @@ import Control.Monad.Freer.Reader (Reader, ask)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Either
 import Control.Monad.Trans.Except (throwE)
-import System.Environment (getEnv)
 import Relude hiding (Reader, ask)
+import System.Environment (getEnv)
 
 {- | Error returned in case any error happened querying local node
      (wraps whatever received in `Text`)
@@ -86,4 +86,4 @@ connectionInfo pabConf =
     epochSlots = CApi.EpochSlots 21600
 
 toQueryError :: Show e => e -> NodeQueryError
-toQueryError = NodeQueryError .  show
+toQueryError = NodeQueryError . show
