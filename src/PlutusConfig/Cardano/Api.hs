@@ -37,11 +37,7 @@ import Config.Schema (
   (<!>),
  )
 import Data.Aeson (eitherDecode, encode)
-import Data.Bifunctor (first)
-import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.String (fromString)
-import Data.String.ToString (toString)
 import Data.Text qualified as Text
 import PlutusConfig.Base (
   caseAgnosticAtomSpec,
@@ -50,7 +46,7 @@ import PlutusConfig.Base (
   toValueTextViaJSON,
  )
 import PlutusConfig.Types (ToValue (toValue))
-import Prelude
+import Relude
 
 instance HasSpec PraosNonce where
   anySpec = textSpecViaJSON "PraosNonce"
@@ -158,7 +154,7 @@ versionCostModelSpec = Map.fromList <$> listSpec pair
       pure (ver, cost)
 
 instance ToValue AnyPlutusScriptVersion where
-  toValue = Text () . fromString . filter (/= '"') . toString . encode
+  toValue = Text () . fromString . filter (/= '"') . toString @Text . decodeUtf8 . encode
 
 instance HasSpec AnyPlutusScriptVersion where
   anySpec = anyPlutusScriptVersionSpec

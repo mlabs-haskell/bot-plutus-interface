@@ -15,13 +15,10 @@ import BotPlutusInterface.Files (
 import BotPlutusInterface.Types (PABConfig, TxFile (Raw))
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Either (firstEitherT, newEitherT, runEitherT)
-import Data.Kind (Type)
-import Data.Map (Map)
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger (ExBudget, Tx, txId)
 import Ledger.Crypto (PubKeyHash)
-import Prelude
+import Relude
 
 {- | Build and save raw transaction (transaction body) with estimated execution budgets using `CardanoCLI`.
  It builds first transaction body with 0 budget for all spending inputs and minting policies,
@@ -43,7 +40,7 @@ buildAndEstimateBudget pabConf privKeys tx = runEitherT $ do
     buildDraftTxBody = newEitherT $ CardanoCLI.buildTx @w pabConf privKeys mempty tx
 
     estimateBudgetByDraftBody path =
-      firstEitherT toText . newEitherT $ estimateBudget @w (Raw path)
+      firstEitherT show . newEitherT $ estimateBudget @w (Raw path)
 
     buildBodyUsingEstimatedBudget exBudget =
       newEitherT $
@@ -52,5 +49,3 @@ buildAndEstimateBudget pabConf privKeys tx = runEitherT $ do
           privKeys
           exBudget
           tx
-
-    toText = Text.pack . show

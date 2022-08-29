@@ -37,18 +37,13 @@ module BotPlutusInterface.Types (
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.Shelley (ProtocolParameters)
-import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
 import Data.Data (Data (toConstr), constrIndex, dataTypeOf, eqT, fromConstrB, indexConstr, type (:~:) (Refl))
 import Data.Default (Default (def))
-import Data.Kind (Type)
 import Data.List (intersect)
-import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Text (Text)
-import GHC.Generics (Generic)
 import Ledger (
   ExBudget,
   MintingPolicyHash,
@@ -60,7 +55,6 @@ import Ledger (
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Network.Wai.Handler.Warp (Port)
-import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import Plutus.PAB.Effects.Contract.Builtin (
   HasDefinitions (..),
@@ -69,9 +63,10 @@ import Plutus.PAB.Effects.Contract.Builtin (
  )
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
+import Relude
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
+import Text.Show qualified as Text (Show (..))
 import Wallet.Types (ContractInstanceId (..))
-import Prelude
 
 data PABConfig = PABConfig
   { -- | Calling the cli through ssh when set to Remote

@@ -32,21 +32,17 @@ import Config.Schema (
  )
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as JSON
-import Data.Bifunctor (first)
 import Data.Ratio ((%))
-import Data.String (fromString)
-import Data.String.ToString (toString)
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Network.Wai.Handler.Warp (Port)
-import Numeric.Natural (Natural)
 import PlutusConfig.Types (ToValue (toValue), withNamePrefixSpec)
+import Relude
+import Relude.Unsafe (read)
 import Servant.Client.Core (BaseUrl (..), parseBaseUrl, showBaseUrl)
 import Text.Regex (matchRegex, mkRegex)
-import Prelude
 
 instance ToValue Bool where
-  toValue = Atom () . MkAtom . Text.toLower . Text.pack . show
+  toValue = Atom () . MkAtom . Text.toLower . show
 
 instance ToValue Natural where
   toValue x = Number () $ integerToNumber $ toInteger x
@@ -61,7 +57,7 @@ instance ToValue Text where
   toValue = Text ()
 
 instance ToValue String where
-  toValue = Text () . Text.pack
+  toValue = Text () . show
 
 instance {-# OVERLAPS #-} HasSpec String where
   anySpec = stringSpec
@@ -70,7 +66,7 @@ instance ToValue a => ToValue (Maybe a) where
   toValue = maybe (Atom () "nothing") toValue
 
 enumToAtom :: forall a. Show a => a -> Value ()
-enumToAtom = Atom () . MkAtom . Text.toLower . Text.pack . show
+enumToAtom = Atom () . MkAtom . Text.toLower . show
 
 maybeSpec :: forall a. ValueSpec a -> ValueSpec (Maybe a)
 maybeSpec spec =
@@ -78,7 +74,7 @@ maybeSpec spec =
     <!> Just <$> spec
 
 instance ToValue Rational where
-  toValue x = Text () $ Text.pack $ show x
+  toValue x = Text () $ show x
 
 customRationalSpec :: ValueSpec Rational
 customRationalSpec =
@@ -92,7 +88,7 @@ customRationalSpec =
            in if d' == 0
                 then Left "denominator should not be zero"
                 else Right $ n' % d'
-        _ -> Left $ Text.pack "Ratio format: '1 % 2'"
+        _ -> Left $ show ("Ratio format: '1 % 2'" :: Text)
     )
   where
     ratioRE = mkRegex "^ *([0-9]+) *% *([0-9]+) *$"
@@ -104,7 +100,7 @@ filepathSpec :: ValueSpec Text
 filepathSpec = withNamePrefixSpec "filepath" anySpec
 
 toValueTextViaJSON :: forall a. ToJSON a => a -> Value ()
-toValueTextViaJSON = Text () . Text.pack . filter (/= '"') . toString . JSON.encode
+toValueTextViaJSON = Text () . show . filter (/= '"') . toString @Text . decodeUtf8 . JSON.encode
 
 textSpecViaJSON :: forall a. FromJSON a => Text -> ValueSpec a
 textSpecViaJSON name =
@@ -119,7 +115,7 @@ textSpecViaJSON name =
     wrap s = "\"" <> s <> "\""
 
 instance ToValue BaseUrl where
-  toValue = Text () . Text.pack . showBaseUrl
+  toValue = Text () . show . showBaseUrl
 
 instance HasSpec BaseUrl where
   anySpec = baseUrlSpec
@@ -129,7 +125,7 @@ baseUrlSpec =
   customSpec
     "url"
     anySpec
-    (first (Text.pack . show) . parseBaseUrl . Text.unpack)
+    (first show . parseBaseUrl . Text.unpack)
 
 portSpec :: ValueSpec Port
 portSpec = fromEnum <$> customSpec "port" naturalSpec Right

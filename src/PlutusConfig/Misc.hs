@@ -9,9 +9,9 @@ import PlutusConfig.Cardano.Api ()
 import PlutusConfig.Cardano.Api.Shelley ()
 import PlutusConfig.Ledger ()
 import PlutusConfig.Types (ToValue, deserialize', serialize)
+import Relude
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import Prelude
 
 serializeDeserialize :: (ToValue a, HasSpec a) => a -> Either String a
 serializeDeserialize = serializeDeserialize' anySpec

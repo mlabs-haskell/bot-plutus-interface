@@ -37,7 +37,7 @@ import PlutusConfig.Cardano.Api ()
 --   sectionWithDefault,
 --   sectionWithDefault',
 --  )
-import Prelude
+import Relude
 
 -- instance ToValue (Natural, Natural) where
 --   toValue (a, b) = List () [toValue a, toValue b]

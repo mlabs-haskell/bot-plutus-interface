@@ -5,10 +5,9 @@ module BotPlutusInterface (runPAB) where
 import BotPlutusInterface.Server qualified as Server
 import BotPlutusInterface.Types (PABConfig (..))
 import Data.Aeson (FromJSON)
-import Data.Kind (Type)
 import Network.Wai.Handler.Warp (run)
 import Plutus.PAB.Effects.Contract.Builtin (HasDefinitions)
-import Prelude
+import Relude hiding (state)
 
 runPAB :: forall (t :: Type). (HasDefinitions t, FromJSON t) => PABConfig -> IO ()
 runPAB pabConf = do

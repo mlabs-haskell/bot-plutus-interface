@@ -41,9 +41,7 @@ import Cardano.Ledger.Shelley.API.Wallet (
 import Control.Lens (folded, to, (^..))
 import Control.Monad.Freer (Eff, Members, interpret, runM, send, type (~>))
 import Control.Monad.Freer.Reader (Reader, ask, runReader)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (firstEitherT, hoistEither, newEitherT, runEitherT)
-import Data.Map (Map)
+import Control.Monad.Trans.Either (firstEitherT, newEitherT, runEitherT)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Ledger qualified
@@ -53,7 +51,7 @@ import Ledger.Tx (ChainIndexTxOut (..))
 import Ledger.Tx.CardanoAPI qualified as TxApi
 import Ledger.Validation (Coin (Coin))
 import Plutus.V2.Ledger.Tx qualified as V2
-import Prelude
+import Relude hiding (Reader, ask, runReader)
 
 data NodeQuery a where
   UtxosAt :: Address -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
