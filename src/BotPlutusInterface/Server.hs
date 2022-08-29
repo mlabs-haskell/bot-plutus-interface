@@ -21,23 +21,14 @@ import BotPlutusInterface.Types (
   SomeContractState (SomeContractState),
  )
 import Control.Concurrent (ThreadId, forkIO)
-import Control.Concurrent.STM (TVar, atomically, modifyTVar, newTVarIO, readTVar, readTVarIO, retry)
-import Control.Monad (forever, guard, unless, void)
+import Control.Concurrent.STM (modifyTVar, retry)
 import Control.Monad.Error.Class (throwError)
-import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON (toJSON))
 import Data.Aeson qualified as JSON
-import Data.Bifunctor (bimap)
 import Data.ByteString.Lazy qualified as LBS
-import Data.Either.Combinators (leftToMaybe)
-import Data.Kind (Type)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes)
-import Data.Proxy (Proxy (Proxy))
 import Data.Row (Row)
-import Data.String (fromString)
-import Data.Text (Text, pack, unpack)
-import Data.Text.Encoding (encodeUtf8)
+import Data.Text (pack, unpack)
 import Data.UUID.V4 qualified as UUID
 import Ledger.Tx (TxId (TxId))
 import Network.WebSockets (
@@ -81,7 +72,7 @@ import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath ((</>))
 import Test.QuickCheck (Arbitrary (arbitrary), elements, vectorOf)
 import Wallet.Types (ContractInstanceId (..))
-import Prelude
+import Relude hiding (state)
 
 initState :: IO AppState
 initState = AppState <$> newTVarIO Map.empty

@@ -36,13 +36,9 @@ import Control.Monad.Except (runExcept)
 import Control.Monad.Trans.Either (
   EitherT,
   firstEitherT,
-  hoistEither,
   newEitherT,
   runEitherT,
  )
-import Data.Bifunctor (first)
-import Data.Text (Text)
-import Data.Text qualified as Text
 import Data.Time (UTCTime, secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Ledger (
@@ -54,7 +50,7 @@ import Ledger (
 import Ledger qualified
 import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
-import Prelude
+import Relude hiding (runReader)
 
 -- | Error returned by the functions of this module
 data TimeSlotConversionError
@@ -216,7 +212,7 @@ newET :: (Show e, Monad m) => m (Either e a) -> EitherT TimeSlotConversionError 
 newET = firstEitherT toError . newEitherT
 
 toError :: Show e => e -> TimeSlotConversionError
-toError = TimeSlotConversionError . Text.pack . show
+toError = TimeSlotConversionError . show
 
 -- "Ported" from cardano-node:
 -- https://github.com/input-output-hk/cardano-node/blob/64f3d19a681a872f07bd61e6cc473738e78ab0e8/cardano-api/src/Cardano/Api/Fees.hs#L560
@@ -226,5 +222,5 @@ toLedgerEpochInfo ::
   CApi.EraHistory mode ->
   EpochInfo (Either Text)
 toLedgerEpochInfo (CApi.EraHistory _ interpreter) =
-  hoistEpochInfo (first (Text.pack . show) . runExcept) $
+  hoistEpochInfo (first show . runExcept) $
     Consensus.interpreterToEpochInfo interpreter

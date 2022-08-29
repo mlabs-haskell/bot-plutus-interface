@@ -3,8 +3,6 @@ module BotPlutusInterface.UtxoParser (
   tokenNameParser,
 ) where
 
-import Control.Applicative (optional)
-import Control.Monad (mzero, void)
 import Data.Aeson.Extras (tryDecode)
 import Data.Attoparsec.ByteString.Char8 (isSpace)
 import Data.Attoparsec.Text (
@@ -18,13 +16,12 @@ import Data.Attoparsec.Text (
   string,
   takeWhile,
  )
-import Data.Text (Text)
 import Plutus.V1.Ledger.Api (
   BuiltinByteString,
   TokenName (..),
  )
 import PlutusTx.Builtins (toBuiltin)
-import Prelude hiding (takeWhile)
+import Relude hiding (takeWhile)
 
 tokenNameParser :: Parser TokenName
 tokenNameParser = do

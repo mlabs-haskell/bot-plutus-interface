@@ -14,15 +14,11 @@ import BotPlutusInterface.Types (
   collateralValue,
   unCollateralVar,
  )
-import Cardano.Prelude (Void)
-import Control.Concurrent.STM (atomically, readTVarIO, writeTVar)
-import Data.Kind (Type)
-import Data.Map (Map)
 import Data.Map qualified as Map
 import Ledger (ChainIndexTxOut, PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
 import Ledger.Constraints qualified as Constraints
 import Plutus.ChainIndex (Page (pageItems))
-import Prelude
+import Relude
 
 getInMemCollateral :: forall (w :: Type). ContractEnvironment w -> IO (Maybe CollateralUtxo)
 getInMemCollateral = readTVarIO . unCollateralVar . ceCollateral

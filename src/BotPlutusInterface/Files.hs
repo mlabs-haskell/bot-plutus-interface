@@ -58,13 +58,8 @@ import Data.ByteString qualified as ByteString
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
-import Data.Kind (Type)
-import Data.List (sortOn, unzip4)
-import Data.Map (Map)
+import Data.List (unzip4, foldl)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, mapMaybe)
-import Data.Text (Text)
-import Data.Text qualified as Text
 import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
 import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
@@ -89,7 +84,8 @@ import Plutus.V1.Ledger.Api qualified as Ledger
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
 import System.FilePath (takeExtension, (</>))
-import Prelude
+import Data.Text (unpack, pack)
+import Relude
 
 -- | Filename of a minting policy script
 policyScriptFilePath :: PABConfig -> CurrencySymbol -> Text
@@ -146,7 +142,7 @@ writePolicyScriptFile ::
 writePolicyScriptFile pabConf mintingPolicy =
   let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
       filepath = policyScriptFilePath pabConf (ScriptUtils.scriptCurrencySymbol mintingPolicy)
-   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
+   in fmap (const filepath) <$> writeFileTextEnvelope @w (unpack filepath) Nothing script
 
 -- | Compiles and writes a script file under the given folder
 writeValidatorScriptFile ::
@@ -158,7 +154,7 @@ writeValidatorScriptFile ::
 writeValidatorScriptFile pabConf validatorScript =
   let script = serialiseScript $ Ledger.unValidatorScript validatorScript
       filepath = validatorScriptFilePath pabConf (ScriptUtils.validatorHash validatorScript)
-   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
+   in fmap (const filepath) <$> writeFileTextEnvelope @w (unpack filepath) Nothing script
 
 -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
 -- -- | Writes metadata file under the given folder
@@ -170,7 +166,7 @@ writeValidatorScriptFile pabConf validatorScript =
 --   Eff effs (Either (FileError ()) Text)
 -- writeMetadataFile pabConf metadata =
 --   let filepath = metadataFilePath pabConf metadata
---    in const filepath <<$>> writeFileRaw @w (Text.unpack filepath) metadata
+--    in const filepath <<$>> writeFileRaw @w (unpack filepath) metadata
 
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
@@ -180,9 +176,9 @@ writeAll ::
   Tx ->
   Eff effs (Either (FileError ()) [Text])
 writeAll pabConf tx = do
-  createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
+  createDirectoryIfMissing @w False (unpack pabConf.pcScriptFileDir)
   -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-  -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
+  -- createDirectoryIfMissing @w False (unpack pabConf.pcMetadataDir)
 
   let (_, validatorScripts, redeemers, datums) =
         unzip4 $ mapMaybe Tx.inScripts $ Tx.txInputs tx
@@ -210,13 +206,13 @@ readPrivateKeys ::
   PABConfig ->
   Eff effs (Either Text (Map PubKeyHash DummyPrivKey))
 readPrivateKeys pabConf = do
-  files <- listDirectory @w $ Text.unpack pabConf.pcSigningKeyFileDir
+  files <- listDirectory @w $ unpack pabConf.pcSigningKeyFileDir
 
   privKeys <-
     catMaybes
       <$> mapM
         ( \filename ->
-            let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
+            let fullPath = unpack pabConf.pcSigningKeyFileDir </> filename
              in case takeExtension filename of
                   ".vkey" -> Just <$> readVerificationKey @w fullPath
                   ".skey" -> Just <$> readSigningKey @w fullPath
@@ -254,7 +250,7 @@ readSigningKey ::
   FilePath ->
   Eff effs (Either Text DummyPrivKey)
 readSigningKey filePath = do
-  pKey <- mapLeft (Text.pack . show) <$> readFileTextEnvelope @w (AsSigningKey AsPaymentKey) filePath
+  pKey <- mapLeft show <$> readFileTextEnvelope @w (AsSigningKey AsPaymentKey) filePath
   pure $ skeyToDummyPrivKey =<< pKey
 
 readVerificationKey ::
@@ -263,7 +259,7 @@ readVerificationKey ::
   FilePath ->
   Eff effs (Either Text DummyPrivKey)
 readVerificationKey filePath = do
-  pKey <- mapLeft (Text.pack . show) <$> readFileTextEnvelope @w (AsVerificationKey AsPaymentKey) filePath
+  pKey <- mapLeft show <$> readFileTextEnvelope @w (AsVerificationKey AsPaymentKey) filePath
   pure $ vkeyToDummyPrivKey =<< pKey
 
 vkeyToDummyPrivKey :: VerificationKey PaymentKey -> Either Text DummyPrivKey
@@ -291,7 +287,7 @@ mkDummyPrivateKey (PubKey (LedgerBytes pubkey)) =
       dummyPrivKeySuffix = ByteString.replicate 32 0
       dummyChainCode = ByteString.replicate 32 1
       pubkeyBS = fromBuiltin pubkey
-   in mapLeft Text.pack $
+   in mapLeft pack $
         Crypto.xprv $
           mconcat [dummyPrivKey, dummyPrivKeySuffix, pubkeyBS, dummyChainCode]
 
@@ -311,7 +307,7 @@ writeDatumJsonFile ::
 writeDatumJsonFile pabConf datum =
   let json = dataToJson $ getDatum datum
       filepath = datumJsonFilePath pabConf (ScriptUtils.datumHash datum)
-   in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
+   in fmap (const filepath) <$> writeFileJSON @w (unpack filepath) json
 
 writeRedeemerJsonFile ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -322,7 +318,7 @@ writeRedeemerJsonFile ::
 writeRedeemerJsonFile pabConf redeemer =
   let json = dataToJson $ getRedeemer redeemer
       filepath = redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
-   in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
+   in fmap (const filepath) <$> writeFileJSON @w (unpack filepath) json
 
 dataToJson :: forall (a :: Type). ToData a => a -> JSON.Value
 dataToJson =

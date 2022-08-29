@@ -57,21 +57,15 @@ import BotPlutusInterface.Types (
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
 import Control.Concurrent qualified as Concurrent
-import Control.Concurrent.STM (TVar, atomically, modifyTVar, modifyTVar')
+import Control.Concurrent.STM (modifyTVar)
 import Control.Lens ((^.))
-import Control.Monad (void, when)
 import Control.Monad.Freer (Eff, LastMember, Member, interpretM, reinterpret, send, subsume, type (~>))
 import Control.Monad.Freer.Extras (LogMsg (LMessage))
 import Control.Monad.Freer.Extras qualified as Freer
-import Control.Monad.Trans.Except.Extra (handleIOExceptT, runExceptT)
+import Control.Monad.Trans.Except.Extra (handleIOExceptT)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
-import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
-import Data.Kind (Type)
-import Data.Maybe (catMaybes)
-import Data.String (IsString, fromString)
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger qualified
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
@@ -83,7 +77,8 @@ import Prettyprinter.Render.String qualified as Render
 import System.Directory qualified as Directory
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.Process (readProcess, readProcessWithExitCode)
-import Prelude hiding (readFile)
+import Text.Show qualified as Text (Show(..))
+import Relude hiding (stderr, stdout)
 
 data ShellArgs a = ShellArgs
   { cmdName :: Text
@@ -258,7 +253,7 @@ readProcessEither path args =
     mapToEither :: (ExitCode, String, String) -> Either Text String
     mapToEither (ExitSuccess, stdout, _) = Right stdout
     mapToEither (ExitFailure exitCode, _, stderr) =
-      Left $ "ExitCode " <> Text.pack (show exitCode) <> ": " <> Text.pack stderr
+      Left $ "ExitCode " <> show exitCode <> ": " <> Text.pack stderr
 
 saveBudgetImpl :: ContractEnvironment w -> Ledger.TxId -> TxBudget -> IO ()
 saveBudgetImpl contractEnv txId budget =

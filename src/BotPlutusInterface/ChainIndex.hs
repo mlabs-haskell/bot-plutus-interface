@@ -10,7 +10,6 @@ import BotPlutusInterface.Types (
   PABConfig,
   readCollateralUtxo,
  )
-import Data.Kind (Type)
 import Network.HTTP.Client (
   ManagerSettings (managerResponseTimeout),
   defaultManagerSettings,
@@ -35,7 +34,7 @@ import Servant.Client (
   mkClientEnv,
   runClientM,
  )
-import Prelude
+import Relude
 
 handleChainIndexReq :: forall (w :: Type). ContractEnvironment w -> ChainIndexQuery -> IO ChainIndexResponse
 handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =

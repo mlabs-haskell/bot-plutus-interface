@@ -38,13 +38,9 @@ import Config.Schema (
   optSection',
  )
 import Config.Schema.Load.Error (prettyValueSpecMismatch)
-import Control.Exception (displayException)
-import Data.Bifunctor (first)
-import Data.Maybe (fromMaybe)
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Text.PrettyPrint (Style (lineLength), render, renderStyle, style)
-import Prelude
+import Relude
 
 class ToValue a where
   toValue :: a -> Value ()

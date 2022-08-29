@@ -20,23 +20,16 @@ import Control.Lens (
   uncons,
   withIndex,
   (%~),
-  (&),
   (^..),
   (^?),
   _Just,
  )
-import Control.Monad.Except (foldM, throwError, unless)
+import Control.Monad.Except (foldM, throwError)
 import Control.Monad.Freer (Eff, Member)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
-import Data.Either.Combinators (isRight, maybeToRight)
-import Data.Kind (Type)
+import Control.Monad.Trans.Either (newEitherT, runEitherT)
 import Data.List qualified as List
-import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (Text, pack)
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
 import Ledger qualified
@@ -51,7 +44,7 @@ import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
  )
 import Prettyprinter (pretty, (<+>))
-import Prelude
+import Relude hiding (uncons)
 
 {-
 
@@ -422,13 +415,13 @@ l2norm v1 v2
   | length v1 == length v2 = Right $ sqrt $ fromInteger $ sum $ Vec.zipWith formula v1 v2
   | otherwise =
     Left $
-      pack $
+      show $
         "Error: The length of the vectors should be same for l2norm."
           <> "length of vector v1: "
-          <> show (length v1)
+          <> show @Text (length v1)
           <> " "
           <> "length of vector v2: "
-          <> show (length v2)
+          <> show @Text(length v2)
           <> "."
   where
     formula :: Integer -> Integer -> Integer
@@ -487,11 +480,11 @@ opVec f v1 v2
   | length v1 == length v2 = Right $ Vec.zipWith f v1 v2
   | otherwise =
     Left $
-      pack $
+      show @Text $
         "Error: The length of the vectors should be same for arithemetic operation."
           <> "length of vector v1: "
-          <> show (length v1)
+          <> show @Text (length v1)
           <> " "
           <> "length of vector v2: "
-          <> show (length v2)
+          <> show @Text (length v2)
           <> "."

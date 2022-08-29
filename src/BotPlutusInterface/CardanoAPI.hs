@@ -14,9 +14,6 @@ import Cardano.Prelude (maybeToEither)
 import Cardano.Slotting.EpochInfo (hoistEpochInfo)
 import Cardano.Slotting.Time (SystemStart, toRelativeTime)
 import Control.Monad.Trans.Except (runExcept)
-import Data.Bifunctor (first)
-import Data.Text (Text)
-import Data.Text qualified as Text
 import Data.Time (UTCTime, secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Ledger qualified
@@ -28,7 +25,7 @@ import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (Credential (..))
 import Plutus.V2.Ledger.Tx qualified as V2
 import PlutusTx.Prelude qualified as PlutusTx
-import Prelude
+import Relude
 
 fromCardanoTxOut :: CApi.TxOut CApi.CtxUTxO CApi.BabbageEra -> Either TxApi.FromCardanoError ChainIndexTxOut
 fromCardanoTxOut (CApi.TxOut caddr val cdatum _refScript) = do
@@ -71,7 +68,7 @@ fromCardanoEpochInfo ::
   CApi.EraHistory mode ->
   EpochInfo (Either Text)
 fromCardanoEpochInfo (CApi.EraHistory _ interpreter) =
-  hoistEpochInfo (first (Text.pack . show) . runExcept) $
+  hoistEpochInfo (first show . runExcept) $
     Consensus.interpreterToEpochInfo interpreter
 
 posixTimeToSlot ::

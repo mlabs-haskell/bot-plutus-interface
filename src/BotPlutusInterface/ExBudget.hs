@@ -23,16 +23,11 @@ import Cardano.Prelude (maybeToEither)
 import Control.Arrow (left)
 import Control.Monad.Freer (Eff, runM)
 import Control.Monad.Freer.Reader (runReader)
-import Data.Either (rights)
-import Data.List (sort)
-import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Data.Text qualified as Text
-import GHC.Natural (Natural)
 import Ledger (ExBudget (ExBudget), ExCPU (ExCPU), ExMemory (ExMemory), MintingPolicyHash, TxOutRef)
 import Ledger.Tx.CardanoAPI (fromCardanoPolicyId, fromCardanoTxIn)
-import Prelude
+import Relude hiding (runReader)
 
 {- | Estimate budget of transaction.
  Returns separate budgets for spending and minting.
@@ -77,8 +72,7 @@ getScaledBudget maxUnits scaler budget =
     else
       Left $
         BudgetEstimationError $
-          Text.pack $
-            "Exceeded global transaction budget\nCalculated: " ++ show budgetSum ++ "\nLimit: " ++ show maxUnits
+            "Exceeded global transaction budget\nCalculated: " <> show budgetSum <> "\nLimit: " <> show maxUnits
   where
     budgetSum = foldr addBudgets (CApi.ExecutionUnits 0 0) $ rights $ Map.elems budget
     scalers =
@@ -250,4 +244,4 @@ unitsToBudget (CApi.ExecutionUnits cpu mem) =
 
 -- | Helper error converter
 toBudgetError :: Show e => e -> BudgetEstimationError
-toBudgetError = BudgetEstimationError . Text.pack . show
+toBudgetError = BudgetEstimationError . show

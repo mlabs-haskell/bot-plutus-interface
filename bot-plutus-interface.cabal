@@ -148,6 +148,7 @@ library
     , process
     , QuickCheck
     , regex-compat
+    , relude
     , row-types
     , serialise
     , servant

@@ -16,10 +16,8 @@ import Control.Monad.Freer.Reader (Reader, ask)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Either
 import Control.Monad.Trans.Except (throwE)
-import Data.Text (Text)
-import Data.Text qualified as Text
 import System.Environment (getEnv)
-import Prelude
+import Relude hiding (Reader, ask)
 
 {- | Error returned in case any error happened querying local node
      (wraps whatever received in `Text`)
@@ -46,7 +44,7 @@ queryInCardanoMode ::
 queryInCardanoMode query =
   runEitherT $ do
     conn <- lift $ ask @NodeConn
-    firstEitherT (NodeQueryError . Text.pack . show) $
+    firstEitherT (NodeQueryError . show) $
       newEitherT $
         send $
           CApi.queryNodeLocalState conn Nothing query
@@ -88,4 +86,4 @@ connectionInfo pabConf =
     epochSlots = CApi.EpochSlots 21600
 
 toQueryError :: Show e => e -> NodeQueryError
-toQueryError = NodeQueryError . Text.pack . show
+toQueryError = NodeQueryError .  show

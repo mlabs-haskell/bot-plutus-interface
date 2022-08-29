@@ -35,24 +35,14 @@ import BotPlutusInterface.Types (
  )
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
 import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
-import Control.Monad (join)
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
-import Data.Bifunctor (first)
-import Data.Bool (bool)
 import Data.ByteString.Lazy.Char8 qualified as Char8
 import Data.Either.Combinators (mapLeft)
 import Data.Hex (hex)
-import Data.Kind (Type)
-import Data.List (sort)
-import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe)
-import Data.Text (Text)
-import Data.Text qualified as Text
-import Data.Text.Encoding (decodeUtf8)
 import Ledger (Slot (Slot), SlotRange)
 import Ledger qualified
 import Ledger.Ada (fromValue, getLovelace)
@@ -79,8 +69,9 @@ import Plutus.V1.Ledger.Api (
   ExMemory (..),
   TokenName (..),
  )
+import Data.Text qualified as Text
 import PlutusTx.Builtins (fromBuiltin)
-import Prelude
+import Relude
 
 -- | Getting information of the latest block
 queryTip ::
@@ -112,9 +103,9 @@ calculateMinFee pabConf tx =
             mconcat
               [ ["transaction", "calculate-min-fee"]
               , ["--tx-body-file", txFilePath pabConf "raw" (txId tx)]
-              , ["--tx-in-count", showText $ length $ txInputs tx]
-              , ["--tx-out-count", showText $ length $ txOutputs tx]
-              , ["--witness-count", showText $ length $ txSignatures tx]
+              , ["--tx-in-count", show $ length $ txInputs tx]
+              , ["--tx-out-count", show $ length $ txOutputs tx]
+              , ["--witness-count", show $ length $ txSignatures tx]
               , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
               , networkOpt pabConf
               ]
@@ -159,7 +150,7 @@ buildTx pabConf privKeys txBudget tx = do
         , -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
           -- , metadataOpts pabConf (txMetadata tx)
           requiredSigners
-        , ["--fee", showText . getLovelace . fromValue $ txFee tx]
+        , ["--fee", show . getLovelace . fromValue $ txFee tx]
         , mconcat
             [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
             , ["--out-file", txFilePath pabConf "raw" (txId tx)]
@@ -300,11 +291,11 @@ validRangeOpts (Interval lowerBound upperBound) =
   mconcat
     [ case lowerBound of
         LowerBound (Finite (Slot x)) closed ->
-          ["--invalid-before", showText (bool (x + 1) x closed)]
+          ["--invalid-before", show (bool (x + 1) x closed)]
         _ -> []
     , case upperBound of
         UpperBound (Finite (Slot x)) closed ->
-          ["--invalid-hereafter", showText (bool x (x + 1) closed)]
+          ["--invalid-hereafter", show (bool x (x + 1) closed)]
         _ -> []
     ]
 
@@ -332,12 +323,12 @@ txOutOpts pabConf datums =
 
 networkOpt :: PABConfig -> [Text]
 networkOpt pabConf = case pabConf.pcNetwork of
-  Testnet (NetworkMagic t) -> ["--testnet-magic", showText t]
+  Testnet (NetworkMagic t) -> ["--testnet-magic", show t]
   Mainnet -> ["--mainnet"]
 
 txOutRefToCliArg :: TxOutRef -> Text
 txOutRefToCliArg (TxOutRef (TxId tId) txIx) =
-  encodeByteString (fromBuiltin tId) <> "#" <> showText txIx
+  encodeByteString (fromBuiltin tId) <> "#" <> show txIx
 
 flatValueToCliArg :: (CurrencySymbol, TokenName, Integer) -> Text
 flatValueToCliArg (curSymbol, name, amount)
@@ -345,7 +336,7 @@ flatValueToCliArg (curSymbol, name, amount)
   | Text.null tokenNameStr = amountStr <> " " <> curSymbolStr
   | otherwise = amountStr <> " " <> curSymbolStr <> "." <> tokenNameStr
   where
-    amountStr = showText amount
+    amountStr = show amount
     curSymbolStr = encodeByteString $ fromBuiltin $ unCurrencySymbol curSymbol
     tokenNameStr = decodeUtf8 $ hex $ fromBuiltin $ unTokenName name
 
@@ -361,10 +352,7 @@ unsafeSerialiseAddress network address =
 
 exBudgetToCliArg :: ExBudget -> Text
 exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
-  "(" <> showText steps <> "," <> showText memory <> ")"
-
-showText :: forall (a :: Type). Show a => a -> Text
-showText = Text.pack . show
+  "(" <> show steps <> "," <> show memory <> ")"
 
 -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
 -- metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]

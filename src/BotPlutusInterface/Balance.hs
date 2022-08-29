@@ -36,21 +36,14 @@ import BotPlutusInterface.Types (
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Lens (folded, to, (^..))
-import Control.Monad (foldM, void)
+import Control.Monad (foldM)
 import Control.Monad.Freer (Eff, Member)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (EitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (EitherT, firstEitherT, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
-import Data.Bifunctor (bimap)
-import Data.Coerce (coerce)
-import Data.Kind (Type)
 import Data.List qualified as List
-import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set qualified as Set
-import Data.Text (Text)
-import Data.Text qualified as Text
+import Data.Text (unpack)
 import GHC.Real (Ratio ((:%)))
 import Ledger qualified
 import Ledger.Ada qualified as Ada
@@ -80,7 +73,7 @@ import Plutus.V1.Ledger.Api (
   TokenName (..),
  )
 import Prettyprinter (pretty, viaShow, (<+>))
-import Prelude
+import Relude
 
 -- Config for balancing a `Tx`.
 data BalanceConfig = BalanceConfig
@@ -139,7 +132,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
-      lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
+      lift $ createDirectoryIfMissingCLI @w False (unpack "pcTxFileDir")
 
       tx <-
         newEitherT $
@@ -237,7 +230,7 @@ utxosAndCollateralAtAddress ::
   Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
 utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
   runEitherT $ do
-    utxos <- firstEitherT (Text.pack . show) $ newEitherT $ queryNode @w (UtxosAt changeAddr)
+    utxos <- firstEitherT show $ newEitherT $ queryNode @w (UtxosAt changeAddr)
     inMemCollateral <- lift $ getInMemCollateral @w
 
     -- check if `bcHasScripts` is true, if this is the case then we search of
@@ -379,7 +372,7 @@ handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
           }
 
   newOutputWithMinAmt <-
-    firstEitherT (Text.pack . show) $
+    firstEitherT show $
       newEitherT $
         queryNode @w (MinUtxo newOutput)
 
@@ -440,7 +433,7 @@ addOutput changeAddr tx =
             }
 
     changeTxOutWithMinAmt <-
-      firstEitherT (Text.pack . show) $
+      firstEitherT show $
         newEitherT $
           queryNode @w (MinUtxo changeTxOut)
 
@@ -470,7 +463,7 @@ addValidRange _ (Left _) = pure $ Left "BPI is not using CardanoBuildTx"
 addValidRange timeRange (Right tx) =
   if validateRange timeRange
     then
-      bimap (Text.pack . show) (setRange tx)
+      bimap show (setRange tx)
         <$> posixTimeRangeToContainedSlotRange @w timeRange
     else pure $ Left "Invalid validity interval."
   where

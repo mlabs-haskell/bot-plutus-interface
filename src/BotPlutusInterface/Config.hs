@@ -22,6 +22,7 @@ import BotPlutusInterface.Types (
   TxStatusPolling (TxStatusPolling, spBlocksTimeOut, spInterval),
  )
 
+import Data.Text qualified as Text
 import Cardano.Api (NetworkId (Mainnet, Testnet), unNetworkMagic)
 import Config (Section (Section), Value (Atom, Sections, Text))
 import Config.Schema (
@@ -36,9 +37,6 @@ import Config.Schema (
   (<!>),
  )
 import Data.Default (def)
-import Data.String.ToString (toString)
-import Data.Text (Text)
-import Data.Text qualified as Text
 import PlutusConfig.Base (
   customRationalSpec,
   enumToAtom,
@@ -58,7 +56,7 @@ import PlutusConfig.Types (
   serialize,
   withNamePrefixSpec,
  )
-import Prelude
+import Relude
 
 instance ToValue CLILocation where
   toValue Local = Atom () "local"
@@ -322,7 +320,7 @@ loadPABConfig fn = do
 
 networkArg :: NetworkId -> [Text]
 networkArg Mainnet = ["--mainnet"]
-networkArg (Testnet magic) = ["--testnet-magic", Text.pack $ show $ unNetworkMagic magic]
+networkArg (Testnet magic) = ["--testnet-magic", show $ unNetworkMagic magic]
 
 {- |Save 'PABConfig'.
 
