@@ -31,6 +31,7 @@ module Spec.MockContract (
   pkhAddr1,
   pkhAddr2,
   pkhAddr3,
+  currencySymbol1,
   -- Test interpreter
   runPABEffectPure,
   runContractPure,
@@ -173,6 +174,9 @@ import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
+
+currencySymbol1 :: Ledger.CurrencySymbol
+currencySymbol1 = "363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f"
 
 signingKey1, signingKey2, signingKey3 :: SigningKey PaymentKey
 signingKey1 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 0

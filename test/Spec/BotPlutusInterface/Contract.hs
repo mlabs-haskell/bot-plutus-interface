@@ -61,6 +61,7 @@ import Spec.MockContract (
   addr1,
   addr2,
   commandHistory,
+  currencySymbol1,
   files,
   observableState,
   paymentPkh2,
@@ -354,12 +355,12 @@ sendTokens = do
       txOut1 =
         PublicKeyChainIndexTxOut
           pkhAddr1
-          (Ada.lovelaceValueOf 1350 <> Value.singleton "abcd1234" "testToken" 100)
+          (Ada.adaValueOf 50 <> Value.singleton currencySymbol1 "testToken" 100)
           Nothing
           Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
-        PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing Nothing
+        PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef1
 
@@ -368,8 +369,11 @@ sendTokens = do
         let constraints =
               Constraints.mustPayToPubKey
                 paymentPkh2
-                (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
+                (Ada.lovelaceValueOf 1000 <> Value.singleton currencySymbol1 "testToken" 5)
         Plutus.Contract.submitTx constraints
+
+      curSymbol' :: Text
+      curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol currencySymbol1
 
   assertContract contract initState $ \state ->
     assertCommandHistory
@@ -379,8 +383,8 @@ sendTokens = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId1}#0
-          --tx-out ${addr2}+1000 + 5 abcd1234.74657374546F6B656E
-          --tx-out ${addr1}+50 + 95 abcd1234.74657374546F6B656E
+          --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
+          --tx-out ${addr1}+49998700 + 95 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -392,10 +396,10 @@ sendTokensWithoutName :: Assertion
 sendTokensWithoutName = do
   let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
       txOut1 =
-        PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350 <> Value.singleton "abcd1234" "" 100) Nothing Nothing
+        PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50 <> Value.singleton currencySymbol1 "" 100) Nothing Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
-        PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1250) Nothing Nothing
+        PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef1
 
@@ -404,8 +408,11 @@ sendTokensWithoutName = do
         let constraints =
               Constraints.mustPayToPubKey
                 paymentPkh2
-                (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "" 5)
+                (Ada.lovelaceValueOf 1000 <> Value.singleton currencySymbol1 "" 5)
         Plutus.Contract.submitTx constraints
+
+      curSymbol' :: Text
+      curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol currencySymbol1
 
   assertContract contract initState $ \state ->
     assertCommandHistory
@@ -415,8 +422,8 @@ sendTokensWithoutName = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId1}#0
-          --tx-out ${addr2}+1000 + 5 abcd1234
-          --tx-out ${addr1}+50 + 95 abcd1234
+          --tx-out ${addr2}+1000 + 5 ${curSymbol'}
+          --tx-out ${addr1}+49998700 + 95 ${curSymbol'}
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -433,9 +440,7 @@ mintTokens = do
       collateralTxId = encodeByteString $ fromBuiltin $ Tx.getTxId theCollateralTxId
 
       mintingPolicy :: Scripts.MintingPolicy
-      mintingPolicy =
-        Scripts.mkMintingPolicyScript
-          $$(PlutusTx.compile [||(\_ _ -> ())||])
+      mintingPolicy = Scripts.mkMintingPolicyScript $$(PlutusTx.compile [||(\_ _ -> ())||])
 
       curSymbol :: Ledger.CurrencySymbol
       curSymbol = Ledger.scriptCurrencySymbol mintingPolicy

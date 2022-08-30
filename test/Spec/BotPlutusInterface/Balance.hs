@@ -15,7 +15,7 @@ import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
 import Ledger.Value qualified as Value
-import Spec.MockContract (runPABEffectPure)
+import Spec.MockContract (currencySymbol1, runPABEffectPure)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
 import Prelude
@@ -56,7 +56,7 @@ utxo1, utxo2, utxo3, utxo4 :: (TxOutRef, TxOut)
 utxo1 = (txOutRef1, TxOut addr1 (Ada.lovelaceValueOf 1_100_000) Nothing)
 utxo2 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 1_000_000) Nothing)
 utxo3 = (txOutRef3, TxOut addr1 (Ada.lovelaceValueOf 900_000) Nothing)
-utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton "11223344" "Token" 200) Nothing)
+utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton currencySymbol1 "Token" 200) Nothing)
 
 addUtxosForFees :: Assertion
 addUtxosForFees = do
@@ -83,7 +83,7 @@ addUtxosForNativeTokens = do
        to `txout` Value aims to simulate result of `adjustUnbalancedTx` call.
        Note that 1 Ada is test value - real amount is determined by Ledger and can vary.
       -}
-      txout = TxOut addr2 (Value.singleton "11223344" "Token" 123 <> minimumAdaRequired) Nothing
+      txout = TxOut addr2 (Value.singleton currencySymbol1 "Token" 123 <> minimumAdaRequired) Nothing
       tx = mempty {txOutputs = [txout]} `withFee` 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       ownAddr = addr1
