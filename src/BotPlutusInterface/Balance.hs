@@ -36,7 +36,7 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
-import Control.Lens (folded, to, (^..))
+import Control.Lens (folded, to, (&), (.~), (^.), (^..))
 import Control.Monad (foldM, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
@@ -81,6 +81,7 @@ import Plutus.V1.Ledger.Api (
   TokenName (..),
  )
 
+import Ledger.Constraints.OffChain qualified as Constraints
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
@@ -120,13 +121,12 @@ balanceTxIO' ::
 balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
   runEitherT $
     do
-      -- TODO: add this later after fixing the tests.
-      -- updatedOuts <-
-      --   firstEitherT (Text.pack . show) $
-      --     newEitherT $
-      --       sequence <$> traverse (minUtxo @w) (unbalancedTx' ^. Constraints.tx . Tx.outputs)
+      updatedOuts <-
+        firstEitherT (Text.pack . show) $
+          newEitherT $
+            sequence <$> traverse (minUtxo @w) (unbalancedTx' ^. Constraints.tx . Tx.outputs)
 
-      let unbalancedTx = unbalancedTx'
+      let unbalancedTx = unbalancedTx' & (Constraints.tx . Tx.outputs .~ updatedOuts)
 
       (utxos, mcollateral) <-
         newEitherT $

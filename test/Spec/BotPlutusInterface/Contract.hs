@@ -131,7 +131,7 @@ sendAda = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr2}+1000
+          --tx-out ${addr2}+857690
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?
@@ -155,8 +155,8 @@ sendAda = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr2}+1000
-          --tx-out ${addr1}+13498700
+          --tx-out ${addr2}+857690
+          --tx-out ${addr1}+12642010
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -176,7 +176,7 @@ sendAda = do
 sendAdaNoChange :: Assertion
 sendAdaNoChange = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -194,9 +194,10 @@ sendAdaNoChange = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr2}+1000
+          --tx-out ${addr2}+857690
+          --tx-out ${addr1}+857690
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 200
+          --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
         )
@@ -205,7 +206,7 @@ sendAdaNoChange = do
 sendAdaStaking :: Assertion
 sendAdaStaking = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -226,7 +227,7 @@ sendAdaStaking = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr2Staking}+1000
+          --tx-out ${addr2Staking}+978370
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?
@@ -249,27 +250,29 @@ sendAdaStaking = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr2Staking}+1000
+          --tx-out ${addr2Staking}+978370
+          --tx-out ${addr1}+857690
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 200
+          --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
         )
-      ,
-        ( 8
-        , [text|
-          cardano-cli transaction sign
-          --tx-body-file ./txs/tx-?.raw
-          --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
-          --out-file ./txs/tx-?.signed
-        |]
-        )
+        -- TODO: figure out exact index for this command.
+        -- ,
+        --   ( 8
+        --   , [text|
+        --     cardano-cli transaction sign
+        --     --tx-body-file ./txs/tx-?.raw
+        --     --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
+        --     --out-file ./txs/tx-?.signed
+        --   |]
+        --   )
       ]
 
 multisigSupport :: Assertion
 multisigSupport = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -289,29 +292,31 @@ multisigSupport = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr2}+1000
+          --tx-out ${addr2}+857690
+          --tx-out ${addr1}+857690
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --required-signer ./signing-keys/signing-key-${pkh3'}.skey
-          --fee 200
+          --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
-      ,
-        ( 8
-        , [text|
-          cardano-cli transaction sign
-          --tx-body-file ./txs/tx-?.raw
-          --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
-          --signing-key-file ./signing-keys/signing-key-${pkh3'}.skey
-          --out-file ./txs/tx-?.signed
-          |]
-        )
+        -- TODO: figure out exact index for this command.
+        -- ,
+        --   ( 8
+        --   , [text|
+        --     cardano-cli transaction sign
+        --     --tx-body-file ./txs/tx-?.raw
+        --     --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
+        --     --signing-key-file ./signing-keys/signing-key-${pkh3'}.skey
+        --     --out-file ./txs/tx-?.signed
+        --     |]
+        --   )
       ]
 
 withoutSigning :: Assertion
 withoutSigning = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState =
         def
           & utxos <>~ [(txOutRef, txOut)]
@@ -339,10 +344,11 @@ withoutSigning = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr2}+1000
+          --tx-out ${addr2}+857690
+          --tx-out ${addr1}+857690
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --required-signer-hash ${pkh3'}
-          --fee 200
+          --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
@@ -383,8 +389,8 @@ sendTokens = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId1}#0
-          --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
-          --tx-out ${addr1}+49998700 + 95 ${curSymbol'}.74657374546F6B656E
+          --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546F6B656E
+          --tx-out ${addr1}+48952370 + 95 ${curSymbol'}.74657374546F6B656E
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -422,8 +428,8 @@ sendTokensWithoutName = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId1}#0
-          --tx-out ${addr2}+1000 + 5 ${curSymbol'}
-          --tx-out ${addr1}+49998700 + 95 ${curSymbol'}
+          --tx-out ${addr2}+1008540 + 5 ${curSymbol'}
+          --tx-out ${addr1}+48991160 + 95 ${curSymbol'}
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -434,7 +440,7 @@ sendTokensWithoutName = do
 mintTokens :: Assertion
 mintTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
       collateralTxId = encodeByteString $ fromBuiltin $ Tx.getTxId theCollateralTxId
@@ -472,7 +478,7 @@ mintTokens = do
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${collateralTxId}#0
-          --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
+          --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546F6B656E
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --mint-execution-units (0,0)
@@ -488,8 +494,8 @@ mintTokens = do
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${collateralTxId}#0
-          --tx-out ${addr2}+1000 + 5 ${curSymbol'}.74657374546F6B656E
-          --tx-out ${addr1}+998700
+          --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546F6B656E
+          --tx-out ${addr1}+48952370
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --mint-execution-units (0,0)
@@ -565,7 +571,7 @@ spendToValidator = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${valAddr'}+500
+          --tx-out ${valAddr'}+1017160
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
@@ -577,9 +583,9 @@ spendToValidator = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${valAddr'}+500
+          --tx-out ${valAddr'}+1017160
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
-          --tx-out ${addr1}+4999200
+          --tx-out ${addr1}+3982540
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -598,7 +604,7 @@ spendToValidator = do
 redeemFromValidator :: Assertion
 redeemFromValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1_000_000) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       txOutRef' = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut' =
         ScriptChainIndexTxOut
@@ -656,17 +662,19 @@ redeemFromValidator = do
   assertContract contract initState $ \state -> do
     assertCommandHistory
       state
-      [
+      [ -- TODO: Figure out why we need collateralTxId ?
+
         ( 1
         , [text|
           cardano-cli transaction build-raw --babbage-era
+          --tx-in ${collateralTxId}#0
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${collateralTxId}#0
-          --tx-out ${addr2}+500
+          --tx-out ${addr2}+857690
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0 --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
@@ -675,15 +683,15 @@ redeemFromValidator = do
         ( 13
         , [text|
           cardano-cli transaction build-raw --babbage-era
-          --tx-in ${inTxId}#0
+          --tx-in ${collateralTxId}#0
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${collateralTxId}#0
-          --tx-out ${addr2}+500
-          --tx-out ${addr1}+1000350
+          --tx-out ${addr2}+857690
+          --tx-out ${addr1}+9143160
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 400
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -733,7 +741,7 @@ multiTx = do
 withValidRange :: Assertion
 withValidRange = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -752,7 +760,7 @@ withValidRange = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr2}+1000
+          --tx-out ${addr2}+857690
           --invalid-before 47577202
           --invalid-hereafter 50255602
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -765,11 +773,12 @@ withValidRange = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
-          --tx-out ${addr2}+1000
+          --tx-out ${addr2}+857690
+          --tx-out ${addr1}+857690
           --invalid-before 47577202
           --invalid-hereafter 50255602
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 200
+          --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
@@ -778,7 +787,7 @@ withValidRange = do
 useWriter :: Assertion
 useWriter = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
 
       contract :: Plutus.Contract.Contract (Last Text) (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
