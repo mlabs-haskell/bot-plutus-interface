@@ -110,17 +110,17 @@ tests =
 sendAda :: Assertion
 sendAda = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 13500000) Nothing Nothing
 
       -- We append the new utxo with the already present collateral utxo present at `pkhAddr1`.
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
-        submitTx constraints
+        Plutus.Contract.submitTx constraints
 
   assertContract contract initState $ \state ->
     assertCommandHistory
@@ -155,7 +155,7 @@ sendAda = do
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-out ${addr2}+1000
-          --tx-out ${addr1}+50
+          --tx-out ${addr1}+13498700
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -179,11 +179,11 @@ sendAdaNoChange = do
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
-        submitTx constraints
+        Plutus.Contract.submitTx constraints
 
   assertContract contract initState $ \state ->
     assertCommandHistory
@@ -211,11 +211,11 @@ sendAdaStaking = do
       stakePkh3 = Address.StakePubKeyHash pkh3
       addr2Staking = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 (Just stakePkh3))
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKeyAddress paymentPkh2 stakePkh3 (Ada.lovelaceValueOf 1000)
-        submitTx constraints
+        Plutus.Contract.submitTx constraints
 
   assertContract contract initState $ \state ->
     assertCommandHistory
@@ -272,12 +272,12 @@ multisigSupport = do
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract Text (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract Text (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
                 <> Constraints.mustBeSignedBy paymentPkh3
-        submitTx constraints
+        Plutus.Contract.submitTx constraints
 
   -- Building and siging the tx should include both signing keys
   assertContract contract initState $ \state ->
@@ -322,12 +322,12 @@ withoutSigning = do
               ]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract Text (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract Text (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
                 <> Constraints.mustBeSignedBy paymentPkh3
-        submitTx constraints
+        Plutus.Contract.submitTx constraints
 
   -- Building and siging the tx should include both signing keys
   assertContract contract initState $ \state -> do
@@ -363,13 +363,13 @@ sendTokens = do
       initState = def & utxos <>~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef1
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
                 paymentPkh2
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "testToken" 5)
-        submitTx constraints
+        Plutus.Contract.submitTx constraints
 
   assertContract contract initState $ \state ->
     assertCommandHistory
@@ -399,13 +399,13 @@ sendTokensWithoutName = do
       initState = def & utxos <>~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef1
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey
                 paymentPkh2
                 (Ada.lovelaceValueOf 1000 <> Value.singleton "abcd1234" "" 5)
-        submitTx constraints
+        Plutus.Contract.submitTx constraints
 
   assertContract contract initState $ \state ->
     assertCommandHistory
@@ -447,7 +447,7 @@ mintTokens = do
         let (Scripts.RedeemerHash rh) = ScriptUtils.redeemerHash Scripts.unitRedeemer
          in encodeByteString $ fromBuiltin rh
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let lookups =
               Constraints.plutusV1MintingPolicy mintingPolicy
@@ -456,7 +456,7 @@ mintTokens = do
                 <> Constraints.mustPayToPubKey
                   paymentPkh2
                   (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
-        submitTxConstraintsWith @Void lookups constraints
+        Plutus.Contract.submitTxConstraintsWith @Void lookups constraints
 
   assertContract contract initState $ \state -> do
     assertCommandHistory
@@ -508,7 +508,7 @@ mintTokens = do
 spendToValidator :: Assertion
 spendToValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1000) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 5) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -541,16 +541,16 @@ spendToValidator = do
         let (Scripts.DatumHash dh) = datumHash
          in encodeByteString $ fromBuiltin dh
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
-        utxos' <- utxosAt valAddr
+        utxos' <- Plutus.Contract.utxosAt valAddr
         let lookups =
               Constraints.plutusV1OtherScript validator
                 <> Constraints.otherData datum
                 <> Constraints.unspentOutputs utxos'
         let constraints =
               Constraints.mustPayToOtherScript valHash datum (Ada.lovelaceValueOf 500)
-        submitTxConstraintsWith @Void lookups constraints
+        Plutus.Contract.submitTxConstraintsWith @Void lookups constraints
 
   assertContract contract initState $ \state -> do
     assertCommandHistory
@@ -574,7 +574,7 @@ spendToValidator = do
           --tx-in ${inTxId}#0
           --tx-out ${valAddr'}+500
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
-          --tx-out ${addr1}+200
+          --tx-out ${addr1}+4999200
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -636,9 +636,9 @@ redeemFromValidator = do
         let (Scripts.RedeemerHash rh) = ScriptUtils.redeemerHash Scripts.unitRedeemer
          in encodeByteString $ fromBuiltin rh
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
-        utxos' <- utxosAt valAddr
+        utxos' <- Plutus.Contract.utxosAt valAddr
         let lookups =
               Constraints.plutusV1OtherScript validator
                 <> Constraints.otherData datum
@@ -646,7 +646,7 @@ redeemFromValidator = do
         let constraints =
               Constraints.mustSpendScriptOutput txOutRef' Scripts.unitRedeemer
                 <> Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 500)
-        submitTxConstraintsWith @Void lookups constraints
+        Plutus.Contract.submitTxConstraintsWith @Void lookups constraints
 
   assertContract contract initState $ \state -> do
     assertCommandHistory
@@ -670,6 +670,7 @@ redeemFromValidator = do
         ( 13
         , [text|
           cardano-cli transaction build-raw --babbage-era
+          --tx-in ${inTxId}#0
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
@@ -677,9 +678,9 @@ redeemFromValidator = do
           --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+500
-          --tx-out ${addr1}+450
+          --tx-out ${addr1}+1000350
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --fee 300
+          --fee 400
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
@@ -698,15 +699,15 @@ redeemFromValidator = do
 multiTx :: Assertion
 multiTx = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing Nothing
+      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text [CardanoTx]
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text [CardanoTx]
       contract = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 . Ada.lovelaceValueOf
-        tx1 <- submitTx $ constraints 1000
-        tx2 <- submitTx $ constraints 850
+        tx1 <- Plutus.Contract.submitTx $ constraints 1000
+        tx2 <- Plutus.Contract.submitTx $ constraints 850
 
         pure [tx1, tx2]
 
@@ -731,12 +732,12 @@ withValidRange = do
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
                 <> Constraints.mustValidateIn (interval (POSIXTime 1643636293000) (POSIXTime 1646314693000))
-        submitTx constraints
+        Plutus.Contract.submitTx constraints
 
   assertContract contract initState $ \state ->
     assertCommandHistory
@@ -775,12 +776,12 @@ useWriter = do
       txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1200) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
 
-      contract :: Contract (Last Text) (Endpoint "SendAda" ()) Text CardanoTx
+      contract :: Plutus.Contract.Contract (Last Text) (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
-        tell $ Last $ Just "Init contract"
+        Plutus.Contract.tell $ Last $ Just "Init contract"
         let constraints =
               Constraints.mustPayToPubKey paymentPkh2 (Ada.lovelaceValueOf 1000)
-        submitTx constraints
+        Plutus.Contract.submitTx constraints
 
   assertContract contract initState $ \state -> do
     (state ^. observableState)
@@ -792,8 +793,8 @@ waitNextBlock = do
       initTip = Tip initSlot (BlockId "ab12") 4
       initState = def & tip .~ initTip
 
-      contract :: Contract () (Endpoint "SendAda" ()) Text Slot
-      contract = waitNSlots 1
+      contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text Slot
+      contract = Plutus.Contract.waitNSlots 1
 
       (result, state) = runContractPure contract initState
 
@@ -826,7 +827,7 @@ assertFiles state expectedFiles =
 assertContractWithTxId ::
   forall (w :: Type) (s :: Row Type).
   (ToJSON w, Monoid w) =>
-  Contract w s Text CardanoTx ->
+  Plutus.Contract.Contract w s Text CardanoTx ->
   MockContractState w ->
   (MockContractState w -> Text -> Assertion) ->
   Assertion
@@ -842,7 +843,7 @@ assertContractWithTxId contract initState assertion = do
 assertContract ::
   forall (w :: Type) (s :: Row Type).
   (ToJSON w, Monoid w) =>
-  Contract w s Text CardanoTx ->
+  Plutus.Contract.Contract w s Text CardanoTx ->
   MockContractState w ->
   (MockContractState w -> Assertion) ->
   Assertion

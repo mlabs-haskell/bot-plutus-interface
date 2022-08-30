@@ -13,13 +13,14 @@ module BotPlutusInterface.Balance (
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (MinUtxo, UtxosAt))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import BotPlutusInterface.CoinSelection (selectTxIns)
 import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissingCLI,
   getInMemCollateral,
+  minUtxo,
   posixTimeRangeToContainedSlotRange,
   printBpiLog,
   queryNode,
@@ -79,6 +80,7 @@ import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   TokenName (..),
  )
+
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
@@ -115,9 +117,17 @@ balanceTxIO' ::
   PubKeyHash ->
   UnbalancedTx ->
   Eff effs (Either Text Tx)
-balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
+balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
   runEitherT $
     do
+      -- TODO: add this later after fixing the tests.
+      -- updatedOuts <-
+      --   firstEitherT (Text.pack . show) $
+      --     newEitherT $
+      --       sequence <$> traverse (minUtxo @w) (unbalancedTx' ^. Constraints.tx . Tx.outputs)
+
+      let unbalancedTx = unbalancedTx'
+
       (utxos, mcollateral) <-
         newEitherT $
           utxosAndCollateralAtAddress
@@ -374,14 +384,13 @@ handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
       newOutput =
         TxOut
           { txOutAddress = changeAddr
-          , txOutValue = nonAdaChange
+          , txOutValue = nonAdaChange <> Ada.lovelaceValueOf 1
           , txOutDatumHash = Nothing
           }
 
   newOutputWithMinAmt <-
     firstEitherT (Text.pack . show) $
-      newEitherT $
-        queryNode @w (MinUtxo newOutput)
+      newEitherT $ minUtxo @w newOutput
 
   let outputs :: [TxOut]
       outputs =
@@ -442,7 +451,7 @@ addOutput changeAddr tx =
     changeTxOutWithMinAmt <-
       firstEitherT (Text.pack . show) $
         newEitherT $
-          queryNode @w (MinUtxo changeTxOut)
+          minUtxo @w changeTxOut
 
     return $ tx {txOutputs = txOutputs tx ++ [changeTxOutWithMinAmt]}
 

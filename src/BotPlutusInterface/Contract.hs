@@ -7,7 +7,7 @@ module BotPlutusInterface.Contract (runContract, handleContract) where
 import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (MinUtxo, UtxosAt))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.Effects (
   PABEffect,
@@ -19,6 +19,7 @@ import BotPlutusInterface.Effects (
   handleContractLog,
   handlePABEffect,
   logToContract,
+  minUtxo,
   posixTimeRangeToContainedSlotRange,
   posixTimeToSlot,
   printBpiLog,
@@ -246,11 +247,10 @@ adjustUnbalancedTx' ::
   UnbalancedTx ->
   Eff effs (Either Tx.ToCardanoError UnbalancedTx)
 adjustUnbalancedTx' unbalancedTx = runEitherT $ do
-  -- traverse (queryNode . MinUtxo)
   updatedOuts <-
     firstEitherT (Tx.TxBodyError . show) $
       newEitherT $
-        sequence <$> traverse (queryNode @w . MinUtxo) (unbalancedTx ^. tx . outputs)
+        sequence <$> traverse (minUtxo @w) (unbalancedTx ^. tx . outputs)
 
   return $ unbalancedTx & (tx . outputs .~ updatedOuts)
 

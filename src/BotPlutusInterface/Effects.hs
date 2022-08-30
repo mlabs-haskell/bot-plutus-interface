@@ -31,6 +31,8 @@ module BotPlutusInterface.Effects (
   getInMemCollateral,
   setInMemCollateral,
   queryNode,
+  minUtxo,
+  calcMinUtxo,
 ) where
 
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery, runNodeQuery)
@@ -42,13 +44,14 @@ import BotPlutusInterface.Types (
   BudgetEstimationError,
   CLILocation (..),
   CollateralUtxo,
-  ContractEnvironment,
+  ContractEnvironment (..),
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
   LogLine (..),
   LogType (..),
   LogsList (LogsList),
+  PABConfig (..),
   TxBudget,
   TxFile,
   addBudget,
@@ -56,6 +59,12 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
 import Cardano.Api qualified
+import Cardano.Api qualified as CApi
+import Cardano.Api.Shelley qualified as CApi.S
+import Cardano.Ledger.Shelley.API.Wallet (
+  CLI (evaluateMinLovelaceOutput),
+ )
+import Cardano.Prelude (maybeToEither)
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM (TVar, atomically, modifyTVar, modifyTVar')
 import Control.Lens ((^.))
@@ -68,12 +77,16 @@ import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
+import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
 import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger qualified
+import Ledger.Ada qualified as Ada
+import Ledger.Tx.CardanoAPI qualified as TxApi
+import Ledger.Validation (Coin (Coin))
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
@@ -131,6 +144,7 @@ data PABEffect (w :: Type) (r :: Type) where
     PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
   GetInMemCollateral :: PABEffect w (Maybe CollateralUtxo)
   SetInMemCollateral :: CollateralUtxo -> PABEffect w ()
+  MinUtxo :: Ledger.TxOut -> PABEffect w (Either Text Ledger.TxOut)
 
 handlePABEffect ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -193,6 +207,7 @@ handlePABEffect contractEnv =
           TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
         GetInMemCollateral -> Collateral.getInMemCollateral contractEnv
         SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
+        MinUtxo utxo -> return $ calcMinUtxo contractEnv.cePABConfig utxo
     )
 
 printLog' :: LogLevel -> LogLine -> IO ()
@@ -264,6 +279,27 @@ saveBudgetImpl :: ContractEnvironment w -> Ledger.TxId -> TxBudget -> IO ()
 saveBudgetImpl contractEnv txId budget =
   atomically $
     modifyTVar' contractEnv.ceContractStats (addBudget txId budget)
+
+calcMinUtxo :: PABConfig -> Ledger.TxOut -> Either Text Ledger.TxOut
+calcMinUtxo pabconf txout = do
+  params <- maybeToEither "Expected protocol parameters." $ pcProtocolParams pabconf
+
+  let pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage params
+      netId = pcNetwork pabconf
+
+  ctxout <-
+    mapLeft (Text.pack . show) $
+      TxApi.toCardanoTxOut netId TxApi.toCardanoTxOutDatumHash txout
+
+  let (Coin minTxOut) =
+        evaluateMinLovelaceOutput pparamsInEra $
+          CApi.S.toShelleyTxOut CApi.ShelleyBasedEraBabbage ctxout
+
+      missingLovelace = Ada.lovelaceOf minTxOut - Ada.fromValue (Ledger.txOutValue txout)
+
+  if missingLovelace > 0
+    then calcMinUtxo pabconf (txout {Ledger.txOutValue = Ledger.txOutValue txout <> Ada.toValue missingLovelace})
+    else return txout
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@
@@ -430,3 +466,10 @@ queryNode ::
   NodeQuery a ->
   Eff effs a
 queryNode = send @(PABEffect w) . QueryNode
+
+minUtxo ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.TxOut ->
+  Eff effs (Either Text Ledger.TxOut)
+minUtxo = send @(PABEffect w) . MinUtxo

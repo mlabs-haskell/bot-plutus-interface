@@ -53,11 +53,11 @@ module Spec.MockContract (
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (MinUtxo, PParams, UtxosAt))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt))
 import BotPlutusInterface.CardanoNode.Query (toQueryError)
 import BotPlutusInterface.Collateral (removeCollateralFromPage)
 import BotPlutusInterface.Contract (handleContract)
-import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
+import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
@@ -113,7 +113,6 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.ByteString.Short qualified as SBS
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight, mapLeft)
-import Data.Either.Extra (maybeToEither)
 import Data.Hex (hex, unhex)
 import Data.Kind (Type)
 import Data.List (isPrefixOf, sortOn)
@@ -375,17 +374,10 @@ runPABEffectPure initState req =
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
     go GetInMemCollateral = _collateralUtxo <$> get @(MockContractState w)
     go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
-    -- FIXME: These tests are temporary, a proper method is required to tests `NodeQuery` effect.
-    go (QueryNode (UtxosAt _addr)) = do
-      state <- get @(MockContractState w)
-      return $ Right $ Map.fromList (state ^. utxos)
-    go (QueryNode (MinUtxo utxo)) = return $ Right utxo
-    go (QueryNode PParams) =
-      maybeToEither (toQueryError @String "Not able to get ProtocolParameters.")
-        . pcProtocolParams
-        . cePABConfig
-        . _contractEnv
-        <$> get @(MockContractState w)
+    go (QueryNode query) = mockQueryNode query
+    go (MinUtxo utxo) =
+      return $
+        calcMinUtxo (def {pcProtocolParams = Just def}) utxo
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -801,3 +793,17 @@ mockSlotRange =
       slotRange
   where
     slotRange = Interval (lowerBound 47577202) (strictUpperBound 50255602)
+
+mockQueryNode ::
+  forall (w :: Type) (a :: Type).
+  NodeQuery a ->
+  MockContract w a
+mockQueryNode (UtxosAt _addr) = do
+  state <- get @(MockContractState w)
+  return $ Right $ Map.fromList (state ^. utxos)
+mockQueryNode PParams = do
+  state <- get @(MockContractState w)
+
+  case pcProtocolParams $ cePABConfig $ _contractEnv state of
+    Nothing -> return $ Left $ toQueryError @String "Not able to get protocol parameters."
+    (Just pparams) -> return $ Right pparams
