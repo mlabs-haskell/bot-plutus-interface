@@ -108,7 +108,7 @@ handleUtxosAt addr = runEitherT $ do
 
   return $ Map.fromList $ zip txOutRefs chainIndexTxOuts
 
--- | 'runNodeQuery' runs executes the 'NodeQuery' effects. 
+-- | 'runNodeQuery' runs executes the 'NodeQuery' effects.
 runNodeQuery :: PABConfig -> Eff '[NodeQuery, Reader NodeConn, IO] ~> IO
 runNodeQuery conf effs = do
   conn <- connectionInfo conf
