@@ -48,8 +48,13 @@ import Ledger.Tx.CardanoAPI qualified as TxApi
 import Plutus.V2.Ledger.Tx qualified as V2
 import Prelude
 
+{- | 'NodeQuery' effect is used to query local node,
+     this is achieved by using 'Cardano.Api'.
+-}
 data NodeQuery a where
+  -- | 'UtxosAt' queries local node to get all the utxos at particular address.
   UtxosAt :: Address -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
+  -- | 'PParams' queries local node to get it's 'ProtocolParameters'.
   PParams :: NodeQuery (Either NodeQueryError CApi.S.ProtocolParameters)
 
 utxosAt ::
@@ -103,6 +108,7 @@ handleUtxosAt addr = runEitherT $ do
 
   return $ Map.fromList $ zip txOutRefs chainIndexTxOuts
 
+-- | 'runNodeQuery' runs executes the 'NodeQuery' effects. 
 runNodeQuery :: PABConfig -> Eff '[NodeQuery, Reader NodeConn, IO] ~> IO
 runNodeQuery conf effs = do
   conn <- connectionInfo conf
