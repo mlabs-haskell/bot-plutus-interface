@@ -112,7 +112,7 @@
     };
     plutus-apps = {
       url =
-        "github:mlabs-haskell/plutus-apps?rev=786007063c178834b670b965f31f10dc46734d54";
+        "github:mlabs-haskell/plutus-apps?rev=07240ec73dc28909cf3ce03bf3337e7a32eed03c";
       flake = false;
     };
     purescript-bridge = {
