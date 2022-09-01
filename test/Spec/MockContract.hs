@@ -723,7 +723,6 @@ converCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
 
 convertMaybeDatum :: Maybe (DatumHash, Maybe Datum) -> OutputDatum
 convertMaybeDatum = \case
-  -- FIXME" tmp implementation, check if something exists already for such conversion
   Nothing -> NoOutputDatum
   Just (dh, Nothing) -> OutputDatumHash dh
   Just (_dh, Just d) -> OutputDatum d

@@ -257,16 +257,15 @@ sendAdaStaking = do
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
         )
-        -- TODO: figure out exact index for this command.
-        -- ,
-        --   ( 8
-        --   , [text|
-        --     cardano-cli transaction sign
-        --     --tx-body-file ./txs/tx-?.raw
-        --     --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
-        --     --out-file ./txs/tx-?.signed
-        --   |]
-        --   )
+      ,
+        ( 14
+        , [text|
+            cardano-cli transaction sign
+            --tx-body-file ./txs/tx-?.raw
+            --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
+            --out-file ./txs/tx-?.signed
+          |]
+        )
       ]
 
 multisigSupport :: Assertion
@@ -300,17 +299,16 @@ multisigSupport = do
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
         )
-        -- TODO: figure out exact index for this command.
-        -- ,
-        --   ( 8
-        --   , [text|
-        --     cardano-cli transaction sign
-        --     --tx-body-file ./txs/tx-?.raw
-        --     --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
-        --     --signing-key-file ./signing-keys/signing-key-${pkh3'}.skey
-        --     --out-file ./txs/tx-?.signed
-        --     |]
-        --   )
+      ,
+        ( 14
+        , [text|
+            cardano-cli transaction sign
+            --tx-body-file ./txs/tx-?.raw
+            --signing-key-file ./signing-keys/signing-key-${pkh1'}.skey
+            --signing-key-file ./signing-keys/signing-key-${pkh3'}.skey
+            --out-file ./txs/tx-?.signed
+            |]
+        )
       ]
 
 withoutSigning :: Assertion
@@ -662,8 +660,7 @@ redeemFromValidator = do
   assertContract contract initState $ \state -> do
     assertCommandHistory
       state
-      [ -- TODO: Figure out why we need collateralTxId ?
-
+      [
         ( 1
         , [text|
           cardano-cli transaction build-raw --babbage-era

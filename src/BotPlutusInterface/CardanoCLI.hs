@@ -34,7 +34,11 @@ import BotPlutusInterface.Types (
   spendBudgets,
  )
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
-import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
+import Cardano.Api.Shelley (
+  NetworkId (Mainnet, Testnet),
+  NetworkMagic (NetworkMagic),
+  serialiseAddress,
+ )
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
@@ -53,7 +57,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
-import Ledger (Slot (Slot), SlotRange)
+import Ledger (Slot (Slot), SlotRange, TxInType (ConsumeScriptAddress))
 import Ledger qualified
 import Ledger.Ada (fromValue, getLovelace)
 import Ledger.Ada qualified as Ada
@@ -67,17 +71,39 @@ import Ledger.Interval (
  )
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
-import Ledger.Tx (RedeemerPtr (..), Redeemers, ScriptTag (..), Tx (..), TxId (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..), txId)
+import Ledger.Tx (
+  RedeemerPtr (RedeemerPtr),
+  Redeemers,
+  ScriptTag (Mint),
+  Tx (
+    txCollateral,
+    txData,
+    txFee,
+    txInputs,
+    txMint,
+    txMintScripts,
+    txOutputs,
+    txRedeemers,
+    txSignatures,
+    txValidRange
+  ),
+  TxId (TxId),
+  TxIn (TxIn),
+  TxInType (ConsumePublicKeyAddress, ConsumeSimpleScriptAddress),
+  TxOut (TxOut),
+  TxOutRef (TxOutRef),
+  txId,
+ )
 import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
-  CurrencySymbol (..),
-  ExBudget (..),
-  ExCPU (..),
-  ExMemory (..),
-  TokenName (..),
+  CurrencySymbol (unCurrencySymbol),
+  ExBudget (ExBudget),
+  ExCPU (ExCPU),
+  ExMemory (ExMemory),
+  TokenName (unTokenName),
  )
 import PlutusTx.Builtins (fromBuiltin)
 import Prelude

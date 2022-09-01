@@ -225,22 +225,6 @@ handlePABReq contractEnv req = do
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
 
--- do-not-remove yet, could be handy for debugging of "own" implementation below
--- "own" implementation will be tested with https://github.com/mlabs-haskell/plutip/issues/119
--- on local network
--- adjustUnbalancedTx' ::
---   forall (w :: Type) (effs :: [Type -> Type]).
---   ContractEnvironment w ->
---   UnbalancedTx ->
---   Eff effs (Either Tx.ToCardanoError UnbalancedTx)
--- adjustUnbalancedTx' contractEnv unbalancedTx = do
---   let slotConfig = SlotConfig 200 1654524000
---       networkId = contractEnv.cePABConfig.pcNetwork
---       maybeParams = contractEnv.cePABConfig.pcProtocolParams >>= \pparams -> pure $ Params slotConfig pparams networkId
---   case maybeParams of
---     Just params -> pure $ snd <$> adjustUnbalancedTx params unbalancedTx
---     _ -> pure . Left $ Tx.TxBodyError "no protocol params"
-
 adjustUnbalancedTx' ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
