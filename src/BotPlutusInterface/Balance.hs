@@ -384,7 +384,7 @@ handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
                 Tx.txOutAddress txout == changeAddr
                   && not (justLovelace $ Tx.txOutValue txout)
                   && hasNoDatum txout
-                  && hasNoDatum txout
+                  -- && hasNoDatum txout
             )
           else (\txout -> Tx.txOutAddress txout == changeAddr && hasNoDatum txout)
 
