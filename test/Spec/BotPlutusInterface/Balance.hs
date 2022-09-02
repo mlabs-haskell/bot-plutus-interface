@@ -10,7 +10,7 @@ import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
   PABConfig (pcOwnPubKeyHash),
  )
-import Control.Lens ((&), (.~), (<>~), (^.))
+import Control.Lens ((&), (.~), (^.))
 import Data.Default (Default (def))
 import Data.Function (on)
 import Data.List (delete, partition)
@@ -19,7 +19,6 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Ada qualified as Value
 import Ledger.Address (Address, PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
@@ -35,27 +34,28 @@ import Ledger.Tx (
   TxOut (..),
   TxOutRef (..),
  )
-import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
+
+import Ledger.Value (AssetClass, Value)
+import Plutus.Script.Utils.Scripts qualified as ScriptUtils
+import Plutus.Script.Utils.V1.Address qualified as ScriptUtils
 import Plutus.V1.Ledger.Api qualified as Api
 import PlutusTx qualified
+import Prettyprinter (pretty)
 import Spec.MockContract (
   MockContractState,
   contractEnv,
+  currencySymbol1,
   paymentPkh3,
   pkh3,
   pkhAddr3,
-  -- runContractPure,
-  currencySymbol1, runPABEffectPure,
+  runPABEffectPure,
   utxos,
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
 import Text.Printf (printf)
 import Prelude
-import Plutus.Script.Utils.Scripts qualified as ScriptUtils
-import Plutus.Script.Utils.V1.Address qualified as ScriptUtils
-import Prettyprinter (pretty)
 
 {- | Tests for 'cardano-cli query utxo' result parsers
  @since 0.1
@@ -109,12 +109,10 @@ utxo2 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 1_000_000) Nothing)
 utxo3 = (txOutRef3, TxOut addr1 (Ada.lovelaceValueOf 900_000) Nothing)
 utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton currencySymbol1 "Token" 200) Nothing)
 
--- Ada values set  to amount that covers min Ada so we don't need to deal with 
+-- Ada values set  to amount that covers min Ada so we don't need to deal with
 -- output's adjustments
 scrValue :: Value.Value
 scrValue = Value.assetClassValue tokenAsset 200 <> Ada.lovelaceValueOf 2_000_000
-
-
 
 scrDatum :: Ledger.Datum
 scrDatum = Ledger.Datum $ Api.toBuiltinData (23 :: Integer)
@@ -284,14 +282,14 @@ dontAddChangeToDatum2 = do
       -- - 3.5 ADA
       -- - 200 tokens
       -- Output UTxO :
-      -- - 1 ADA
+      -- - 2 ADA
       -- - 120 tokens
       -- Change:
       -- - 1.5 ADA (400 Lovelace to fees)
       -- - 80 tokens
 
       payToScrValue :: Value.Value
-      payToScrValue = Value.assetClassValue tokenAsset 120 <> Ada.lovelaceValueOf 1_000_000
+      payToScrValue = Value.assetClassValue tokenAsset 120 <> Ada.lovelaceValueOf 2_000_000
 
       scrLkups =
         Constraints.unspentOutputs (Map.fromList [(txOutRef6, scrTxOut)])
@@ -362,8 +360,8 @@ liftAssertFailure :: Either a b -> (a -> String) -> IO b
 liftAssertFailure (Left err) fstr = assertFailure (fstr err)
 liftAssertFailure (Right rslt) _ = return rslt
 
-toHashAndDatum :: ScriptUtils.Datum -> (ScriptUtils.DatumHash, Maybe ScriptUtils.Datum) 
+toHashAndDatum :: ScriptUtils.Datum -> (ScriptUtils.DatumHash, Maybe ScriptUtils.Datum)
 toHashAndDatum d = (ScriptUtils.datumHash d, Just d)
 
 toHashAndValidator :: Api.Validator -> (Api.ValidatorHash, Maybe Api.Validator)
-toHashAndValidator v =  (Scripts.validatorHash v, Just v) 
+toHashAndValidator v = (Scripts.validatorHash v, Just v)
