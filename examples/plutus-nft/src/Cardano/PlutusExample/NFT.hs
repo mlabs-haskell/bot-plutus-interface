@@ -17,35 +17,23 @@ import Data.Void (Void)
 import Ledger (
   CurrencySymbol,
   PaymentPubKeyHash,
-  Script,
   ScriptContext (scriptContextTxInfo),
   TokenName,
   TxInInfo (txInInfoOutRef),
   TxInfo (txInfoInputs, txInfoMint),
   TxOutRef,
-  mkMintingPolicyScript,
   ownCurrencySymbol,
   pubKeyHashAddress,
-  scriptCurrencySymbol,
  )
 import Ledger.Address (StakePubKeyHash)
 import Ledger.Constraints as Constraints
-import Ledger.Constraints.Metadata (
-  NftMetadata (NftMetadata),
-  NftMetadataToken (NftMetadataToken),
-  TxMetadata (TxMetadata),
-  nmtDescription,
-  nmtFiles,
-  nmtImage,
-  nmtMediaType,
-  nmtName,
-  nmtOtherFields,
- )
-import Ledger.Typed.Scripts (wrapMintingPolicy)
+
+import Ledger.Scripts qualified as Scripts
+import Ledger.Typed.Scripts qualified as TypedScripts
 import Ledger.Value (flattenValue, singleton)
 import Plutus.Contract (Contract, Endpoint, submitTxConstraintsWith, tell, utxosAt)
 import Plutus.Contract qualified as Contract
-import Plutus.V1.Ledger.Scripts qualified as Scripts
+import Plutus.Script.Utils.V1.Scripts qualified as ScriptUtils
 import PlutusTx qualified
 import PlutusTx.Prelude
 import Text.Printf (printf)
@@ -70,12 +58,12 @@ mkPolicy oref tn _ ctx =
 
 policy :: TxOutRef -> TokenName -> Scripts.MintingPolicy
 policy oref tn =
-  mkMintingPolicyScript $
-    $$(PlutusTx.compile [||\oref' tn' -> wrapMintingPolicy $ mkPolicy oref' tn'||])
+  Scripts.mkMintingPolicyScript $
+    $$(PlutusTx.compile [||\oref' tn' -> TypedScripts.mkUntypedMintingPolicy $ mkPolicy oref' tn'||])
       `PlutusTx.applyCode` PlutusTx.liftCode oref
       `PlutusTx.applyCode` PlutusTx.liftCode tn
 
-policyScript :: TxOutRef -> TokenName -> Script
+policyScript :: TxOutRef -> TokenName -> Scripts.Script
 policyScript oref tn = Scripts.unMintingPolicyScript $ policy oref tn
 
 policySBS :: TxOutRef -> TokenName -> SBS.ShortByteString
@@ -85,7 +73,7 @@ policySerialised :: TxOutRef -> TokenName -> PlutusScript PlutusScriptV1
 policySerialised oref tn = PlutusScriptSerialised $ policySBS oref tn
 
 curSymbol :: TxOutRef -> TokenName -> CurrencySymbol
-curSymbol oref tn = scriptCurrencySymbol $ policy oref tn
+curSymbol oref tn = ScriptUtils.scriptCurrencySymbol $ policy oref tn
 
 type NFTSchema =
   Endpoint "mint" TokenName
@@ -104,7 +92,7 @@ $(deriveJSON defaultOptions ''MintParams)
 
 mintNft :: MintParams -> Contract (Last Text) NFTSchema Text ()
 mintNft MintParams {..} = do
-  pkh <- Contract.ownPaymentPubKeyHash
+  pkh <- Contract.ownFirstPaymentPubKeyHash
   utxos <- utxosAt (pubKeyHashAddress pkh Nothing)
   case Map.keys utxos of
     [] -> Contract.logError @Hask.String "no utxo found"
@@ -112,21 +100,11 @@ mintNft MintParams {..} = do
       tell $ Last $ Just $ "Using oref:" Hask.<> Text.pack (Hask.show oref)
       let cs = curSymbol oref mpTokenName
           val = singleton cs mpTokenName 1
-          meta =
-            NftMetadata $
-              Map.singleton cs $
-                Map.singleton mpTokenName $
-                  NftMetadataToken
-                    { nmtName = mpName
-                    , nmtImage = mpImage
-                    , nmtMediaType = Hask.pure "image/png"
-                    , nmtDescription = mpDescription
-                    , nmtFiles = Hask.mempty
-                    , nmtOtherFields = Hask.mempty
-                    }
+          -- TODO: Add metadata in the tx.
+          --       Currently this is not possible, as metadata is not supported.
           lookups =
             Hask.mconcat
-              [ Constraints.mintingPolicy (policy oref mpTokenName)
+              [ Constraints.plutusV1MintingPolicy (policy oref mpTokenName)
               , Constraints.unspentOutputs utxos
               ]
           tx =
@@ -134,7 +112,6 @@ mintNft MintParams {..} = do
               [ Constraints.mustMintValue val
               , Constraints.mustSpendPubKeyOutput oref
               , Constraints.mustPayToPubKeyAddress mpPubKeyHash mpStakeHash val
-              , Constraints.mustIncludeMetadata $ TxMetadata (Just meta) Hask.mempty
               ]
       void $ submitTxConstraintsWith @Void lookups tx
       Contract.logInfo @Hask.String $ printf "forged %s" (Hask.show val)

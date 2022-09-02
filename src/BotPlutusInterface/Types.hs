@@ -36,7 +36,7 @@ module BotPlutusInterface.Types (
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
-import Cardano.Api.ProtocolParameters (ProtocolParameters)
+import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
@@ -58,6 +58,7 @@ import Ledger (
   TxOutRef,
  )
 import Ledger qualified
+import Ledger.Ada qualified as Ada
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -66,7 +67,6 @@ import Plutus.PAB.Effects.Contract.Builtin (
   SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
-import Plutus.V1.Ledger.Ada qualified as Ada
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
@@ -78,7 +78,7 @@ data PABConfig = PABConfig
     pcCliLocation :: !CLILocation
   , pcChainIndexUrl :: !BaseUrl
   , pcNetwork :: !NetworkId
-  , pcProtocolParams :: !ProtocolParameters
+  , pcProtocolParams :: !(Maybe ProtocolParameters)
   , -- | Directory name of the script and data files
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
@@ -333,7 +333,7 @@ instance Default PABConfig where
       { pcCliLocation = Local
       , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
       , pcNetwork = Testnet (NetworkMagic 42)
-      , pcProtocolParams = def
+      , pcProtocolParams = Nothing
       , pcTipPollingInterval = 10_000_000
       , pcScriptFileDir = "./result-scripts"
       , pcSigningKeyFileDir = "./signing-keys"

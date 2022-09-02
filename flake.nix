@@ -17,12 +17,12 @@
     # all inputs below here are for pinning with haskell.nix
     cardano-addresses = {
       url =
-        "github:input-output-hk/cardano-addresses/8bf98905b903455196495e231b23613ad2264cb0";
+        "github:input-output-hk/cardano-addresses/b7273a5d3c21f1a003595ebf1e1f79c28cd72513";
       flake = false;
     };
     cardano-base = {
       url =
-        "github:input-output-hk/cardano-base/41545ba3ac6b3095966316a99883d678b5ab8da8";
+        "github:input-output-hk/cardano-base/0f3a867493059e650cda69e20a5cbf1ace289a57";
       flake = false;
     };
     cardano-config = {
@@ -37,13 +37,13 @@
     };
     cardano-ledger = {
       url =
-        "github:input-output-hk/cardano-ledger/1a9ec4ae9e0b09d54e49b2a40c4ead37edadcce5";
+        "github:input-output-hk/cardano-ledger/c7c63dabdb215ebdaed8b63274965966f2bf408f";
       flake = false;
     };
     cardano-node = {
       url =
-        "github:input-output-hk/cardano-node/73f9a746362695dc2cb63ba757fbcabb81733d23";
-      flake = false;
+        "github:input-output-hk/cardano-node?ref=1.35.3";
+      flake = false; # we need it to be available in shell
     };
     cardano-prelude = {
       url =
@@ -51,19 +51,21 @@
       flake = false;
     };
     cardano-wallet = {
-      url =
-        "github:input-output-hk/cardano-wallet/769d3f8e5543f784222c6b5d0ba3ea6c3ccdd7b0";
+      url = "github:input-output-hk/cardano-wallet/18a931648550246695c790578d4a55ee2f10463e";
+      flake = false;
+    };
+    ekg-forward = {
+      url = "github:input-output-hk/ekg-forward/297cd9db5074339a2fb2e5ae7d0780debb670c63";
+      flake = false;
+    };
+    ekg-json = {
+      url = "github:vshabanov/ekg-json/00ebe7211c981686e65730b7144fbf5350462608";
       flake = false;
     };
     # We don't actually need this. Removing this might make caching worse?
     flat = {
       url =
-        "github:input-output-hk/flat/ee59880f47ab835dbd73bea0847dab7869fc20d8";
-      flake = false;
-    };
-    ekg-forward = {
-      url =
-        "github:input-output-hk/ekg-forward/297cd9db5074339a2fb2e5ae7d0780debb670c63";
+        "github:Quid2/flat/ee59880f47ab835dbd73bea0847dab7869fc20d8";
       flake = false;
     };
     goblins = {
@@ -71,9 +73,26 @@
         "github:input-output-hk/goblins/cde90a2b27f79187ca8310b6549331e59595e7ba";
       flake = false;
     };
+    hedgehog-extras = {
+      url = "github:input-output-hk/hedgehog-extras/714ee03a5a786a05fc57ac5d2f1c2edce4660d85";
+      flake = false;
+    };
+    hysterical-screams = {
+      url = "github:raduom/hysterical-screams/4c523469e9efd3f0d10d17da3304923b7b0e0674";
+      flake = false;
+    };
+    hw-aeson = {
+      url = "github:haskell-works/hw-aeson/b5ef03a7d7443fcd6217ed88c335f0c411a05408";
+      flake = false;
+    };
     iohk-monitoring-framework = {
       url =
-        "github:input-output-hk/iohk-monitoring-framework/808724ff8a19a33d0ed06f9ef59fbd900b08553c";
+        "github:input-output-hk/iohk-monitoring-framework/066f7002aac5a0efc20e49643fea45454f226caa";
+      flake = false;
+    };
+    io-sim = {
+      url =
+        "github:input-output-hk/io-sim/57e888b1894829056cb00b7b5785fdf6a74c3271";
       flake = false;
     };
     optparse-applicative = {
@@ -83,20 +102,17 @@
     };
     ouroboros-network = {
       url =
-        "github:input-output-hk/ouroboros-network/4fac197b6f0d2ff60dc3486c593b68dc00969fbf";
+        "github:input-output-hk/ouroboros-network/cb9eba406ceb2df338d8384b35c8addfe2067201";
       flake = false;
     };
-    # Patched plutus for metadata support. We need this until `plutus-apps` will update `plutus`,
-    # rewrite of `plutus-ledger-constraints`, and possibly some bpi adjustments afterwards.
-    # tldr: Dependency hell
     plutus = {
       url =
-        "github:mlabs-haskell/plutus/1a3c3a761cf048371c52a34b004f8b3fcf0dab43";
+        "github:input-output-hk/plutus/a56c96598b4b25c9e28215214d25189331087244";
       flake = false;
     };
     plutus-apps = {
       url =
-        "github:mlabs-haskell/plutus-apps/82c0725c4d05398ae76d71927cc60aa23db1a11d";
+        "github:mlabs-haskell/plutus-apps/31bfd4c7fff5158c9f2618b76b68dbbae410221d";
       flake = false;
     };
     purescript-bridge = {
@@ -104,9 +120,18 @@
         "github:input-output-hk/purescript-bridge/47a1f11825a0f9445e0f98792f79172efef66c00";
       flake = false;
     };
+    quickcheck-dynamic = {
+      url = "github:input-output-hk/quickcheck-dynamic/c272906361471d684440f76c297e29ab760f6a1e";
+      flake = false;
+    };
     servant-purescript = {
       url =
         "github:input-output-hk/servant-purescript/44e7cacf109f84984cd99cd3faf185d161826963";
+      flake = false;
+    };
+    typed-protocols = {
+      url =
+        "github:input-output-hk/typed-protocols/181601bc3d9e9d21a671ce01e0b481348b3ca104";
       flake = false;
     };
     Win32-network = {
@@ -131,9 +156,8 @@
       nixpkgsFor' = system: import nixpkgs { inherit system; };
 
       cabalProjectLocal = ''
-        allow-newer: size-based:template-haskell
-
-        constraints: hedgehog >= 1.0.4, hedgehog < 1.1
+        allow-newer: *:aeson, size-based:template-haskell
+        constraints: aeson >= 2, hedgehog >= 1.1
       '';
 
       haskellModules = [
@@ -143,6 +167,7 @@
               marlowe.flags.defer-plugin-errors = true;
               plutus-use-cases.flags.defer-plugin-errors = true;
               plutus-ledger.flags.defer-plugin-errors = true;
+              plutus-script-utils.flags.defer-plugin-errors = true;
               plutus-contract.flags.defer-plugin-errors = true;
               cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
               cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
@@ -185,6 +210,8 @@
           src = inputs.cardano-ledger;
           subdirs = [
             "eras/alonzo/impl"
+            "eras/alonzo/test-suite"
+            "eras/babbage/impl"
             "eras/byron/chain/executable-spec"
             "eras/byron/crypto"
             "eras/byron/crypto/test"
@@ -192,13 +219,14 @@
             "eras/byron/ledger/impl"
             "eras/byron/ledger/impl/test"
             "eras/shelley/impl"
-            "eras/shelley-ma/impl"
             "eras/shelley/test-suite"
+            "eras/shelley-ma/impl"
+            "eras/shelley-ma/test-suite"
             "libs/cardano-data"
             "libs/cardano-ledger-core"
             "libs/cardano-ledger-pretty"
             "libs/cardano-protocol-tpraos"
-            "libs/compact-map"
+            "libs/vector-map"
             "libs/non-integral"
             "libs/set-algebra"
             "libs/small-steps"
@@ -209,12 +237,14 @@
           src = inputs.cardano-node;
           subdirs = [
             "cardano-api"
-            "cardano-node"
             "cardano-cli"
             "cardano-git-rev"
-            "trace-resources"
-            "trace-forward"
+            "cardano-node"
+            "cardano-submit-api"
+            "cardano-testnet"
             "trace-dispatcher"
+            "trace-forward"
+            "trace-resources"
           ];
         }
         {
@@ -245,6 +275,10 @@
           subdirs = [ "." ];
         }
         {
+          src = inputs.ekg-json;
+          subdirs = [ "." ];
+        }
+        {
           src = inputs.flat;
           subdirs = [ "." ];
         }
@@ -253,16 +287,35 @@
           subdirs = [ "." ];
         }
         {
+          src = inputs.hedgehog-extras;
+          subdirs = [ "." ];
+        }
+        {
+          src = inputs.hysterical-screams;
+          subdirs = [ "." ];
+        }
+        {
+          src = inputs.hw-aeson;
+          subdirs = [ "." ];
+        }
+        {
           src = inputs.iohk-monitoring-framework;
           subdirs = [
+            "contra-tracer"
             "iohk-monitoring"
             "tracer-transformers"
-            "contra-tracer"
-            "plugins/backend-aggregation"
             "plugins/backend-ekg"
+            "plugins/backend-aggregation"
             "plugins/backend-monitoring"
             "plugins/backend-trace-forwarder"
-            "plugins/scribe-systemd"
+          ];
+        }
+        {
+          src = inputs.io-sim;
+          subdirs = [
+            "io-classes"
+            "io-sim"
+            "strict-stm"
           ];
         }
         {
@@ -272,9 +325,6 @@
         {
           src = inputs.ouroboros-network;
           subdirs = [
-            "io-classes"
-            "io-sim"
-            "strict-stm"
             "monoidal-synchronisation"
             "network-mux"
             "ntp-client"
@@ -286,9 +336,6 @@
             "ouroboros-network"
             "ouroboros-network-framework"
             "ouroboros-network-testing"
-            "typed-protocols"
-            "typed-protocols-cborg"
-            "typed-protocols-examples"
           ];
         }
         {
@@ -311,13 +358,17 @@
             "playground-common"
             "plutus-chain-index"
             "plutus-chain-index-core"
+            "plutus-hysterical-screams"
             "plutus-contract"
+            "plutus-contract-certification"
             "plutus-ledger"
             "plutus-ledger-constraints"
             "plutus-pab"
             "plutus-playground-server"
+            "plutus-script-utils"
+            "plutus-streaming"
+            "plutus-tx-constraints"
             "plutus-use-cases"
-            "quickcheck-dynamic"
             "web-ghc"
           ];
         }
@@ -326,8 +377,20 @@
           subdirs = [ "." ];
         }
         {
+          src = inputs.quickcheck-dynamic;
+          subdirs = [ "." ];
+        }
+        {
           src = inputs.servant-purescript;
           subdirs = [ "." ];
+        }
+        {
+          src = inputs.typed-protocols;
+          subdirs = [
+            "typed-protocols"
+            "typed-protocols-cborg"
+            "typed-protocols-examples"
+          ];
         }
         {
           src = inputs.Win32-network;

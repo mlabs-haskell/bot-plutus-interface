@@ -3,29 +3,35 @@ module BotPlutusInterface.ExBudget (
   estimateBudget,
 ) where
 
-import BotPlutusInterface.QueryNode (NodeInfo (NodeInfo))
-import BotPlutusInterface.QueryNode qualified as QueryNode
+import BotPlutusInterface.CardanoNode.Query (
+  QueryConstraint,
+  connectionInfo,
+  queryBabbageEra,
+  queryInCardanoMode,
+ )
 import BotPlutusInterface.Types (
   BudgetEstimationError (..),
   MintBudgets,
-  PABConfig (pcNetwork),
+  PABConfig,
   SpendBudgets,
   TxBudget (TxBudget),
   TxFile (..),
  )
-import Cardano.Api qualified as CAPI
+import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamMaxTxExUnits))
 import Cardano.Prelude (maybeToEither)
 import Control.Arrow (left)
+import Control.Monad.Freer (Eff, runM)
+import Control.Monad.Freer.Reader (runReader)
 import Data.Either (rights)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Data.Text qualified as Text
 import GHC.Natural (Natural)
 import Ledger (ExBudget (ExBudget), ExCPU (ExCPU), ExMemory (ExMemory), MintingPolicyHash, TxOutRef)
 import Ledger.Tx.CardanoAPI (fromCardanoPolicyId, fromCardanoTxIn)
-import System.Directory.Internal.Prelude (getEnv)
 import Prelude
 
 {- | Estimate budget of transaction.
@@ -35,23 +41,27 @@ import Prelude
 -}
 estimateBudget :: PABConfig -> TxFile -> IO (Either BudgetEstimationError TxBudget)
 estimateBudget pabConf txFile = do
-  sock <- getEnv "CARDANO_NODE_SOCKET_PATH"
-  let debugNodeInf = NodeInfo (pcNetwork pabConf) sock
   txBody <- case txFile of
     Raw rp -> deserialiseRaw rp
-    Signed sp -> fmap CAPI.getTxBody <$> deserialiseSigned sp
+    Signed sp -> fmap CApi.getTxBody <$> deserialiseSigned sp
 
   budgetRes <-
     either
       (pure . Left)
-      (getExUnits debugNodeInf)
+      (getExUnits pabConf)
       txBody
 
   pure $
     do
       body <- txBody
       budget <- budgetRes
-      maxUnits <- maybeToEither (BudgetEstimationError "Missing max units in parameters") $ protocolParamMaxTxExUnits pabConf.pcProtocolParams
+      pparams <-
+        maybeToEither
+          (BudgetEstimationError "No protocol params found")
+          pabConf.pcProtocolParams
+      maxUnits <-
+        maybeToEither (BudgetEstimationError "Missing max units in parameters") $
+          protocolParamMaxTxExUnits pparams
 
       scaledBudget <- getScaledBudget maxUnits pabConf.pcBudgetMultiplier budget
 
@@ -60,7 +70,7 @@ estimateBudget pabConf txFile = do
       Right $ TxBudget spendingBudgets policyBudgets
 
 -- | Scale the budget clamping the total to the parameter limits
-getScaledBudget :: CAPI.ExecutionUnits -> Rational -> ExUnitsMap -> Either BudgetEstimationError ExUnitsMap
+getScaledBudget :: CApi.ExecutionUnits -> Rational -> ExUnitsMap -> Either BudgetEstimationError ExUnitsMap
 getScaledBudget maxUnits scaler budget =
   if fst scalers >= 1 && snd scalers >= 1
     then Right $ fmap (fmap $ scaleBudget scalers) budget
@@ -70,10 +80,10 @@ getScaledBudget maxUnits scaler budget =
           Text.pack $
             "Exceeded global transaction budget\nCalculated: " ++ show budgetSum ++ "\nLimit: " ++ show maxUnits
   where
-    budgetSum = foldr addBudgets (CAPI.ExecutionUnits 0 0) $ rights $ Map.elems budget
+    budgetSum = foldr addBudgets (CApi.ExecutionUnits 0 0) $ rights $ Map.elems budget
     scalers =
-      ( clampedScaler (CAPI.executionSteps budgetSum) (CAPI.executionSteps maxUnits) scaler
-      , clampedScaler (CAPI.executionMemory budgetSum) (CAPI.executionMemory maxUnits) scaler
+      ( clampedScaler (CApi.executionSteps budgetSum) (CApi.executionSteps maxUnits) scaler
+      , clampedScaler (CApi.executionMemory budgetSum) (CApi.executionMemory maxUnits) scaler
       )
 
 clampedScaler :: Natural -> Natural -> Rational -> Rational
@@ -81,69 +91,77 @@ clampedScaler 0 _ scaler = scaler
 clampedScaler val maxVal scaler = min scaler (toRational maxVal / toRational val)
 
 -- | Scale the budget by the multipliers in config
-scaleBudget :: (Rational, Rational) -> CAPI.ExecutionUnits -> CAPI.ExecutionUnits
-scaleBudget (stepsScaler, memScaler) (CAPI.ExecutionUnits steps mem) = CAPI.ExecutionUnits (scale steps stepsScaler) (scale mem memScaler)
+scaleBudget :: (Rational, Rational) -> CApi.ExecutionUnits -> CApi.ExecutionUnits
+scaleBudget (stepsScaler, memScaler) (CApi.ExecutionUnits steps mem) = CApi.ExecutionUnits (scale steps stepsScaler) (scale mem memScaler)
   where
     scale x scaler = round $ toRational x * scaler
 
-addBudgets :: CAPI.ExecutionUnits -> CAPI.ExecutionUnits -> CAPI.ExecutionUnits
-addBudgets (CAPI.ExecutionUnits steps mem) (CAPI.ExecutionUnits steps' mem') = CAPI.ExecutionUnits (steps + steps') (mem + mem')
+addBudgets :: CApi.ExecutionUnits -> CApi.ExecutionUnits -> CApi.ExecutionUnits
+addBudgets (CApi.ExecutionUnits steps mem) (CApi.ExecutionUnits steps' mem') = CApi.ExecutionUnits (steps + steps') (mem + mem')
 
 -- | Deserialize transaction body from ".signed" file
-deserialiseSigned :: FilePath -> IO (Either BudgetEstimationError (CAPI.Tx CAPI.AlonzoEra))
+deserialiseSigned :: FilePath -> IO (Either BudgetEstimationError (CApi.Tx CApi.BabbageEra))
 deserialiseSigned txFile = do
   envlp <- readEnvelope
   pure $ envlp >>= parseTx
   where
     readEnvelope =
       left toBudgetError
-        <$> CAPI.readTextEnvelopeFromFile txFile
+        <$> CApi.readTextEnvelopeFromFile txFile
 
     parseTx =
       left toBudgetError
-        . CAPI.deserialiseFromTextEnvelope CAPI.AsAlonzoTx
+        . CApi.deserialiseFromTextEnvelope (CApi.AsTx CApi.AsBabbageEra)
 
 -- | Deserialize transaction body from ".raw" file
-deserialiseRaw :: FilePath -> IO (Either BudgetEstimationError (CAPI.TxBody CAPI.AlonzoEra))
+deserialiseRaw :: FilePath -> IO (Either BudgetEstimationError (CApi.TxBody CApi.BabbageEra))
 deserialiseRaw txFile = do
   envlp <- readEnvelope
   pure $ envlp >>= parseTx
   where
     readEnvelope =
       left toBudgetError
-        <$> CAPI.readTextEnvelopeFromFile txFile
+        <$> CApi.readTextEnvelopeFromFile txFile
 
     parseTx =
       left toBudgetError
-        . CAPI.deserialiseFromTextEnvelope (CAPI.AsTxBody CAPI.AsAlonzoEra)
+        . CApi.deserialiseFromTextEnvelope (CApi.AsTxBody CApi.AsBabbageEra)
 
 -- | Shorthand alias
 type ExUnitsMap =
-  Map CAPI.ScriptWitnessIndex (Either CAPI.ScriptExecutionError CAPI.ExecutionUnits)
+  Map CApi.ScriptWitnessIndex (Either CApi.ScriptExecutionError CApi.ExecutionUnits)
 
 -- | Calculate execution units using `Cardano.Api``
 getExUnits ::
-  NodeInfo ->
-  CAPI.TxBody CAPI.AlonzoEra ->
+  PABConfig ->
+  CApi.TxBody CApi.BabbageEra ->
   IO (Either BudgetEstimationError ExUnitsMap)
-getExUnits nodeInf txBody = do
-  sysStart <- QueryNode.querySystemStart nodeInf
-  eraHist <- QueryNode.queryEraHistory nodeInf
-  pparams <- QueryNode.queryProtocolParams nodeInf
-  utxo <- QueryNode.queryOutsByInputs nodeInf capiIns
+getExUnits pabConf txBody = do
+  conn <- connectionInfo pabConf
+  runM $ runReader conn (getExUnits' txBody)
+
+getExUnits' ::
+  QueryConstraint effs =>
+  CApi.TxBody CApi.BabbageEra ->
+  Eff effs (Either BudgetEstimationError ExUnitsMap)
+getExUnits' txBody = do
+  sysStart <- queryInCardanoMode CApi.QuerySystemStart
+  eraHistory <- queryInCardanoMode (CApi.QueryEraHistory CApi.CardanoModeIsMultiEra)
+  pparams <- queryBabbageEra CApi.QueryProtocolParameters
+  utxo <- queryBabbageEra $ CApi.QueryUTxO (CApi.QueryUTxOByTxIn $ Set.fromList capiIns)
   pure $
     flattenEvalResult $
-      CAPI.evaluateTransactionExecutionUnits CAPI.AlonzoEraInCardanoMode
+      CApi.evaluateTransactionExecutionUnits CApi.BabbageEraInCardanoMode
         <$> sysStart
-        <*> eraHist
+        <*> eraHistory
         <*> pparams
         <*> utxo
         <*> pure txBody
   where
-    capiIns :: [CAPI.TxIn]
+    capiIns :: [CApi.TxIn]
     capiIns =
-      let (CAPI.TxBody txbc) = txBody
-       in fst <$> CAPI.txIns txbc
+      let (CApi.TxBody txbc) = txBody
+       in fst <$> CApi.txIns txbc
 
     flattenEvalResult = \case
       Right (Right res) -> Right res
@@ -154,10 +172,10 @@ getExUnits nodeInf txBody = do
 -}
 mkBudgetMaps ::
   ExUnitsMap ->
-  CAPI.TxBody CAPI.AlonzoEra ->
+  CApi.TxBody CApi.BabbageEra ->
   Either BudgetEstimationError (SpendBudgets, MintBudgets)
 mkBudgetMaps exUnitsMap txBody = do
-  let (CAPI.TxBody txbc) = txBody
+  let (CApi.TxBody txbc) = txBody
       insIx = mkInputsIndex txbc
       policiesIx = mkPoliciesIndex txbc
 
@@ -182,19 +200,19 @@ mkBudgetMaps exUnitsMap txBody = do
         -}
         . sort
         . map fst -- get only `TxIn`'s from `TxIns` (which is list of tuples)
-        . CAPI.txIns
+        . CApi.txIns
 
     mkPoliciesIndex txbc =
-      case CAPI.txMintValue txbc of
-        CAPI.TxMintValue _ value _ ->
+      case CApi.txMintValue txbc of
+        CApi.TxMintValue _ value _ ->
           {- The minting policies are indexed in policy id order in the value
              reference:
              https://github.com/input-output-hk/cardano-node/blob/e31455eaeca98530ce561b79687a8e465ebb3fdd/cardano-api/src/Cardano/Api/TxBody.hs#L2881
           -}
-          let CAPI.ValueNestedRep bundle = CAPI.valueToNestedRep value
+          let CApi.ValueNestedRep bundle = CApi.valueToNestedRep value
            in Map.fromList
                 [ (ix, policyId)
-                | (ix, CAPI.ValueNestedBundle policyId _) <- zip [0 ..] bundle
+                | (ix, CApi.ValueNestedBundle policyId _) <- zip [0 ..] bundle
                 ]
         _ -> mempty
 
@@ -204,28 +222,28 @@ mkBudgetMaps exUnitsMap txBody = do
                   and map to corresponding `TxOutRef` or `MintingPolicyHash`
     -}
     f ::
-      Map Integer CAPI.TxIn ->
-      Map Integer CAPI.PolicyId ->
-      (CAPI.ScriptWitnessIndex, CAPI.ExecutionUnits) ->
+      Map Integer CApi.TxIn ->
+      Map Integer CApi.PolicyId ->
+      (CApi.ScriptWitnessIndex, CApi.ExecutionUnits) ->
       Either BudgetEstimationError (Map TxOutRef ExBudget, Map MintingPolicyHash ExBudget)
     f insIx policiesIx budgetItem
-      | (CAPI.ScriptWitnessIndexTxIn ix, eu) <- budgetItem =
+      | (CApi.ScriptWitnessIndexTxIn ix, eu) <- budgetItem =
         case Map.lookup (toInteger ix) insIx of
-          Nothing -> Left $ BudgetNotFound (CAPI.ScriptWitnessIndexTxIn ix)
+          Nothing -> Left $ BudgetNotFound (CApi.ScriptWitnessIndexTxIn ix)
           Just inp ->
             Right . (,mempty) $
               Map.singleton (fromCardanoTxIn inp) (unitsToBudget eu)
-      | (CAPI.ScriptWitnessIndexMint ix, eu) <- budgetItem =
+      | (CApi.ScriptWitnessIndexMint ix, eu) <- budgetItem =
         case Map.lookup (toInteger ix) policiesIx of
-          Nothing -> Left $ BudgetNotFound (CAPI.ScriptWitnessIndexTxIn ix)
+          Nothing -> Left $ BudgetNotFound (CApi.ScriptWitnessIndexTxIn ix)
           Just pId ->
             Right . (mempty,) $
               Map.singleton (fromCardanoPolicyId pId) (unitsToBudget eu)
       | otherwise = Right mempty
 
 -- | Cardano to Plutus budget converter
-unitsToBudget :: CAPI.ExecutionUnits -> ExBudget
-unitsToBudget (CAPI.ExecutionUnits cpu mem) =
+unitsToBudget :: CApi.ExecutionUnits -> ExBudget
+unitsToBudget (CApi.ExecutionUnits cpu mem) =
   ExBudget (ExCPU $ cast cpu) (ExMemory $ cast mem)
   where
     cast = fromInteger . toInteger

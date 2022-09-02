@@ -27,12 +27,10 @@ common common-lang
     -Wall -Wcompat -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
     -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
-    -fplugin=RecordDotPreprocessor
-
-  -- -Werror
+    -fplugin=RecordDotPreprocessor -Werror
 
   build-depends:
-    , base                     ^>=4.14
+    , base
     , record-dot-preprocessor
     , record-hasfield
 
@@ -80,7 +78,10 @@ library
     BotPlutusInterface
     BotPlutusInterface.Balance
     BotPlutusInterface.BodyBuilder
+    BotPlutusInterface.CardanoAPI
     BotPlutusInterface.CardanoCLI
+    BotPlutusInterface.CardanoNode.Effects
+    BotPlutusInterface.CardanoNode.Query
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.CoinSelection
     BotPlutusInterface.Collateral
@@ -90,7 +91,6 @@ library
     BotPlutusInterface.ExBudget
     BotPlutusInterface.Files
     BotPlutusInterface.Helpers
-    BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
     BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
@@ -103,13 +103,15 @@ library
     PlutusConfig.Types
 
   build-depends:
-    , aeson                      ^>=1.5.0.0
+    , aeson
     , attoparsec                 >=0.13.2.2
     , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-ledger-babbage
     , cardano-ledger-core
+    , cardano-ledger-shelley
     , cardano-prelude
     , cardano-slotting
     , config-schema
@@ -138,6 +140,7 @@ library
     , plutus-ledger-api
     , plutus-ledger-constraints
     , plutus-pab
+    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
     , pretty
@@ -176,6 +179,7 @@ test-suite bot-plutus-interface-test
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
+    Spec.BotPlutusInterface.AdjustUnbalanced
     Spec.BotPlutusInterface.Balance
     Spec.BotPlutusInterface.CoinSelection
     Spec.BotPlutusInterface.Collateral
@@ -184,12 +188,11 @@ test-suite bot-plutus-interface-test
     Spec.BotPlutusInterface.ContractStats
     Spec.BotPlutusInterface.Server
     Spec.BotPlutusInterface.TxStatusChange
-    Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
     Spec.RandomLedger
 
   build-depends:
-    , aeson                      ^>=1.5.0.0
+    , aeson
     , attoparsec
     , base
     , base-compat
@@ -220,6 +223,7 @@ test-suite bot-plutus-interface-test
     , plutus-ledger-api
     , plutus-ledger-constraints
     , plutus-pab
+    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
     , pretty-diff
