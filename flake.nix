@@ -2,9 +2,10 @@
   description = "bot-plutus-interface";
 
   inputs = {
-    haskell-nix.url = "github:mlabs-haskell/haskell.nix";
+    haskell-nix.url = "github:mangoiv/haskell.nix/extra-sources";
 
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
+    nixpkgs-upstream.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
     iohk-nix.url = "github:input-output-hk/iohk-nix";
     iohk-nix.flake = false; # Bad Nix code
@@ -14,109 +15,131 @@
       flake = false;
     };
 
+    haskell-nix-extra-hackage = {
+      url = "github:mlabs-haskell/haskell-nix-extra-hackage";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.haskell-nix.follows = "haskell-nix";
+    };
+
+    plutus-contract = {
+      url =
+        "github:mangoiv/plutus-contract/mangoiv/next-node/rip-out-plutus-contract-api";
+    };
+
     # all inputs below here are for pinning with haskell.nix
     cardano-addresses = {
-      url =
-        "github:input-output-hk/cardano-addresses/8bf98905b903455196495e231b23613ad2264cb0";
+      follows = "plutus-contract/cardano-addresses";
       flake = false;
     };
     cardano-base = {
-      url =
-        "github:input-output-hk/cardano-base/41545ba3ac6b3095966316a99883d678b5ab8da8";
+      follows =
+        "plutus-contract/cardano-base";
       flake = false;
     };
+
+    cardano-ledger = {
+      follows =
+        "plutus-contract/cardano-ledger";
+      flake = false;
+    };
+
+    cardano-crypto = {
+      follows =
+        "plutus-contract/cardano-crypto";
+      flake = false;
+    };
+
+    cardano-node = {
+      follows =
+        "plutus-contract/cardano-node";
+      flake = false;
+    };
+
+    cardano-prelude = {
+      follows =
+        "plutus-contract/cardano-prelude";
+      flake = false;
+    };
+
+    cardano-wallet = {
+      follows =
+        "plutus-contract/cardano-wallet";
+      flake = false;
+    };
+
+    # We don't actually need this. Removing this might make caching worse?
+    flat = {
+      follows =
+        "plutus-contract/flat";
+      flake = false;
+    };
+
+    ekg-forward = {
+      follows =
+        "plutus-contract/ekg-forward";
+      flake = false;
+    };
+
+    goblins = {
+      follows =
+        "plutus-contract/goblins";
+      flake = false;
+    };
+
+    iohk-monitoring-framework = {
+      follows =
+        "plutus-contract/iohk-monitoring-framework";
+      flake = false;
+    };
+
+    optparse-applicative = {
+      follows =
+        "plutus-contract/optparse-applicative";
+      flake = false;
+    };
+
+    ouroboros-network = {
+      follows =
+        "plutus-contract/ouroboros-network";
+      flake = false;
+    };
+
+    # Patched plutus for metadata support. We need this until `plutus-contract` will update `plutus`,
+    # rewrite of `plutus-ledger-constraints`, and possibly some bpi adjustments afterwards.
+    # tldr: Dependency hell
+    # NOTE: updated this/ reverse if doesn't work
+    plutus = {
+      follows = "plutus-contract/plutus";
+      flake = false;
+    };
+
+    Win32-network = {
+      follows =
+        "plutus-contract/Win32-network";
+      flake = false;
+    };
+    # ------------------------------
+
     cardano-config = {
       url =
         "github:input-output-hk/cardano-config/1646e9167fab36c0bff82317743b96efa2d3adaa";
       flake = false;
     };
-    cardano-crypto = {
-      url =
-        "github:input-output-hk/cardano-crypto/f73079303f663e028288f9f4a9e08bcca39a923e";
-      flake = false;
-    };
-    cardano-ledger = {
-      url =
-        "github:input-output-hk/cardano-ledger/1a9ec4ae9e0b09d54e49b2a40c4ead37edadcce5";
-      flake = false;
-    };
-    cardano-node = {
-      url =
-        "github:input-output-hk/cardano-node/73f9a746362695dc2cb63ba757fbcabb81733d23";
-      flake = false;
-    };
-    cardano-prelude = {
-      url =
-        "github:input-output-hk/cardano-prelude/bb4ed71ba8e587f672d06edf9d2e376f4b055555";
-      flake = false;
-    };
-    cardano-wallet = {
-      url =
-        "github:input-output-hk/cardano-wallet/769d3f8e5543f784222c6b5d0ba3ea6c3ccdd7b0";
-      flake = false;
-    };
-    # We don't actually need this. Removing this might make caching worse?
-    flat = {
-      url =
-        "github:input-output-hk/flat/ee59880f47ab835dbd73bea0847dab7869fc20d8";
-      flake = false;
-    };
-    ekg-forward = {
-      url =
-        "github:input-output-hk/ekg-forward/297cd9db5074339a2fb2e5ae7d0780debb670c63";
-      flake = false;
-    };
-    goblins = {
-      url =
-        "github:input-output-hk/goblins/cde90a2b27f79187ca8310b6549331e59595e7ba";
-      flake = false;
-    };
-    iohk-monitoring-framework = {
-      url =
-        "github:input-output-hk/iohk-monitoring-framework/808724ff8a19a33d0ed06f9ef59fbd900b08553c";
-      flake = false;
-    };
-    optparse-applicative = {
-      url =
-        "github:input-output-hk/optparse-applicative/7497a29cb998721a9068d5725d49461f2bba0e7a";
-      flake = false;
-    };
-    ouroboros-network = {
-      url =
-        "github:input-output-hk/ouroboros-network/4fac197b6f0d2ff60dc3486c593b68dc00969fbf";
-      flake = false;
-    };
-    # Patched plutus for metadata support. We need this until `plutus-apps` will update `plutus`,
-    # rewrite of `plutus-ledger-constraints`, and possibly some bpi adjustments afterwards.
-    # tldr: Dependency hell
-    plutus = {
-      url =
-        "github:mlabs-haskell/plutus/1a3c3a761cf048371c52a34b004f8b3fcf0dab43";
-      flake = false;
-    };
-    plutus-apps = {
-      url =
-        "github:mlabs-haskell/plutus-apps/82c0725c4d05398ae76d71927cc60aa23db1a11d";
-      flake = false;
-    };
+
     purescript-bridge = {
       url =
         "github:input-output-hk/purescript-bridge/47a1f11825a0f9445e0f98792f79172efef66c00";
       flake = false;
     };
+
     servant-purescript = {
       url =
         "github:input-output-hk/servant-purescript/44e7cacf109f84984cd99cd3faf185d161826963";
       flake = false;
     };
-    Win32-network = {
-      url =
-        "github:input-output-hk/Win32-network/3825d3abf75f83f406c1f7161883c438dac7277d";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, haskell-nix, iohk-nix, ... }@inputs:
+  outputs = { self, nixpkgs, nixpkgs-upstream, haskell-nix, haskell-nix-extra-hackage, iohk-nix, ... }@inputs:
     let
       defaultSystems = [ "x86_64-linux" "x86_64-darwin" ];
 
@@ -128,12 +151,16 @@
           inherit (haskell-nix) config;
           inherit system;
         };
-      nixpkgsFor' = system: import nixpkgs { inherit system; };
+      nixpkgsFor' = system: import nixpkgs-upstream { inherit system; };
 
       cabalProjectLocal = ''
-        allow-newer: size-based:template-haskell
-
-        constraints: hedgehog >= 1.0.4, hedgehog < 1.1
+        allow-newer: 
+          , size-based:template-haskell
+          , *:aeson
+        constraints: 
+          , hedgehog >= 1.0.4
+          , aeson >= 2.0
+          , beam-migrate >= 0.5.1.2
       '';
 
       haskellModules = [
@@ -143,6 +170,7 @@
               marlowe.flags.defer-plugin-errors = true;
               plutus-use-cases.flags.defer-plugin-errors = true;
               plutus-ledger.flags.defer-plugin-errors = true;
+              plutus-script-utils.flags.defer-plugin-errors = true;
               plutus-contract.flags.defer-plugin-errors = true;
               cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
               cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
@@ -159,178 +187,11 @@
 
       extraSources = [
         {
-          src = inputs.cardano-addresses;
-          subdirs = [ "core" "command-line" ];
-        }
-        {
-          src = inputs.cardano-base;
-          subdirs = [
-            "base-deriving-via"
-            "binary"
-            "binary/test"
-            "cardano-crypto-class"
-            "cardano-crypto-praos"
-            "cardano-crypto-tests"
-            "measures"
-            "orphans-deriving-via"
-            "slotting"
-            "strict-containers"
-          ];
-        }
-        {
-          src = inputs.cardano-crypto;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.cardano-ledger;
-          subdirs = [
-            "eras/alonzo/impl"
-            "eras/byron/chain/executable-spec"
-            "eras/byron/crypto"
-            "eras/byron/crypto/test"
-            "eras/byron/ledger/executable-spec"
-            "eras/byron/ledger/impl"
-            "eras/byron/ledger/impl/test"
-            "eras/shelley/impl"
-            "eras/shelley-ma/impl"
-            "eras/shelley/test-suite"
-            "libs/cardano-data"
-            "libs/cardano-ledger-core"
-            "libs/cardano-ledger-pretty"
-            "libs/cardano-protocol-tpraos"
-            "libs/compact-map"
-            "libs/non-integral"
-            "libs/set-algebra"
-            "libs/small-steps"
-            "libs/small-steps-test"
-          ];
-        }
-        {
-          src = inputs.cardano-node;
-          subdirs = [
-            "cardano-api"
-            "cardano-node"
-            "cardano-cli"
-            "cardano-git-rev"
-            "trace-resources"
-            "trace-forward"
-            "trace-dispatcher"
-          ];
-        }
-        {
-          src = inputs.cardano-config;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.cardano-prelude;
-          subdirs = [ "cardano-prelude" "cardano-prelude-test" ];
-        }
-        {
-          src = inputs.cardano-wallet;
-          subdirs = [
-            "lib/cli"
-            "lib/core"
-            "lib/core-integration"
-            "lib/dbvar"
-            "lib/launcher"
-            "lib/numeric"
-            "lib/shelley"
-            "lib/strict-non-empty-containers"
-            "lib/test-utils"
-            "lib/text-class"
-          ];
-        }
-        {
-          src = inputs.ekg-forward;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.flat;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.goblins;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.iohk-monitoring-framework;
-          subdirs = [
-            "iohk-monitoring"
-            "tracer-transformers"
-            "contra-tracer"
-            "plugins/backend-aggregation"
-            "plugins/backend-ekg"
-            "plugins/backend-monitoring"
-            "plugins/backend-trace-forwarder"
-            "plugins/scribe-systemd"
-          ];
-        }
-        {
-          src = inputs.optparse-applicative;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.ouroboros-network;
-          subdirs = [
-            "io-classes"
-            "io-sim"
-            "strict-stm"
-            "monoidal-synchronisation"
-            "network-mux"
-            "ntp-client"
-            "ouroboros-consensus"
-            "ouroboros-consensus-byron"
-            "ouroboros-consensus-cardano"
-            "ouroboros-consensus-protocol"
-            "ouroboros-consensus-shelley"
-            "ouroboros-network"
-            "ouroboros-network-framework"
-            "ouroboros-network-testing"
-            "typed-protocols"
-            "typed-protocols-cborg"
-            "typed-protocols-examples"
-          ];
-        }
-        {
-          src = inputs.plutus;
-          subdirs = [
-            "plutus-core"
-            "plutus-ledger-api"
-            "plutus-tx"
-            "plutus-tx-plugin"
-            "prettyprinter-configurable"
-            "stubs/plutus-ghc-stub"
-            "word-array"
-          ];
-        }
-        {
-          src = inputs.plutus-apps;
-          subdirs = [
-            "doc"
-            "freer-extras"
-            "playground-common"
-            "plutus-chain-index"
-            "plutus-chain-index-core"
-            "plutus-contract"
-            "plutus-ledger"
-            "plutus-ledger-constraints"
-            "plutus-pab"
-            "plutus-playground-server"
-            "plutus-use-cases"
-            "quickcheck-dynamic"
-            "web-ghc"
-          ];
-        }
-        {
           src = inputs.purescript-bridge;
           subdirs = [ "." ];
         }
         {
           src = inputs.servant-purescript;
-          subdirs = [ "." ];
-        }
-        {
-          src = inputs.Win32-network;
           subdirs = [ "." ];
         }
       ];
@@ -339,15 +200,33 @@
         let
           pkgs = nixpkgsFor system;
           pkgs' = nixpkgsFor' system;
+          compiler-nix-name = "ghc8107";
+
+
+          bpiHackages = haskell-nix-extra-hackage.mkHackagesFor system compiler-nix-name 
+          [ 
+            "${inputs.plutus-contract}/plutus-contract" 
+            "${inputs.plutus-contract}/plutus-ledger" 
+            "${inputs.plutus-contract}/plutus-ledger-constraints" 
+            "${inputs.plutus-contract}/plutus-chain-index-core" 
+            "${inputs.plutus-contract}/plutus-script-utils" 
+          ];
+
+          pcHackages = inputs.plutus-contract.hackagesFor system;
         in
         pkgs.haskell-nix.cabalProject' {
           src = ./.;
-          inherit cabalProjectLocal extraSources;
+          inherit cabalProjectLocal extraSources compiler-nix-name;
+          extra-hackages = bpiHackages.extra-hackages ++ pcHackages.extra-hackages;
+          extra-hackage-tarballs = bpiHackages.extra-hackage-tarballs // pcHackages.extra-hackage-tarballs;
+
           name = "bot-plutus-interface";
-          compiler-nix-name = "ghc8107";
           shell = {
             additional = ps: [
-              ps.plutus-pab
+              ps.plutus-ledger-constraints
+              ps.plutus-contract
+              ps.plutus-tx
+              ps.plutus-tx-plugin
             ];
             withHoogle = true;
             tools.haskell-language-server = { };
@@ -364,7 +243,7 @@
               nixpkgs-fmt
             ];
           };
-          modules = haskellModules;
+          modules = haskellModules ++ bpiHackages.modules ++ pcHackages.modules;
         };
 
       formatCheckFor = system:

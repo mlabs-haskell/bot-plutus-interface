@@ -1,9 +1,13 @@
-index-state: 2022-01-22T00:00:00Z
+index-state: 2022-05-18T00:00:00Z
 
 packages: ./bot-plutus-interface.cabal
-          ./examples/plutus-game/plutus-game.cabal
-          ./examples/plutus-transfer/plutus-transfer.cabal
-          ./examples/plutus-nft/plutus-nft.cabal
+          -- FIXME: put back later
+          -- ./examples/plutus-game/plutus-game.cabal
+          -- ./examples/plutus-transfer/plutus-transfer.cabal
+          -- ./examples/plutus-nft/plutus-nft.cabal
+
+package plutus-contract
+  optimization: False
 
 tests: true
 benchmarks: true

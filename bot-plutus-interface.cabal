@@ -103,7 +103,7 @@ library
     PlutusConfig.Types
 
   build-depends:
-    , aeson                      ^>=1.5.0.0
+    , aeson                      
     , attoparsec                 >=0.13.2.2
     , bytestring                 ^>=0.10.12.0
     , cardano-api
@@ -129,15 +129,12 @@ library
     , memory
     , mtl
     , ouroboros-consensus
-    , playground-common
-    , plutus-chain-index
     , plutus-chain-index-core
     , plutus-contract
     , plutus-core
     , plutus-ledger
     , plutus-ledger-api
     , plutus-ledger-constraints
-    , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
     , pretty
@@ -189,7 +186,7 @@ test-suite bot-plutus-interface-test
     Spec.RandomLedger
 
   build-depends:
-    , aeson                      ^>=1.5.0.0
+    , aeson                     
     , attoparsec
     , base
     , base-compat
@@ -211,15 +208,12 @@ test-suite bot-plutus-interface-test
     , http-types
     , lens
     , neat-interpolation
-    , playground-common
-    , plutus-chain-index
     , plutus-chain-index-core
     , plutus-contract
     , plutus-core
     , plutus-ledger
     , plutus-ledger-api
     , plutus-ledger-constraints
-    , plutus-pab
     , plutus-tx
     , plutus-tx-plugin
     , pretty-diff
