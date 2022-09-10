@@ -15,9 +15,9 @@ module BotPlutusInterface.Types (
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
   ContractState (..),
   SomeContractState (SomeContractState),
-  HasDefinitions (..),
-  SomeBuiltin (SomeBuiltin),
-  endpointsToSchemas,
+  -- HasDefinitions (..),
+  -- SomeBuiltin (SomeBuiltin),
+  -- endpointsToSchemas,
   RawTx (..),
   TxFile (..),
   TxBudget (..),
@@ -36,7 +36,6 @@ module BotPlutusInterface.Types (
 ) where
 
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
-import Cardano.Api.ProtocolParameters (ProtocolParameters)
 import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
@@ -60,13 +59,17 @@ import Ledger (
 import Ledger qualified
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
-import Plutus.PAB.Core.ContractInstance.STM (Activity)
-import Plutus.PAB.Effects.Contract.Builtin (
-  HasDefinitions (..),
-  SomeBuiltin (SomeBuiltin),
-  endpointsToSchemas,
- )
-import Plutus.V1.Ledger.Ada qualified as Ada
+
+-- FIXME:
+-- those need to be replaced
+--import Plutus.PAB.Core.ContractInstance.STM (Activity)
+--import Plutus.PAB.Effects.Contract.Builtin (
+--  HasDefinitions (..),
+--  SomeBuiltin (SomeBuiltin),
+--  endpointsToSchemas,
+
+import Cardano.Api.Shelley (ProtocolParameters)
+import Ledger.Ada (lovelaceValueOf)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
@@ -109,7 +112,7 @@ data PABConfig = PABConfig
   deriving stock (Show, Eq)
 
 collateralValue :: PABConfig -> Ledger.Value
-collateralValue = Ada.lovelaceValueOf . toInteger . pcCollateralSize
+collateralValue = lovelaceValueOf . toInteger . pcCollateralSize
 
 {- | Settings for `Contract.awaitTxStatusChange` implementation.
  See also `BotPlutusInterface.Contract.awaitTxStatusChange`
@@ -257,6 +260,15 @@ newtype AppState = AppState (TVar (Map ContractInstanceId SomeContractState))
 -}
 data SomeContractState
   = forall (w :: Type). (ToJSON w) => SomeContractState (TVar (ContractState w))
+
+{- | Whether the contract instance is still waiting for an event
+   (inlined from `plutus-pab` to avoid) the dependency
+-}
+data Activity
+  = Active
+  | Stopped
+  | Done (Maybe Ledger.Value)
+  deriving (Show, Eq)
 
 data ContractState w = ContractState
   { csActivity :: Activity

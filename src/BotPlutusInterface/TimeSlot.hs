@@ -153,7 +153,7 @@ posixTimeRangeToContainedSlotRangeIO
       -- https://github.com/input-output-hk/plutus-apps/blob/e51f57fa99f4cc0942ba6476b0689e43f0948eb3/plutus-ledger/src/Ledger/TimeSlot.hs#L125-L130
       getExtClosure ::
         PParams (AlonzoEra StandardCrypto) ->
-        EpochInfo (Either CAPI.TransactionValidityError) ->
+        EpochInfo (Either Text) ->
         SystemStart ->
         Extended Ledger.Slot ->
         Bool -> -- current `Closure` of lower or upper bound of `Ledger.POSIXTimeRange`

@@ -39,7 +39,6 @@ import Data.String (fromString)
 import Data.Text (Text, pack, unpack)
 import Data.Text.Encoding (encodeUtf8)
 import Data.UUID.V4 qualified as UUID
-import Ledger.TxId (TxId (TxId))
 import Network.WebSockets (
   Connection,
   PendingConnection,
@@ -49,6 +48,8 @@ import Network.WebSockets (
   withPingThread,
  )
 import Plutus.Contract.Types (IsContract (toContract))
+
+{-
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active, Done))
 import Plutus.PAB.Effects.Contract.Builtin (
   ContractConstraints,
@@ -62,6 +63,8 @@ import Plutus.PAB.Webserver.Types (
   ContractActivationArgs (..),
   InstanceStatusToClient (ContractFinished, NewObservableState),
  )
+-}
+
 import Plutus.V1.Ledger.Bytes (LedgerBytes (LedgerBytes), fromHex)
 import PlutusTx.Prelude (lengthOfByteString)
 import Servant.API (

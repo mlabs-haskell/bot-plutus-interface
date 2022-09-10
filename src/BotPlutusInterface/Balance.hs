@@ -480,7 +480,7 @@ modifyFirst p m (x : xs) = if p x then m (Just x) `consJust` xs else x : modifyF
 
 minus :: Value -> Value -> Value
 minus x y =
-  let negativeValues = map (\(c, t, a) -> (c, t, - a)) $ Value.flattenValue y
+  let negativeValues = map (\(c, t, a) -> (c, t, -a)) $ Value.flattenValue y
    in x <> mconcat (map unflattenValue negativeValues)
 
 unflattenValue :: (CurrencySymbol, TokenName, Integer) -> Value
