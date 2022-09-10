@@ -31,6 +31,7 @@ module Spec.MockContract (
   pkhAddr1,
   pkhAddr2,
   pkhAddr3,
+  currencySymbol1,
   -- Test interpreter
   runPABEffectPure,
   runContractPure,
@@ -53,9 +54,11 @@ module Spec.MockContract (
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt))
+import BotPlutusInterface.CardanoNode.Query (toQueryError)
 import BotPlutusInterface.Collateral (removeCollateralFromPage)
 import BotPlutusInterface.Contract (handleContract)
-import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..))
+import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
@@ -77,6 +80,8 @@ import Cardano.Api (
   Key (VerificationKey, getVerificationKey),
   NetworkId (Mainnet),
   PaymentKey,
+  PlutusScriptVersion (PlutusScriptV2),
+  Script (PlutusScript),
   SigningKey (PaymentSigningKey),
   TextEnvelope (TextEnvelope, teDescription, teRawCBOR, teType),
   TextEnvelopeDescr,
@@ -84,12 +89,15 @@ import Cardano.Api (
   deserialiseFromTextEnvelope,
   getVerificationKey,
   serialiseToTextEnvelope,
+  toScriptInAnyLang,
  )
+import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
+import Codec.Serialise (serialise)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Lens (at, set, (%~), (&), (<|), (?~), (^.), (^..), _1)
+import Control.Lens (at, set, view, (%~), (&), (<|), (?~), (^.), (^..), _1)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, reinterpret2, run)
@@ -102,6 +110,8 @@ import Data.Aeson.Extras (encodeByteString)
 import Data.Bool (bool)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as BS
+import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Short qualified as SBS
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight, mapLeft)
 import Data.Hex (hex, unhex)
@@ -131,19 +141,31 @@ import Ledger (
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
-import Ledger.Scripts (DatumHash (DatumHash))
+import Ledger.Scripts (Datum (Datum), DatumHash (DatumHash))
 import Ledger.Slot (Slot (getSlot))
-import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef))
+import Ledger.Tx (
+  ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
+  TxId (TxId),
+  TxOutRef (TxOutRef),
+  ciTxOutAddress,
+  ciTxOutValue,
+ )
 import Ledger.Tx qualified as Tx
-import Ledger.TxId (TxId (TxId))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.ChainIndex.Api (UtxosResponse (..))
-import Plutus.ChainIndex.Tx (ChainIndexTx (..), ChainIndexTxOutputs (ValidTx))
+import Plutus.ChainIndex.Api (QueryResponse (QueryResponse), UtxosResponse (..))
+import Plutus.ChainIndex.Tx (
+  ChainIndexTx (..),
+  ChainIndexTxOutputs (ValidTx),
+  OutputDatum (NoOutputDatum, OutputDatum, OutputDatumHash),
+  ReferenceScript (ReferenceScriptInAnyLang, ReferenceScriptNone),
+ )
+import Plutus.ChainIndex.Tx qualified as CIT
 import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
+import Plutus.V1.Ledger.Api qualified as V1
 import Plutus.V1.Ledger.Credential (Credential (PubKeyCredential))
 import PlutusTx.Builtins (fromBuiltin)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
@@ -152,6 +174,9 @@ import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
+
+currencySymbol1 :: Ledger.CurrencySymbol
+currencySymbol1 = "363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f"
 
 signingKey1, signingKey2, signingKey3 :: SigningKey PaymentKey
 signingKey1 = PaymentSigningKey $ genKeyDSIGN $ mkSeedFromBytes $ ByteString.replicate 32 0
@@ -242,7 +267,7 @@ data MockContractState w = MockContractState
   , _observableState :: w
   , _logHistory :: [(LogContext, LogLevel, PP.Doc ())]
   , _contractEnv :: ContractEnvironment w
-  , _utxos :: [(TxOutRef, TxOut)]
+  , _utxos :: [(TxOutRef, ChainIndexTxOut)]
   , _tip :: Tip
   , _collateralUtxo :: Maybe CollateralUtxo
   }
@@ -268,7 +293,7 @@ instance Monoid w => Default (MockContractState w) where
         _utxos =
           [
             ( collateralTxOutRef theCollateralUtxo
-            , TxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing
+            , PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing Nothing
             )
           ]
       , _tip = Tip 1000 (BlockId "ab12") 4
@@ -353,6 +378,10 @@ runPABEffectPure initState req =
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
     go GetInMemCollateral = _collateralUtxo <$> get @(MockContractState w)
     go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
+    go (QueryNode query) = mockQueryNode query
+    go (MinUtxo utxo) =
+      return $
+        calcMinUtxo (def {pcProtocolParams = Just def}) utxo
     incSlot :: forall (v :: Type). MockContract w v -> MockContract w v
     incSlot mc =
       mc <* modify @(MockContractState w) (tip %~ incTip)
@@ -434,7 +463,7 @@ mockQueryTip = do
   pure $
     Text.unpack
       [text|{
-              "era": "Alonzo",
+              "era": "Babbage",
               "syncProgress": "100.00",
               "hash": "${blockId}",
               "epoch": 1,
@@ -450,10 +479,10 @@ mockQueryUtxo addr = do
   pure $
     mockQueryUtxoOut $
       filter
-        ((==) addr . unsafeSerialiseAddress network . Ledger.txOutAddress . snd)
+        ((==) addr . unsafeSerialiseAddress network . view ciTxOutAddress . snd)
         (state ^. utxos)
 
-mockQueryUtxoOut :: [(TxOutRef, TxOut)] -> String
+mockQueryUtxoOut :: [(TxOutRef, ChainIndexTxOut)] -> String
 mockQueryUtxoOut utxos' =
   Text.unpack $
     Text.unlines
@@ -461,18 +490,30 @@ mockQueryUtxoOut utxos' =
       , "--------------------------------------------------------------------------------------"
       , Text.unlines $
           map
-            ( \(TxOutRef (TxId txId) txIx, TxOut _ val datumHash) ->
+            ( \(TxOutRef (TxId txId) txIx, ciTxOut) ->
                 let txId' = encodeByteString $ fromBuiltin txId
                     txIx' = Text.pack $ show txIx
-                    amts = valueToUtxoOut val
-                    datumHash' = case datumHash of
-                      Nothing -> "TxOutDatumNone"
-                      Just (DatumHash dh) ->
-                        "TxDatumHash ScriptDataInAlonzoEra " <> encodeByteString (fromBuiltin dh)
-                 in [text|${txId'}     ${txIx'}        ${amts} + ${datumHash'}|]
+                    amts = valueToUtxoOut $ view ciTxOutValue ciTxOut
+                    outDatum = txOutToDatum ciTxOut
+                 in [text|${txId'}     ${txIx'}        ${amts} + ${outDatum}|]
             )
             utxos'
       ]
+
+txOutToDatum :: ChainIndexTxOut -> Text
+txOutToDatum =
+  \case
+    PublicKeyChainIndexTxOut _ _ Nothing _ -> "TxOutDatumNone"
+    PublicKeyChainIndexTxOut _ _ (Just (dh, Nothing)) _ -> printDatumHash dh
+    PublicKeyChainIndexTxOut _ _ (Just (_, Just (Datum d))) _ -> printDatum d
+    ScriptChainIndexTxOut _ _ (dh, Nothing) _ _ -> printDatumHash dh
+    ScriptChainIndexTxOut _ _ (_, Just (Datum d)) _ _ -> printDatum d
+  where
+    printDatumHash (DatumHash dh) =
+      "TxDatumHash ScriptDataInBabbageEra " <> encodeByteString (fromBuiltin dh)
+    printDatum d =
+      "TxOutDatumInline ReferenceTxInsScriptsInlineDatumsInBabbageEra "
+        <> Text.pack (show d)
 
 mockBudget :: String
 mockBudget = "Some budget"
@@ -590,7 +631,13 @@ mockQueryChainIndex = \case
     throwError @Text "RedeemerFromHash is unimplemented"
   TxOutFromRef txOutRef -> do
     state <- get @(MockContractState w)
-    pure $ TxOutRefResponse $ Tx.fromTxOut =<< lookup txOutRef (state ^. utxos)
+    pure $ TxOutRefResponse $ lookup txOutRef (state ^. utxos)
+  UnspentTxOutFromRef txOutRef -> do
+    state <- get @(MockContractState w)
+    pure $ UnspentTxOutResponse $ lookup txOutRef (state ^. utxos)
+  UnspentTxOutSetAtAddress _ _ -> do
+    state <- get @(MockContractState w)
+    pure $ UnspentTxOutsAtResponse $ QueryResponse (state ^. utxos) Nothing
   TxFromTxId txId ->
     if txId == nonExistingTxId
       then pure $ TxIdResponse Nothing
@@ -649,16 +696,50 @@ mockQueryChainIndex = \case
     pure $ GetTipResponse (state ^. tip)
 
 -- | Fills in gaps of inputs with garbage TxOuts, so that the indexes we know about are in the correct positions
-buildOutputsFromKnownUTxOs :: [(TxOutRef, TxOut)] -> TxId -> ChainIndexTxOutputs
-buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ fillGaps sortedRelatedRefs 0
+buildOutputsFromKnownUTxOs :: [(TxOutRef, ChainIndexTxOut)] -> TxId -> ChainIndexTxOutputs
+buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map converCiTxOut $ fillGaps sortedRelatedRefs 0
   where
     sortedRelatedRefs = sortOn (Tx.txOutRefIdx . fst) $ filter ((== txId) . Tx.txOutRefId . fst) knownUtxos
-    fillGaps :: [(TxOutRef, TxOut)] -> Integer -> [TxOut]
+    fillGaps :: [(TxOutRef, ChainIndexTxOut)] -> Integer -> [ChainIndexTxOut]
     fillGaps [] _ = []
     fillGaps (out@(TxOutRef _ n', txOut) : outs) n
       | n' == n = txOut : fillGaps outs (n + 1)
       | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
-    defTxOut = TxOut (Ledger.Address (PubKeyCredential "") Nothing) mempty Nothing
+    defTxOut =
+      PublicKeyChainIndexTxOut
+        (Ledger.Address (PubKeyCredential "") Nothing)
+        mempty
+        Nothing
+        Nothing
+
+converCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
+converCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
+  CIT.ChainIndexTxOut addr val (convertMaybeDatum dat) (convertRefScript maybeRefSc)
+converCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
+  let datum = case eitherDatum of
+        (dh, Nothing) -> OutputDatumHash dh
+        (_, Just d) -> OutputDatum d
+   in CIT.ChainIndexTxOut addr val datum (convertRefScript maybeRefSc)
+
+convertMaybeDatum :: Maybe (DatumHash, Maybe Datum) -> OutputDatum
+convertMaybeDatum = \case
+  Nothing -> NoOutputDatum
+  Just (dh, Nothing) -> OutputDatumHash dh
+  Just (_dh, Just d) -> OutputDatum d
+
+convertRefScript :: Maybe V1.Script -> ReferenceScript
+convertRefScript =
+  \case
+    Nothing -> ReferenceScriptNone
+    Just v ->
+      ReferenceScriptInAnyLang
+        . toScriptInAnyLang
+        . PlutusScript PlutusScriptV2
+        . PlutusScriptSerialised
+        . SBS.toShort
+        . LBS.toStrict
+        . serialise
+        $ v
 
 mockExBudget ::
   forall (w :: Type).
@@ -690,7 +771,7 @@ mockExBudget _ = pure . Right $ TxBudget inBudgets policyBudgets
 dummyTxRawFile :: TextEnvelope
 dummyTxRawFile =
   TextEnvelope
-    { teType = "TxBodyAlonzo"
+    { teType = "TxBodyBabbage"
     , teDescription = ""
     , teRawCBOR = fromRight (error "failed to unpack CBOR hex") $ unhex "86a500848258205d677265fa5bb21ce6d8c7502aca70b9316d10e958611f3c6b758f65ad9599960182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc9300008258209405c89393ba84b14bf8d3e7ed4788cc6e2257831943b58338bee8d37a3668fc00825820a1be9565ccac4a04d2b5bf0d0167196ae467da0d88161c9c827fbe76452b24ef000d8182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc930000018482581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975461a3b8cc4a582581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1a000d062782581d606696936bb8ae24859d0c2e4d05584106601f58a5e9466282c8561b88821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1282581d60981fc565bcf0c95c0cfa6ee6693875b60d529d87ed7082e9bf03c6a4821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e0f021a000320250e81581c0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975469fff8080f5f6"
     }
@@ -698,7 +779,7 @@ dummyTxRawFile =
 dummyTxSignedFile :: TextEnvelope
 dummyTxSignedFile =
   TextEnvelope
-    { teType = "Tx AlonzoEra"
+    { teType = "Tx BabbageEra"
     , teDescription = ""
     , teRawCBOR = fromRight (error "failed to unpack CBOR hex") $ unhex "84a500848258205d677265fa5bb21ce6d8c7502aca70b9316d10e958611f3c6b758f65ad9599960182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc9300008258209405c89393ba84b14bf8d3e7ed4788cc6e2257831943b58338bee8d37a3668fc00825820a1be9565ccac4a04d2b5bf0d0167196ae467da0d88161c9c827fbe76452b24ef000d8182582076ed2fcda860de2cbacd0f3a169058fa91eff47bc1e1e5b6d84497159fbc930000018482581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f975461a3b8cc4a582581d600f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1a000d062782581d606696936bb8ae24859d0c2e4d05584106601f58a5e9466282c8561b88821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e1282581d60981fc565bcf0c95c0cfa6ee6693875b60d529d87ed7082e9bf03c6a4821a00150bd0a1581c1d6445ddeda578117f393848e685128f1e78ad0c4e48129c5964dc2ea14974657374546f6b656e0f021a000320250e81581c0f45aaf1b2959db6e5ff94dbb1f823bf257680c3c723ac2d49f97546a10081825820096092b8515d75c2a2f75d6aa7c5191996755840e81deaa403dba5b690f091b65840295a93849a67cecabb8286e561c407b6bd49abf8d2da8bfb821105eae4d28ef0ef1b9ee5e8abb8fd334059f3dfc78c0a65e74057a2dc8d1d12e46842abea600ff5f6"
     }
@@ -715,3 +796,17 @@ mockSlotRange =
       slotRange
   where
     slotRange = Interval (lowerBound 47577202) (strictUpperBound 50255602)
+
+mockQueryNode ::
+  forall (w :: Type) (a :: Type).
+  NodeQuery a ->
+  MockContract w a
+mockQueryNode (UtxosAt _addr) = do
+  state <- get @(MockContractState w)
+  return $ Right $ Map.fromList (state ^. utxos)
+mockQueryNode PParams = do
+  state <- get @(MockContractState w)
+
+  case pcProtocolParams $ cePABConfig $ _contractEnv state of
+    Nothing -> return $ Left $ toQueryError @String "Not able to get protocol parameters."
+    (Just pparams) -> return $ Right pparams

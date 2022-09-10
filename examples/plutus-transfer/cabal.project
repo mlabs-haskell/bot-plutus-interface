@@ -1,5 +1,5 @@
 -- Bump this if you need newer packages
-index-state: 2021-10-20T00:00:00Z
+index-state: 2022-05-18T00:00:00Z
 
 packages:
   ./.
@@ -11,4 +11,3 @@ write-ghc-environment-files: never
 -- Always build tests and benchmarks.
 tests: true
 benchmarks: true
-

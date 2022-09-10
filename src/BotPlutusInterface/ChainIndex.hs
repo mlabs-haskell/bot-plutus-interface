@@ -19,6 +19,7 @@ import Network.HTTP.Client (
  )
 import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Api (
+  QueryAtAddressRequest (QueryAtAddressRequest),
   TxoAtAddressRequest (TxoAtAddressRequest),
   TxosResponse (TxosResponse),
   UtxoAtAddressRequest (UtxoAtAddressRequest),
@@ -55,6 +56,13 @@ handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
     --   pure $ RedeemerHashResponse (Maybe Redeemer)
     TxOutFromRef txOutRef ->
       TxOutRefResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getTxOut txOutRef)
+    UnspentTxOutFromRef txOutRef ->
+      UnspentTxOutResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getUnspentTxOut txOutRef)
+    UnspentTxOutSetAtAddress page credential ->
+      UnspentTxOutsAtResponse
+        <$> chainIndexQueryMany
+          cePABConfig
+          (ChainIndexClient.getUnspentTxOutsAtAddress (QueryAtAddressRequest (Just page) credential))
     TxFromTxId txId ->
       TxIdResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getTx txId)
     UtxoSetMembership txOutRef ->

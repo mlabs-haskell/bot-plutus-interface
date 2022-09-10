@@ -7,6 +7,7 @@ module BotPlutusInterface.Contract (runContract, handleContract) where
 import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.Effects (
   PABEffect,
@@ -18,10 +19,12 @@ import BotPlutusInterface.Effects (
   handleContractLog,
   handlePABEffect,
   logToContract,
+  minUtxo,
   posixTimeRangeToContainedSlotRange,
   posixTimeToSlot,
   printBpiLog,
   queryChainIndex,
+  queryNode,
   readFileTextEnvelope,
   saveBudget,
   setInMemCollateral,
@@ -40,8 +43,13 @@ import BotPlutusInterface.Types (
   TxFile (Signed),
   collateralValue,
  )
-import Cardano.Api (AsType (..), EraInMode (..), Tx (Tx))
-import Control.Lens (preview, (^.))
+import Cardano.Api (
+  AsType (..),
+  EraInMode (..),
+  Tx (Tx),
+ )
+import Cardano.Prelude (liftA2)
+import Control.Lens (preview, (.~), (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
@@ -52,22 +60,22 @@ import Control.Monad.Trans.Either (EitherT, eitherT, firstEitherT, hoistEither, 
 import Control.Monad.Trans.Except (ExceptT, throwE)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
+import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Either.Combinators (maybeToLeft, swapEither)
-import Data.Function (fix)
-import Data.HashMap.Strict qualified as HM
+import Data.Function (fix, (&))
 import Data.Kind (Type)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Vector qualified as V
 import Ledger (POSIXTime, getCardanoTxId)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
-import Ledger.Constraints.OffChain (UnbalancedTx (..))
+import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
 import Ledger.Slot (Slot (Slot))
-import Ledger.Tx (CardanoTx)
+import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
 import Ledger.Tx qualified as Tx
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
 import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
@@ -124,11 +132,11 @@ instance Pretty Value where
         ( \(k, v) ->
             PP.hang 2 $
               PP.sep
-                [ pretty k <+> ": "
+                [ pretty (show k) <+> ": "
                 , pretty v
                 ]
         )
-      $ HM.toList obj
+      $ KeyMap.toList obj
   pretty Null = "null"
 
 handleWriter ::
@@ -180,37 +188,55 @@ handlePABReq contractEnv req = do
     ----------------------
     -- Handled requests --
     ----------------------
-    OwnPaymentPublicKeyHashReq ->
-      pure $ OwnPaymentPublicKeyHashResp $ PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash
+    OwnAddressesReq ->
+      pure
+        . OwnAddressesResp
+        . nonEmptySingleton
+        $ Ledger.pubKeyHashAddress
+          (PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash)
+          contractEnv.cePABConfig.pcOwnStakePubKeyHash
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
       ChainIndexQueryResp <$> queryChainIndex @w query
     BalanceTxReq unbalancedTx ->
       BalanceTxResp <$> balanceTx @w contractEnv unbalancedTx
-    WriteBalancedTxReq tx ->
-      WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx
+    WriteBalancedTxReq tx' ->
+      WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx'
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
     AwaitTimeReq t -> AwaitTimeResp <$> awaitTime @w contractEnv t
-    CurrentSlotReq -> CurrentSlotResp <$> currentSlot @w contractEnv
+    CurrentPABSlotReq -> CurrentPABSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
       either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
         <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
+    AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w @effs unbalancedTx
     ------------------------
     -- Unhandled requests --
     ------------------------
-    -- AwaitTimeReq t -> pure $ AwaitTimeResp t
-    -- AwaitUtxoSpentReq txOutRef -> pure $ AwaitUtxoSpentResp ChainIndexTx
-    -- AwaitUtxoProducedReq Address -> pure $ AwaitUtxoProducedResp (NonEmpty ChainIndexTx)
-    -- AwaitTxOutStatusChangeReq TxOutRef
-    -- ExposeEndpointReq ActiveEndpoint -> ExposeEndpointResp EndpointDescription (EndpointValue JSON.Value)
-    -- YieldUnbalancedTxReq UnbalancedTx
-    unsupported -> error ("Unsupported PAB effect: " ++ show unsupported)
+    AwaitUtxoSpentReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    AwaitUtxoProducedReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    AwaitTxOutStatusChangeReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
+    CurrentChainIndexSlotReq -> error ("Unsupported PAB effect: " ++ show req)
 
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
+
+adjustUnbalancedTx' ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  UnbalancedTx ->
+  Eff effs (Either Tx.ToCardanoError UnbalancedTx)
+adjustUnbalancedTx' unbalancedTx = runEitherT $ do
+  updatedOuts <-
+    firstEitherT (Tx.TxBodyError . show) $
+      newEitherT $
+        sequence <$> traverse (minUtxo @w) (unbalancedTx ^. tx . outputs)
+
+  return $ unbalancedTx & (tx . outputs .~ updatedOuts)
 
 {- | Await till transaction status change to something from `Unknown`.
  Uses `chain-index` to query transaction by id.
@@ -236,7 +262,13 @@ awaitTxStatusChange contractEnv txId = do
       cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
 
   fix $ \loop -> do
-    currBlock <- currentBlock contractEnv
+    (currBlock, currSlot) <- currentTip contractEnv
+
+    helperLog $
+      "Current block: " ++ show currBlock
+        ++ ", current slot: "
+        ++ show currSlot
+
     txStatus <- getStatus
     case (txStatus, currBlock > cutOffBlock) of
       (status, True) -> do
@@ -272,12 +304,12 @@ awaitTxStatusChange contractEnv txId = do
     queryChainIndexForTxState = do
       mTx <- join . preview _TxIdResponse <$> (queryChainIndex @w $ TxFromTxId txId)
       case mTx of
-        Just tx -> do
+        Just tx' -> do
           blk <- fromInteger <$> currentBlock contractEnv
-          pure . Just $ fromTx blk tx
+          pure . Just $ fromTx blk tx'
         Nothing -> pure Nothing
 
-    helperLog = printBpiLog @w (Debug [CollateralLog]) . pretty
+    helperLog = printBpiLog @w (Debug [PABLog]) . pretty
 
 -- | This will FULLY balance a transaction
 balanceTx ::
@@ -286,7 +318,8 @@ balanceTx ::
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTx contractEnv unbalancedTx = do
+balanceTx _ (UnbalancedTx (Left _) _ _ _) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
+balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
   let pabConf = contractEnv.cePABConfig
 
   result <- handleCollateral @w contractEnv
@@ -298,13 +331,18 @@ balanceTx contractEnv unbalancedTx = do
       eitherBalancedTx <-
         Balance.balanceTxIO' @w
           Balance.defaultBalanceConfig
-            { Balance.bcHasScripts = Balance.txUsesScripts (unBalancedTxTx unbalancedTx)
+            { Balance.bcHasScripts = Balance.txUsesScripts tx'
             }
           pabConf
           pabConf.pcOwnPubKeyHash
           unbalancedTx
 
-      pure $ either (BalanceTxFailed . InsufficientFunds) (BalanceTxSuccess . Right) eitherBalancedTx
+      pure $ either (BalanceTxFailed . OtherError) (BalanceTxSuccess . EmulatorTx) eitherBalancedTx
+
+fromCardanoTx :: CardanoTx -> Tx.Tx
+fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
+fromCardanoTx (EmulatorTx tx') = tx'
+fromCardanoTx (Tx.Both tx' _) = tx'
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -313,53 +351,53 @@ writeBalancedTx ::
   ContractEnvironment w ->
   CardanoTx ->
   Eff effs WriteBalancedTxResponse
-writeBalancedTx _ (Left _) = error "Cannot handle cardano api tx"
-writeBalancedTx contractEnv (Right tx) = do
+writeBalancedTx contractEnv cardanoTx = do
   let pabConf = contractEnv.cePABConfig
+      tx' = fromCardanoTx cardanoTx
   uploadDir @w pabConf.pcSigningKeyFileDir
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
 
-  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . Left) $ do
-    void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx
+  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . CardanoApiTx) $ do
+    void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx'
     lift $ uploadDir @w pabConf.pcScriptFileDir
 
     privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
-    let requiredSigners = Map.keys $ tx ^. Tx.signatures
+    let requiredSigners = Map.keys $ tx' ^. Tx.signatures
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
         signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-    void $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx
+    void $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx'
 
     -- TODO: This whole part is hacky and we should remove it.
-    let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx)
+    let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx')
     -- We read back the tx from file as tx currently has the wrong id (but the one we create with cardano-cli is correct)
-    alonzoBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsAlonzoEra) path
-    let cardanoTx = Tx.SomeTx (Tx alonzoBody []) AlonzoEraInCardanoMode
+    babbageBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsBabbageEra) path
+    let cardanoApiTx = Tx.SomeTx (Tx babbageBody []) BabbageEraInCardanoMode
 
     if signable
-      then newEitherT $ CardanoCLI.signTx @w pabConf tx requiredSigners
+      then newEitherT $ CardanoCLI.signTx @w pabConf tx' requiredSigners
       else
         lift . printBpiLog @w (Warn [PABLog]) . PP.vsep $
           [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-          , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx))
+          , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx'))
           , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
           ]
 
     when (pabConf.pcCollectStats && signable) $
-      collectBudgetStats (Tx.txId tx) pabConf
+      collectBudgetStats (Tx.txId tx') pabConf
 
     when (not pabConf.pcDryRun && signable) $ do
-      newEitherT $ CardanoCLI.submitTx @w pabConf tx
+      newEitherT $ CardanoCLI.submitTx @w pabConf tx'
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
-    let cardanoTxId = Ledger.getCardanoTxId $ Left cardanoTx
-        signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx)
+    let cardanoTxId = Ledger.getCardanoTxId $ Tx.CardanoApiTx cardanoApiTx
+        signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx')
         signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
-    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx)) (Files.txFilePath pabConf "raw" cardanoTxId)
+    mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx')) (Files.txFilePath pabConf "raw" cardanoTxId)
     when signable $ mvFiles signedSrcPath signedDstPath
 
-    pure cardanoTx
+    pure cardanoApiTx
   where
     mvFiles :: Text -> Text -> EitherT Text (Eff effs) ()
     mvFiles src dst =
@@ -372,7 +410,7 @@ writeBalancedTx contractEnv (Right tx) = do
             }
 
     collectBudgetStats txId pabConf = do
-      let path = Text.unpack (Files.txFilePath pabConf "signed" (Tx.txId tx))
+      let path = Text.unpack (Files.txFilePath pabConf "signed" txId)
       txBudget <-
         firstEitherT toBudgetSaveError $
           newEitherT $ estimateBudget @w (Signed path)
@@ -419,21 +457,32 @@ awaitTime ce pTime = do
   where
     rightOrErr = either (error . show) id
 
+type Block = Integer
+
+currentTip ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  ContractEnvironment w ->
+  Eff effs (Block, Slot)
+currentTip contractEnv = do
+  tip <-
+    either (error . Text.unpack) id
+      <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+  pure $ liftA2 (,) block (Slot . slot) tip
+
 currentSlot ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
   Eff effs Slot
-currentSlot contractEnv =
-  Slot . slot . either (error . Text.unpack) id <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+currentSlot = fmap snd . currentTip
 
 currentBlock ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs Integer
-currentBlock contractEnv =
-  block . either (error . Text.unpack) id <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+  Eff effs Block
+currentBlock = fmap fst . currentTip
 
 currentTime ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -454,6 +503,9 @@ handleCollateral ::
 handleCollateral cEnv = do
   result <- (fmap swapEither . runEitherT) $
     do
+      let helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
+          helperLog msg = newEitherT $ Right <$> printBpiLog @w (Debug [CollateralLog]) msg
+
       collateralNotInMem <-
         newEitherT $
           maybeToLeft "Collateral UTxO not found in contract env."
@@ -480,10 +532,6 @@ handleCollateral cEnv = do
       setInMemCollateral @w collteralUtxo
         >> Right <$> printBpiLog @w (Debug [CollateralLog]) "successfully set the collateral utxo in env."
     Left err -> pure $ Left $ "Failed to make collateral: " <> err
-  where
-    --
-    helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
-    helperLog msg = newEitherT $ Right <$> printBpiLog @w (Debug [CollateralLog]) msg
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.
@@ -498,7 +546,7 @@ makeCollateral cEnv = runEitherT $ do
 
   let pabConf = cEnv.cePABConfig
   unbalancedTx <-
-    firstEitherT (T.pack . show) $
+    firstEitherT (Text.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
 
   balancedTx <-
@@ -508,9 +556,9 @@ makeCollateral cEnv = runEitherT $ do
         pabConf
         pabConf.pcOwnPubKeyHash unbalancedTx
 
-  wbr <- lift $ writeBalancedTx cEnv (Right balancedTx)
+  wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)
   case wbr of
-    WriteBalancedTxFailed e -> throwE . T.pack $ "Failed to create collateral output: " <> show e
+    WriteBalancedTxFailed e -> throwE . Text.pack $ "Failed to create collateral output: " <> show e
     WriteBalancedTxSuccess cTx -> do
       status <- lift $ awaitTxStatusChange cEnv (getCardanoTxId cTx)
       lift $ printBpiLog @w (Notice [CollateralLog]) $ "Collateral Tx Status: " <> pretty status
@@ -531,10 +579,18 @@ findCollateralAtOwnPKH cEnv =
               (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
               pabConf.pcOwnStakePubKeyHash
 
-      r <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
+      r <-
+        firstEitherT (Text.pack . show) $
+          newEitherT $ queryNode @w (UtxosAt changeAddr)
       let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
       hoistEither $ case filter check refsAndOuts of
         [] -> Left "Couldn't find collateral UTxO"
         ((oref, _) : _) -> Right oref
   where
     check (_, txOut) = Tx.txOutValue txOut == collateralValue (cePABConfig cEnv)
+
+{- | Construct a 'NonEmpty' list from a single element.
+ Should be replaced by NonEmpty.singleton after updating to base 4.15
+-}
+nonEmptySingleton :: a -> NonEmpty a
+nonEmptySingleton = (:| [])

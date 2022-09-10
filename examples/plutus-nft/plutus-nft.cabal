@@ -74,7 +74,7 @@ library
   import:          common-lang
   exposed-modules: Cardano.PlutusExample.NFT
   build-depends:
-    , aeson                      ^>=1.5.0.0
+    , aeson
     , attoparsec                 >=0.13.2.2
     , base16-bytestring
     , bytestring                 ^>=0.10.12.0
@@ -103,6 +103,7 @@ library
     , plutus-ledger-api
     , plutus-ledger-constraints
     , plutus-pab
+    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
     , process
@@ -127,7 +128,7 @@ library
 executable plutus-nft-pab
   import:         common-lang
   build-depends:
-    , aeson                 ^>=1.5.0.0
+    , aeson
     , bot-plutus-interface
     , bytestring
     , cardano-api

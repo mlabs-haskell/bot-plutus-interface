@@ -39,6 +39,7 @@ import Data.String (fromString)
 import Data.Text (Text, pack, unpack)
 import Data.Text.Encoding (encodeUtf8)
 import Data.UUID.V4 qualified as UUID
+import Ledger.Tx (TxId (TxId))
 import Network.WebSockets (
   Connection,
   PendingConnection,

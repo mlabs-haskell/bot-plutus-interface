@@ -32,7 +32,7 @@ common common-lang
   -- -Werror
 
   build-depends:
-    , base                     ^>=4.14
+    , base
     , record-dot-preprocessor
     , record-hasfield
 
@@ -80,7 +80,10 @@ library
     BotPlutusInterface
     BotPlutusInterface.Balance
     BotPlutusInterface.BodyBuilder
+    BotPlutusInterface.CardanoAPI
     BotPlutusInterface.CardanoCLI
+    BotPlutusInterface.CardanoNode.Effects
+    BotPlutusInterface.CardanoNode.Query
     BotPlutusInterface.ChainIndex
     BotPlutusInterface.CoinSelection
     BotPlutusInterface.Collateral
@@ -90,7 +93,6 @@ library
     BotPlutusInterface.ExBudget
     BotPlutusInterface.Files
     BotPlutusInterface.Helpers
-    BotPlutusInterface.QueryNode
     BotPlutusInterface.Server
     BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
@@ -109,7 +111,9 @@ library
     , cardano-api >= 1.35
     , cardano-crypto
     , cardano-ledger-alonzo
+    , cardano-ledger-babbage
     , cardano-ledger-core
+    , cardano-ledger-shelley
     , cardano-prelude
     , cardano-slotting
     , config-schema
@@ -135,6 +139,7 @@ library
     , plutus-ledger
     , plutus-ledger-api
     , plutus-ledger-constraints
+    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
     , pretty
@@ -173,6 +178,7 @@ test-suite bot-plutus-interface-test
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
+    Spec.BotPlutusInterface.AdjustUnbalanced
     Spec.BotPlutusInterface.Balance
     Spec.BotPlutusInterface.CoinSelection
     Spec.BotPlutusInterface.Collateral
@@ -181,7 +187,6 @@ test-suite bot-plutus-interface-test
     Spec.BotPlutusInterface.ContractStats
     Spec.BotPlutusInterface.Server
     Spec.BotPlutusInterface.TxStatusChange
-    Spec.BotPlutusInterface.UtxoParser
     Spec.MockContract
     Spec.RandomLedger
 
@@ -214,6 +219,7 @@ test-suite bot-plutus-interface-test
     , plutus-ledger
     , plutus-ledger-api
     , plutus-ledger-constraints
+    , plutus-script-utils
     , plutus-tx
     , plutus-tx-plugin
     , pretty-diff

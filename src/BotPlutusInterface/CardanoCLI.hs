@@ -3,14 +3,12 @@
 
 module BotPlutusInterface.CardanoCLI (
   submitTx,
-  calculateMinUtxo,
   calculateMinFee,
   buildTx,
   signTx,
   validatorScriptFilePath,
   unsafeSerialiseAddress,
   policyScriptFilePath,
-  utxosAt,
   queryTip,
 ) where
 
@@ -18,7 +16,8 @@ import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand)
 import BotPlutusInterface.Files (
   DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
-  metadataFilePath,
+  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+  -- metadataFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
   signingKeyFilePath,
@@ -35,7 +34,11 @@ import BotPlutusInterface.Types (
   spendBudgets,
  )
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
-import Cardano.Api.Shelley (NetworkId (Mainnet, Testnet), NetworkMagic (..), serialiseAddress)
+import Cardano.Api.Shelley (
+  NetworkId (Mainnet, Testnet),
+  NetworkMagic (NetworkMagic),
+  serialiseAddress,
+ )
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
@@ -44,7 +47,6 @@ import Data.Attoparsec.Text (parseOnly)
 import Data.Bifunctor (first)
 import Data.Bool (bool)
 import Data.ByteString.Lazy.Char8 qualified as Char8
-import Data.Either (fromRight)
 import Data.Either.Combinators (mapLeft)
 import Data.Hex (hex)
 import Data.Kind (Type)
@@ -52,13 +54,12 @@ import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
-import Data.Set (Set)
-import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
-import Ledger (Slot (Slot), SlotRange)
+import Ledger (Slot (Slot), SlotRange, TxInType (ConsumeScriptAddress))
 import Ledger qualified
+import Ledger.Ada (fromValue, getLovelace)
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
 import Ledger.Crypto (PubKey, PubKeyHash (getPubKeyHash))
@@ -71,30 +72,40 @@ import Ledger.Interval (
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
-  ChainIndexTxOut,
-  RedeemerPtr (..),
+  RedeemerPtr (RedeemerPtr),
   Redeemers,
-  ScriptTag (..),
-  Tx (..),
-  TxIn (..),
-  TxInType (..),
-  TxOut (..),
-  TxOutRef (..),
+  ScriptTag (Mint),
+  Tx (
+    txCollateral,
+    txData,
+    txFee,
+    txInputs,
+    txMint,
+    txMintScripts,
+    txOutputs,
+    txRedeemers,
+    txSignatures,
+    txValidRange
+  ),
+  TxId (TxId),
+  TxIn (TxIn),
+  TxInType (ConsumePublicKeyAddress, ConsumeSimpleScriptAddress),
+  TxOut (TxOut),
+  TxOutRef (TxOutRef),
   txId,
  )
-import Ledger.TxId (TxId (..))
+import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
-import Plutus.Contract.CardanoAPI (toCardanoAddress)
-import Plutus.V1.Ledger.Ada (fromValue, getLovelace)
+import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
-  CurrencySymbol (..),
-  ExBudget (..),
-  ExCPU (..),
-  ExMemory (..),
-  TokenName (..),
+  CurrencySymbol (unCurrencySymbol),
+  ExBudget (ExBudget),
+  ExCPU (ExCPU),
+  ExMemory (ExMemory),
+  TokenName (unTokenName),
  )
-import PlutusTx.Builtins (BuiltinByteString, fromBuiltin)
+import PlutusTx.Builtins (fromBuiltin)
 import Prelude
 
 -- | Getting information of the latest block
@@ -110,51 +121,6 @@ queryTip config =
       , cmdArgs = mconcat [["query", "tip"], networkOpt config]
       , cmdOutParser = fromMaybe (error "Couldn't parse chain tip") . JSON.decode . Char8.pack
       }
-
--- | Getting all available UTXOs at an address (all utxos are assumed to be PublicKeyChainIndexTxOut)
-utxosAt ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  PABConfig ->
-  Address ->
-  Eff effs (Either Text (Map TxOutRef ChainIndexTxOut))
-utxosAt pabConf address =
-  callCommand @w
-    ShellArgs
-      { cmdName = "cardano-cli"
-      , cmdArgs =
-          mconcat
-            [ ["query", "utxo"]
-            , ["--address", unsafeSerialiseAddress pabConf.pcNetwork address]
-            , networkOpt pabConf
-            ]
-      , cmdOutParser =
-          Map.fromList
-            . fromRight []
-            . parseOnly (UtxoParser.utxoMapParser address)
-            . Text.pack
-      }
-
-calculateMinUtxo ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  PABConfig ->
-  Map DatumHash Datum ->
-  TxOut ->
-  Eff effs (Either Text Integer)
-calculateMinUtxo pabConf datums txOut =
-  join
-    <$> callCommand @w
-      ShellArgs
-        { cmdName = "cardano-cli"
-        , cmdArgs =
-            mconcat
-              [ ["transaction", "calculate-min-required-utxo", "--alonzo-era"]
-              , txOutOpts pabConf datums [txOut]
-              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-              ]
-        , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
-        }
 
 -- | Calculating fee for an unbalanced transaction
 calculateMinFee ::
@@ -210,14 +176,15 @@ buildTx pabConf privKeys txBudget tx = do
         (Map.keys (Ledger.txSignatures tx))
     opts ins mints =
       mconcat
-        [ ["transaction", "build-raw", "--alonzo-era"]
+        [ ["transaction", "build-raw", "--babbage-era"]
         , ins
         , txInCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mints
         , validRangeOpts (txValidRange tx)
-        , metadataOpts pabConf (txMetadata tx)
-        , requiredSigners
+        , -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+          -- , metadataOpts pabConf (txMetadata tx)
+          requiredSigners
         , ["--fee", showText . getLovelace . fromValue $ txFee tx]
         , mconcat
             [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
@@ -268,7 +235,7 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInOpts :: SpendBudgets -> PABConfig -> Set TxIn -> ([Text], ExBudget)
+txInOpts :: SpendBudgets -> PABConfig -> [TxIn] -> ([Text], ExBudget)
 txInOpts spendIndex pabConf =
   foldMap
     ( \(TxIn txOutRef txInType) ->
@@ -282,25 +249,24 @@ txInOpts spendIndex pabConf =
                 , opts
                 ]
     )
-    . Set.toList
   where
     scriptInputs :: Maybe TxInType -> ExBudget -> ([Text], ExBudget)
     scriptInputs txInType exBudget =
       case txInType of
-        Just (ConsumeScriptAddress validator redeemer datum) ->
+        Just (ConsumeScriptAddress _lang validator redeemer datum) ->
           (,exBudget) $
             mconcat
               [
                 [ "--tx-in-script-file"
-                , validatorScriptFilePath pabConf (Ledger.validatorHash validator)
+                , validatorScriptFilePath pabConf (Scripts.validatorHash validator)
                 ]
               ,
                 [ "--tx-in-datum-file"
-                , datumJsonFilePath pabConf (Ledger.datumHash datum)
+                , datumJsonFilePath pabConf (ScriptUtils.datumHash datum)
                 ]
               ,
                 [ "--tx-in-redeemer-file"
-                , redeemerJsonFilePath pabConf (Ledger.redeemerHash redeemer)
+                , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
                 ]
               ,
                 [ "--tx-in-execution-units"
@@ -311,12 +277,18 @@ txInOpts spendIndex pabConf =
         Just ConsumeSimpleScriptAddress -> mempty
         Nothing -> mempty
 
-txInCollateralOpts :: Set TxIn -> [Text]
+txInCollateralOpts :: [TxIn] -> [Text]
 txInCollateralOpts =
-  concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef]) . Set.toList
+  concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef])
 
 -- Minting options
-mintOpts :: MintBudgets -> PABConfig -> Set Scripts.MintingPolicy -> Redeemers -> Value -> ([Text], ExBudget)
+mintOpts ::
+  MintBudgets ->
+  PABConfig ->
+  Map Ledger.MintingPolicyHash Ledger.MintingPolicy ->
+  Redeemers ->
+  Value ->
+  ([Text], ExBudget)
 mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
   let scriptOpts =
         foldMap
@@ -333,12 +305,12 @@ mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
                     (,exBudget) $
                       mconcat
                         [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
-                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (Ledger.redeemerHash r)]
+                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash r)]
                         , ["--mint-execution-units", exBudgetToCliArg exBudget]
                         ]
                in orMempty $ fmap toOpts redeemer
           )
-          $ zip [0 ..] $ Set.toList mintingPolicies
+          $ zip [0 ..] $ Map.elems mintingPolicies
       mintOpt =
         if not (Value.isZero mintValue)
           then ["--mint", valueToCliArg mintValue]
@@ -409,7 +381,7 @@ valueToCliArg val =
 
 unsafeSerialiseAddress :: NetworkId -> Address -> Text
 unsafeSerialiseAddress network address =
-  case serialiseAddress <$> toCardanoAddress network address of
+  case serialiseAddress <$> toCardanoAddressInEra network address of
     Right a -> a
     Left _ -> error "Couldn't create address"
 
@@ -420,12 +392,8 @@ exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
 
--- -- TODO: There is some issue with this function, the generated wallet key is incorrect
--- toWalletKey :: Wallet -> Text
--- toWalletKey =
---   decodeUtf8 . convertToBase Base16 . hash @ByteString @Blake2b_160 . unXPub . walletXPub
-
-metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]
-metadataOpts _ Nothing = mempty
-metadataOpts pabConf (Just meta) =
-  ["--metadata-json-file", metadataFilePath pabConf meta]
+-- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+-- metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]
+-- metadataOpts _ Nothing = mempty
+-- metadataOpts pabConf (Just meta) =
+--   ["--metadata-json-file", metadataFilePath pabConf meta]

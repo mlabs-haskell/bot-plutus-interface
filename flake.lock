@@ -791,11 +791,11 @@
     "iohk-nix": {
       "flake": false,
       "locked": {
-        "lastModified": 1661431587,
-        "narHash": "sha256-KsWH17SMi+In5J9xkGfwxa8971GAsNi9Cp7zNpEtZdM=",
+        "lastModified": 1662637577,
+        "narHash": "sha256-kcq49aX83qbPyaH3eMEyDipWMzMXFsJJ/JXex+QG8kQ=",
         "owner": "input-output-hk",
         "repo": "iohk-nix",
-        "rev": "b8376719bf495694f538acf3e7eed5086cde303c",
+        "rev": "6a20fc25392d102170406a164e978ebaad3d20fc",
         "type": "github"
       },
       "original": {
@@ -1133,11 +1133,11 @@
     },
     "nixpkgs-upstream": {
       "locked": {
-        "lastModified": 1662096612,
-        "narHash": "sha256-R+Q8l5JuyJryRPdiIaYpO5O3A55rT+/pItBrKcy7LM4=",
+        "lastModified": 1662818301,
+        "narHash": "sha256-uRjbKN924ptf5CvQ4cfki3R9nIm5EhrJBeb/xUxwfcM=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "21de2b973f9fee595a7a1ac4693efff791245c34",
+        "rev": "a25f0b9bbdfedee45305da5d1e1410c5bcbd48f6",
         "type": "github"
       },
       "original": {

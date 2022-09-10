@@ -1,7 +1,7 @@
 -- Calling the cli locally or through an ssh connection
 cliLocation:   local
 chainIndexUrl: "http://localhost:9083"
-networkId:     1097911063
+networkId:     9
 
 -- Directory name of the script and data files
 scriptFileDir:      "./scripts"
