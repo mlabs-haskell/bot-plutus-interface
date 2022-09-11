@@ -4,6 +4,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module BotPlutusInterface.Types (
+  ContractConstraints,
+  HasContract (..),
+  SomeBuiltin (..),
   PABConfig (..),
   CLILocation (..),
   AppState (AppState),
@@ -13,11 +16,9 @@ module BotPlutusInterface.Types (
   LogLine (..),
   ContractEnvironment (..),
   Tip (Tip, epoch, hash, slot, block, era, syncProgress),
+  Activity (..),
   ContractState (..),
   SomeContractState (SomeContractState),
-  -- HasDefinitions (..),
-  -- SomeBuiltin (SomeBuiltin),
-  -- endpointsToSchemas,
   RawTx (..),
   TxFile (..),
   TxBudget (..),
@@ -38,7 +39,7 @@ module BotPlutusInterface.Types (
 import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
 import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (TVar, readTVarIO)
-import Data.Aeson (ToJSON)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
 import Data.Data (Data (toConstr), constrIndex, dataTypeOf, eqT, fromConstrB, indexConstr, type (:~:) (Refl))
@@ -47,6 +48,7 @@ import Data.Kind (Type)
 import Data.List (intersect)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Row (AllUniqueLabels, Forall)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Ledger (
@@ -58,20 +60,49 @@ import Ledger (
   TxOutRef,
  )
 import Ledger qualified
-import Ledger.Ada qualified as Ada
+import Ledger.Ada (lovelaceValueOf)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
-import Plutus.PAB.Core.ContractInstance.STM (Activity)
-import Plutus.PAB.Effects.Contract.Builtin (
-  HasDefinitions (..),
-  SomeBuiltin (SomeBuiltin),
-  endpointsToSchemas,
- )
+import Plutus.Contract (IsContract)
+import Plutus.Contract.Schema (Input, Output)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
+
+{- | taken verbatim from `plutus-pab`.
+   See `HasContract`. This should likewise be part of the `plutus-contract`
+   api.
+-}
+type ContractConstraints w schema error =
+  ( Monoid w
+  , Forall (Output schema) ToJSON
+  , Forall (Input schema) ToJSON
+  , Forall (Input schema) FromJSON
+  , ToJSON error
+  , ToJSON w
+  , FromJSON w
+  , AllUniqueLabels (Input schema)
+  )
+
+{- | A "version" of `HasDefinitions` from `plutus-pab` that
+   you'll only need to implement one method for, as this is
+   the only thing that BPI will ever use.
+   This is here to avoid dependency on `plutus-pab` as long
+   as abstract API hasn't been moved to `plutus-contract`
+-}
+class HasContract c where
+  getContract :: c -> SomeBuiltin
+
+data SomeBuiltin where
+  SomeBuiltin ::
+    forall contract w schema error a.
+    ( ContractConstraints w schema error
+    , IsContract contract
+    ) =>
+    contract w schema error a ->
+    SomeBuiltin
 
 data PABConfig = PABConfig
   { -- | Calling the cli through ssh when set to Remote
@@ -264,7 +295,7 @@ data SomeContractState
 data Activity
   = Active
   | Stopped
-  | Done (Maybe Ledger.Value)
+  | Done (Maybe JSON.Value)
   deriving (Show, Eq)
 
 data ContractState w = ContractState

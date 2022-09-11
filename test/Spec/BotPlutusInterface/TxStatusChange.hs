@@ -18,11 +18,9 @@ import Plutus.ChainIndex.Types (Tip (Tip))
 import Plutus.Contract (
   Contract (..),
   Endpoint,
-  awaitTxStatusChange,
-  getTip,
-  submitTx,
   throwError,
  )
+import Plutus.Contract.Request (awaitTxStatusChange, getTip, submitTx)
 import Spec.MockContract (
   contractEnv,
   nonExistingTxId,

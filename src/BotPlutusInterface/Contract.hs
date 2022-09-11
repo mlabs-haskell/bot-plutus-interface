@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module BotPlutusInterface.Contract (runContract, handleContract) where
@@ -39,9 +40,17 @@ import BotPlutusInterface.Types (
   ContractEnvironment (..),
   LogLevel (Debug, Notice, Warn),
   LogType (CollateralLog, PABLog),
+  PABConfig (pcOwnPubKeyHash, pcTipPollingInterval),
   Tip (block, slot),
   TxFile (Signed),
+  TxStatusPolling (spBlocksTimeOut, spInterval),
   collateralValue,
+  pcCollectStats,
+  pcDryRun,
+  pcOwnStakePubKeyHash,
+  pcScriptFileDir,
+  pcSigningKeyFileDir,
+  pcTxStatusPolling,
  )
 import Cardano.Api (
   AsType (..),
@@ -193,8 +202,8 @@ handlePABReq contractEnv req = do
         . OwnAddressesResp
         . nonEmptySingleton
         $ Ledger.pubKeyHashAddress
-          (PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash)
-          contractEnv.cePABConfig.pcOwnStakePubKeyHash
+          (PaymentPubKeyHash $ pcOwnPubKeyHash $ cePABConfig contractEnv)
+          (pcOwnStakePubKeyHash $ cePABConfig contractEnv)
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
@@ -256,9 +265,9 @@ awaitTxStatusChange contractEnv txId = do
   checkStartedBlock <- currentBlock contractEnv
   printBpiLog @w (Debug [PABLog]) $ pretty $ "Awaiting status change for " ++ show txId
 
-  let txStatusPolling = contractEnv.cePABConfig.pcTxStatusPolling
-      pollInterval = fromIntegral $ txStatusPolling.spInterval
-      pollTimeout = txStatusPolling.spBlocksTimeOut
+  let txStatusPolling = pcTxStatusPolling $ cePABConfig contractEnv
+      pollInterval = fromIntegral $ spInterval txStatusPolling
+      pollTimeout = spBlocksTimeOut txStatusPolling
       cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
 
   fix $ \loop -> do
@@ -320,21 +329,21 @@ balanceTx ::
   Eff effs BalanceTxResponse
 balanceTx _ (UnbalancedTx (Left _) _ _ _) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
 balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
-  let pabConf = contractEnv.cePABConfig
+  let pabConf = cePABConfig contractEnv
 
   result <- handleCollateral @w contractEnv
 
   case result of
     Left e -> pure $ BalanceTxFailed (OtherError e)
     _ -> do
-      uploadDir @w pabConf.pcSigningKeyFileDir
+      uploadDir @w (pcSigningKeyFileDir pabConf)
       eitherBalancedTx <-
         Balance.balanceTxIO' @w
           Balance.defaultBalanceConfig
             { Balance.bcHasScripts = Balance.txUsesScripts tx'
             }
           pabConf
-          pabConf.pcOwnPubKeyHash
+          (pcOwnPubKeyHash pabConf)
           unbalancedTx
 
       pure $ either (BalanceTxFailed . OtherError) (BalanceTxSuccess . EmulatorTx) eitherBalancedTx
@@ -352,14 +361,14 @@ writeBalancedTx ::
   CardanoTx ->
   Eff effs WriteBalancedTxResponse
 writeBalancedTx contractEnv cardanoTx = do
-  let pabConf = contractEnv.cePABConfig
+  let pabConf = cePABConfig contractEnv
       tx' = fromCardanoTx cardanoTx
-  uploadDir @w pabConf.pcSigningKeyFileDir
-  createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
+  uploadDir @w (pcSigningKeyFileDir pabConf)
+  createDirectoryIfMissing @w False $ Text.unpack $ pcScriptFileDir pabConf
 
   eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . CardanoApiTx) $ do
     void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx'
-    lift $ uploadDir @w pabConf.pcScriptFileDir
+    lift $ uploadDir @w $ pcScriptFileDir pabConf
 
     privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
@@ -384,10 +393,10 @@ writeBalancedTx contractEnv cardanoTx = do
           , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
           ]
 
-    when (pabConf.pcCollectStats && signable) $
+    when (pcCollectStats pabConf && signable) $
       collectBudgetStats (Tx.txId tx') pabConf
 
-    when (not pabConf.pcDryRun && signable) $ do
+    when (not (pcDryRun pabConf) && signable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx'
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
@@ -434,11 +443,12 @@ awaitSlot ::
   Slot ->
   Eff effs Slot
 awaitSlot contractEnv s@(Slot n) = do
-  threadDelay @w (fromIntegral contractEnv.cePABConfig.pcTipPollingInterval)
-  tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
+  let pabConfig = cePABConfig contractEnv
+  threadDelay @w (fromIntegral $ pcTipPollingInterval pabConfig)
+  tip <- CardanoCLI.queryTip @w pabConfig
   case tip of
-    Right tip'
-      | n < tip'.slot -> pure $ Slot tip'.slot
+    Right (slot -> tip')
+      | n < tip' -> pure $ Slot tip'
     _ -> awaitSlot contractEnv s
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
@@ -465,9 +475,10 @@ currentTip ::
   ContractEnvironment w ->
   Eff effs (Block, Slot)
 currentTip contractEnv = do
+  let pabConfig = cePABConfig contractEnv
   tip <-
     either (error . Text.unpack) id
-      <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+      <$> CardanoCLI.queryTip @w pabConfig
   pure $ liftA2 (,) block (Slot . slot) tip
 
 currentSlot ::
@@ -541,10 +552,10 @@ makeCollateral ::
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
   Eff effs (Either Text CollateralUtxo)
-makeCollateral cEnv = runEitherT $ do
+makeCollateral contractEnv = runEitherT $ do
   lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
-  let pabConf = cEnv.cePABConfig
+  let pabConf = cePABConfig contractEnv
   unbalancedTx <-
     firstEitherT (Text.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
@@ -554,15 +565,16 @@ makeCollateral cEnv = runEitherT $ do
       Balance.balanceTxIO' @w
         Balance.defaultBalanceConfig {Balance.bcHasScripts = False, Balance.bcSeparateChange = True}
         pabConf
-        pabConf.pcOwnPubKeyHash unbalancedTx
+        (pcOwnPubKeyHash pabConf)
+        unbalancedTx
 
-  wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)
+  wbr <- lift $ writeBalancedTx contractEnv (EmulatorTx balancedTx)
   case wbr of
     WriteBalancedTxFailed e -> throwE . Text.pack $ "Failed to create collateral output: " <> show e
     WriteBalancedTxSuccess cTx -> do
-      status <- lift $ awaitTxStatusChange cEnv (getCardanoTxId cTx)
+      status <- lift $ awaitTxStatusChange contractEnv (getCardanoTxId cTx)
       lift $ printBpiLog @w (Notice [CollateralLog]) $ "Collateral Tx Status: " <> pretty status
-      newEitherT $ findCollateralAtOwnPKH cEnv
+      newEitherT $ findCollateralAtOwnPKH contractEnv
 
 -- | Finds a collateral present at user's address
 findCollateralAtOwnPKH ::
@@ -576,8 +588,8 @@ findCollateralAtOwnPKH cEnv =
       let pabConf = cePABConfig cEnv
           changeAddr =
             Ledger.pubKeyHashAddress
-              (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
-              pabConf.pcOwnStakePubKeyHash
+              (PaymentPubKeyHash $ pcOwnPubKeyHash pabConf)
+              (pcOwnStakePubKeyHash pabConf)
 
       r <-
         firstEitherT (Text.pack . show) $

@@ -1,3 +1,4 @@
+-- FIXME: inline Arbitrary instances from `Plutus.PAB` in some `Arbitrary` module
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Spec.RandomLedger (

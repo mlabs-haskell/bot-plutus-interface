@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module BotPlutusInterface.Server (
   app,
@@ -12,12 +13,16 @@ module BotPlutusInterface.Server (
 import BotPlutusInterface.Contract (runContract)
 import BotPlutusInterface.Files (txFileName, txIdToText)
 import BotPlutusInterface.Types (
+  Activity (Active, Done),
   AppState (AppState),
   CollateralVar (CollateralVar),
+  ContractConstraints,
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
+  HasContract (getContract),
   PABConfig (..),
   RawTx,
+  SomeBuiltin (SomeBuiltin),
   SomeContractState (SomeContractState),
  )
 import Control.Concurrent (ThreadId, forkIO)
@@ -50,22 +55,11 @@ import Network.WebSockets (
  )
 import Plutus.Contract.Types (IsContract (toContract))
 
-{-
-import Plutus.PAB.Core.ContractInstance.STM (Activity (Active, Done))
-import Plutus.PAB.Effects.Contract.Builtin (
-  ContractConstraints,
-  HasDefinitions,
-  SomeBuiltin (..),
-  getContract,
- )
-import Plutus.PAB.Webserver.Types (
-  CombinedWSStreamToClient (InstanceUpdate),
-  CombinedWSStreamToServer (Subscribe),
-  ContractActivationArgs (..),
-  InstanceStatusToClient (ContractFinished, NewObservableState),
- )
--}
-
+import GHC.Generics (Generic)
+import Ledger (PubKeyHash)
+import Ledger.Slot (Slot)
+import Plutus.Contract.Effects (ActiveEndpoint)
+import Plutus.Contract.Wallet (ExportTx)
 import Plutus.V1.Ledger.Bytes (LedgerBytes (LedgerBytes), fromHex)
 import PlutusTx.Prelude (lengthOfByteString)
 import Servant.API (
@@ -84,6 +78,7 @@ import Servant.Server (Application, Handler, Server, err404, serve)
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath ((</>))
 import Test.QuickCheck (Arbitrary (arbitrary), elements, vectorOf)
+import Wallet.Emulator (Wallet)
 import Wallet.Types (ContractInstanceId (..))
 import Prelude
 
@@ -98,6 +93,47 @@ type API a = WebSocketEndpoint :<|> ActivateContractEndpoint a :<|> ContractLook
 -- use servant-client to test the other endpoints
 
 type WebSocketEndpoint = "ws" :> WebSocketPending -- Combined websocket (subscription protocol)
+
+-- | inlined from `plutus-pab`, FIXME: remove
+data ContractActivationArgs t = ContractActivationArgs
+  { -- | ID of the contract
+    caID :: t
+  , -- | Wallet that should be used for this instance, `knownWalet 1` is used in the Nothing case.
+    caWallet :: Maybe Wallet
+  }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
+
+data InstanceStatusToClient
+  = -- | The observable state of the contract has changed.
+    NewObservableState JSON.Value
+  | -- | The set of active endpoints has changed.
+    NewActiveEndpoints [ActiveEndpoint]
+  | -- | Partial txs that need to be balanced, signed and submitted by an external client.
+    NewYieldedExportTxs [ExportTx]
+  | -- | Contract instance is done with an optional error message.
+    ContractFinished (Maybe JSON.Value)
+  deriving stock (Generic, Eq, Show)
+  deriving anyclass (ToJSON, FromJSON)
+
+-- FIXME: move to `plutus-contract`
+
+-- | Data sent to the client through the combined websocket API
+data CombinedWSStreamToClient
+  = InstanceUpdate ContractInstanceId InstanceStatusToClient
+  | -- | New slot number
+    SlotChange Slot
+  deriving stock (Generic, Eq, Show)
+  deriving anyclass (ToJSON, FromJSON)
+
+-- FIXME: move to `plutus-contract`
+
+-- | Instructions sent to the server through the combined websocket API
+data CombinedWSStreamToServer
+  = Subscribe (Either ContractInstanceId PubKeyHash)
+  | Unsubscribe (Either ContractInstanceId PubKeyHash)
+  deriving stock (Generic, Eq, Show)
+  deriving anyclass (ToJSON, FromJSON)
 
 type ActivateContractEndpoint a =
   "api"
@@ -139,7 +175,7 @@ instance ToHttpApiData TxIdCapture where
 instance Arbitrary TxIdCapture where
   arbitrary = TxIdCapture . fromString <$> vectorOf 64 (elements "0123456789abcdefABCDEF")
 
-server :: HasDefinitions t => PABConfig -> AppState -> Server (API t)
+server :: HasContract t => PABConfig -> AppState -> Server (API t)
 server pabConfig state =
   websocketHandler state
     :<|> activateContractHandler pabConfig state
@@ -149,7 +185,7 @@ server pabConfig state =
 apiProxy :: forall (t :: Type). Proxy (API t)
 apiProxy = Proxy
 
-app :: forall (t :: Type). (HasDefinitions t, FromJSON t) => PABConfig -> AppState -> Application
+app :: forall (t :: Type). (HasContract t, FromJSON t) => PABConfig -> AppState -> Application
 app pabConfig state = serve (apiProxy @t) $ server pabConfig state
 
 -- | Mock websocket handler (can only send ContractFinished message)
@@ -207,20 +243,22 @@ handleContractActivityChange contractInstanceID prevState currentState =
   catMaybes [observableStateChange, activityChange]
   where
     activityChange =
-      if (csActivity <$> prevState) /= Just currentState.csActivity
-        then case currentState.csActivity of
-          Done maybeError -> do
-            Just $ InstanceUpdate contractInstanceID $ ContractFinished maybeError
-          _ -> Nothing
-        else Nothing
+      let currentCsActivity = csActivity currentState
+       in if (csActivity <$> prevState) /= Just currentCsActivity
+            then case currentCsActivity of
+              Done maybeError -> do
+                Just $ InstanceUpdate contractInstanceID $ ContractFinished maybeError
+              _ -> Nothing
+            else Nothing
 
     observableStateChange =
-      if (toJSON . csObservableState <$> prevState) /= Just (toJSON currentState.csObservableState)
-        then
-          Just $
-            InstanceUpdate contractInstanceID $
-              NewObservableState (toJSON currentState.csObservableState)
-        else Nothing
+      let currentObservableState = csObservableState currentState
+       in if (toJSON . csObservableState <$> prevState) /= Just (toJSON currentObservableState)
+            then
+              Just $
+                InstanceUpdate contractInstanceID $
+                  NewObservableState (toJSON currentObservableState)
+            else Nothing
 
 -- | Broadcast a contract update to subscribers
 broadcastContractResult ::
@@ -243,7 +281,7 @@ broadcastContractResult (AppState st) contractInstanceID maybeError = do
 -- | This handler will call the corresponding contract endpoint handler
 activateContractHandler ::
   forall (c :: Type).
-  HasDefinitions c =>
+  HasContract c =>
   PABConfig ->
   AppState ->
   ContractActivationArgs c ->
@@ -303,9 +341,9 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
 rawTxHandler :: PABConfig -> TxIdCapture -> Handler RawTx
 rawTxHandler config (TxIdCapture txId) = do
   -- Check that endpoint is enabled
-  assert config.pcEnableTxEndpoint
+  assert (pcEnableTxEndpoint config)
   -- Absolute path to pcTxFileDir that is specified in the config
-  txFolderPath <- liftIO $ makeAbsolute (unpack config.pcTxFileDir)
+  txFolderPath <- liftIO $ makeAbsolute $ unpack $ pcTxFileDir config
 
   -- Create full path
   let path :: FilePath

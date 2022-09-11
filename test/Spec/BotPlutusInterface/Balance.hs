@@ -36,6 +36,7 @@ import Ledger.Tx (
  )
 import Ledger.Value qualified as Value
 
+import Ledger (validatorHash)
 import Ledger.Value (AssetClass, Value)
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.Script.Utils.V1.Address qualified as ScriptUtils
@@ -77,7 +78,7 @@ validator =
     $$(PlutusTx.compile [||(\_ _ _ -> ())||])
 
 valHash :: Ledger.ValidatorHash
-valHash = Scripts.validatorHash validator
+valHash = validatorHash validator
 
 pkh1, pkh2 :: PubKeyHash
 pkh1 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 1
@@ -364,4 +365,4 @@ toHashAndDatum :: ScriptUtils.Datum -> (ScriptUtils.DatumHash, Maybe ScriptUtils
 toHashAndDatum d = (ScriptUtils.datumHash d, Just d)
 
 toHashAndValidator :: Api.Validator -> (Api.ValidatorHash, Maybe Api.Validator)
-toHashAndValidator v = (Scripts.validatorHash v, Just v)
+toHashAndValidator v = (validatorHash v, Just v)

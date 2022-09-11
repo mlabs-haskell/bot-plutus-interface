@@ -3,15 +3,13 @@ module Spec.BotPlutusInterface.Server (tests) where
 import BotPlutusInterface.Files (txFileName)
 import BotPlutusInterface.Server (RawTxEndpoint, TxIdCapture (TxIdCapture), app, initState)
 import BotPlutusInterface.Types (
-  HasDefinitions (..),
+  HasContract (..),
   PABConfig (..),
   RawTx (..),
   SomeBuiltin (..),
  )
 
 import Ledger.Tx (TxId)
-import Playground.Types (FunctionSchema)
-import Schema (FormSchema)
 
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
@@ -130,12 +128,6 @@ enableTxEndpointConfig = def {pcEnableTxEndpoint = True}
 newtype EmptyContract = EmptyContract {unEmptyContract :: Void}
   deriving newtype (FromJSON, ToJSON)
 
-instance HasDefinitions EmptyContract where
-  getDefinitions :: [EmptyContract]
-  getDefinitions = []
-
-  getSchema :: EmptyContract -> [FunctionSchema FormSchema]
-  getSchema = absurd . unEmptyContract
-
+instance HasContract EmptyContract where
   getContract :: (EmptyContract -> SomeBuiltin)
   getContract = absurd . unEmptyContract

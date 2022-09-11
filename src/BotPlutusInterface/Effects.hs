@@ -41,6 +41,7 @@ import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.ExBudget qualified as ExBudget
 import BotPlutusInterface.TimeSlot qualified as TimeSlot
 import BotPlutusInterface.Types (
+  Activity,
   BudgetEstimationError,
   CLILocation (..),
   CollateralUtxo,
@@ -88,7 +89,6 @@ import Ledger.Ada qualified as Ada
 import Ledger.Tx.CardanoAPI qualified as TxApi
 import Ledger.Validation (Coin (Coin))
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
-import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty)
 import Prettyprinter qualified as PP
@@ -156,27 +156,27 @@ handlePABEffect contractEnv =
   interpretM
     ( \case
         CallCommand shellArgs ->
-          case contractEnv.cePABConfig.pcCliLocation of
+          case pcCliLocation $ cePABConfig contractEnv of
             Local -> callLocalCommand shellArgs
             Remote ipAddr -> callRemoteCommand ipAddr shellArgs
         CreateDirectoryIfMissing createParents filePath ->
           Directory.createDirectoryIfMissing createParents filePath
         CreateDirectoryIfMissingCLI createParents filePath ->
-          case contractEnv.cePABConfig.pcCliLocation of
+          case pcCliLocation $ cePABConfig contractEnv of
             Local -> Directory.createDirectoryIfMissing createParents filePath
             Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
         PrintLog logCtx logLevel msg -> do
           let logLine = LogLine logCtx logLevel msg
-          printLog' contractEnv.cePABConfig.pcLogLevel logLine
-          when contractEnv.cePABConfig.pcCollectLogs $
-            collectLog contractEnv.ceContractLogs logLine
+          printLog' (pcLogLevel $ cePABConfig contractEnv) logLine
+          when (pcCollectLogs $ cePABConfig contractEnv) $
+            collectLog (ceContractLogs contractEnv) logLine
         UpdateInstanceState s -> do
           atomically $
-            modifyTVar contractEnv.ceContractState $
+            modifyTVar (ceContractState contractEnv) $
               \(ContractState _ w) -> ContractState s w
         LogToContract w -> do
           atomically $
-            modifyTVar contractEnv.ceContractState $
+            modifyTVar (ceContractState contractEnv) $
               \(ContractState s w') -> ContractState s (w' <> w)
         ThreadDelay microSeconds -> Concurrent.threadDelay microSeconds
         ReadFileTextEnvelope asType filepath -> Cardano.Api.readFileTextEnvelope asType filepath
@@ -189,25 +189,25 @@ handlePABEffect contractEnv =
           Cardano.Api.writeFileTextEnvelope filepath envelopeDescr contents
         ListDirectory filepath -> Directory.listDirectory filepath
         UploadDir dir ->
-          case contractEnv.cePABConfig.pcCliLocation of
+          case pcCliLocation $ cePABConfig contractEnv of
             Local -> pure ()
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
           handleChainIndexReq contractEnv query
-        QueryNode query -> runNodeQuery contractEnv.cePABConfig (send query)
+        QueryNode query -> runNodeQuery (cePABConfig contractEnv) (send query)
         EstimateBudget txPath ->
-          ExBudget.estimateBudget contractEnv.cePABConfig txPath
+          ExBudget.estimateBudget (cePABConfig contractEnv) txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
         SlotToPOSIXTime slot ->
-          TimeSlot.slotToPOSIXTimeIO contractEnv.cePABConfig slot
+          TimeSlot.slotToPOSIXTimeIO (cePABConfig contractEnv) slot
         POSIXTimeToSlot pTime ->
-          TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
+          TimeSlot.posixTimeToSlotIO (cePABConfig contractEnv) pTime
         POSIXTimeRangeToSlotRange pTimeRange ->
-          TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
+          TimeSlot.posixTimeRangeToContainedSlotRangeIO (cePABConfig contractEnv) pTimeRange
         GetInMemCollateral -> Collateral.getInMemCollateral contractEnv
         SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
-        MinUtxo utxo -> return $ calcMinUtxo contractEnv.cePABConfig utxo
+        MinUtxo utxo -> return $ calcMinUtxo (cePABConfig contractEnv) utxo
     )
 
 printLog' :: LogLevel -> LogLine -> IO ()
@@ -278,7 +278,7 @@ readProcessEither path args =
 saveBudgetImpl :: ContractEnvironment w -> Ledger.TxId -> TxBudget -> IO ()
 saveBudgetImpl contractEnv txId budget =
   atomically $
-    modifyTVar' contractEnv.ceContractStats (addBudget txId budget)
+    modifyTVar' (ceContractStats contractEnv) (addBudget txId budget)
 
 calcMinUtxo :: PABConfig -> Ledger.TxOut -> Either Text Ledger.TxOut
 calcMinUtxo pabconf txout = do

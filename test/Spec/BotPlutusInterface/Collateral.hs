@@ -20,7 +20,6 @@ import NeatInterpolation (text)
 import Plutus.Contract (
   Contract,
   Endpoint,
-  submitTxConstraintsWith,
  )
 import Spec.MockContract (
   addr1,
@@ -44,6 +43,7 @@ import Control.Concurrent.STM (newTVarIO)
 
 import Spec.BotPlutusInterface.Contract (assertCommandHistory, assertContract)
 
+import Plutus.Contract.Request (submitTxConstraintsWith)
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import System.IO.Unsafe (unsafePerformIO)

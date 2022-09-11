@@ -26,11 +26,12 @@ import BotPlutusInterface.Files (
  )
 import BotPlutusInterface.Types (
   MintBudgets,
-  PABConfig,
+  PABConfig (pcProtocolParamsFile),
   SpendBudgets,
   Tip,
   TxBudget,
   mintBudgets,
+  pcNetwork,
   spendBudgets,
  )
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
@@ -57,7 +58,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8)
-import Ledger (Slot (Slot), SlotRange, TxInType (ConsumeScriptAddress))
+import Ledger (Slot (Slot), SlotRange, TxInType (ConsumeScriptAddress), mintingPolicyHash, validatorHash)
 import Ledger qualified
 import Ledger.Ada (fromValue, getLovelace)
 import Ledger.Ada qualified as Ada
@@ -70,7 +71,6 @@ import Ledger.Interval (
   UpperBound (UpperBound),
  )
 import Ledger.Scripts (Datum, DatumHash (..))
-import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   RedeemerPtr (RedeemerPtr),
   Redeemers,
@@ -141,7 +141,7 @@ calculateMinFee pabConf tx =
               , ["--tx-in-count", showText $ length $ txInputs tx]
               , ["--tx-out-count", showText $ length $ txOutputs tx]
               , ["--witness-count", showText $ length $ txSignatures tx]
-              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+              , ["--protocol-params-file", pcProtocolParamsFile pabConf]
               , networkOpt pabConf
               ]
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
@@ -187,7 +187,7 @@ buildTx pabConf privKeys txBudget tx = do
           requiredSigners
         , ["--fee", showText . getLovelace . fromValue $ txFee tx]
         , mconcat
-            [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+            [ ["--protocol-params-file", pcProtocolParamsFile pabConf]
             , ["--out-file", txFilePath pabConf "raw" (txId tx)]
             ]
         ]
@@ -258,7 +258,7 @@ txInOpts spendIndex pabConf =
             mconcat
               [
                 [ "--tx-in-script-file"
-                , validatorScriptFilePath pabConf (Scripts.validatorHash validator)
+                , validatorScriptFilePath pabConf (validatorHash validator)
                 ]
               ,
                 [ "--tx-in-datum-file"
@@ -295,11 +295,11 @@ mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
           ( \(idx, policy) ->
               let redeemerPtr = RedeemerPtr Mint idx
                   redeemer = Map.lookup redeemerPtr redeemers
-                  curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
+                  curSymbol = Value.mpsSymbol $ mintingPolicyHash policy
                   exBudget =
                     Map.findWithDefault
                       mempty
-                      (Scripts.mintingPolicyHash policy)
+                      (mintingPolicyHash policy)
                       mintIndex
                   toOpts r =
                     (,exBudget) $
@@ -343,7 +343,7 @@ txOutOpts pabConf datums =
             [ "--tx-out"
             , Text.intercalate
                 "+"
-                [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
+                [ unsafeSerialiseAddress (pcNetwork pabConf) txOutAddress
                 , valueToCliArg txOutValue
                 ]
             ]
@@ -357,7 +357,7 @@ txOutOpts pabConf datums =
     )
 
 networkOpt :: PABConfig -> [Text]
-networkOpt pabConf = case pabConf.pcNetwork of
+networkOpt pabConf = case pcNetwork pabConf of
   Testnet (NetworkMagic t) -> ["--testnet-magic", showText t]
   Mainnet -> ["--mainnet"]
 

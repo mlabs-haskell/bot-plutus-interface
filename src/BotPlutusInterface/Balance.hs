@@ -33,6 +33,8 @@ import BotPlutusInterface.Types (
   LogType (TxBalancingLog),
   PABConfig,
   collateralTxOutRef,
+  pcOwnStakePubKeyHash,
+  pcProtocolParams,
  )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
@@ -207,7 +209,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
     changeAddr =
       Ledger.pubKeyHashAddress
         (Ledger.PaymentPubKeyHash ownPkh)
-        pabConf.pcOwnStakePubKeyHash
+        (pcOwnStakePubKeyHash pabConf)
 
     balanceTxLoop ::
       Map TxOutRef TxOut ->
@@ -274,7 +276,7 @@ hasChangeUTxO changeAddr tx =
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
 getExecutionUnitPrices pabConf =
   fromMaybe (ExecutionUnitPrices 0 0) $
-    pabConf.pcProtocolParams >>= protocolParamPrices
+    pcProtocolParams pabConf >>= protocolParamPrices
 
 getBudgetPrice :: ExecutionUnitPrices -> Ledger.ExBudget -> Integer
 getBudgetPrice (ExecutionUnitPrices cpuPrice memPrice) (Ledger.ExBudget cpuUsed memUsed) =

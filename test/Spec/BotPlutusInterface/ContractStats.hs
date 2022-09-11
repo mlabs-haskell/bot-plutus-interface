@@ -15,8 +15,8 @@ import Ledger.Tx (CardanoTx, TxOutRef (TxOutRef))
 import Plutus.Contract (
   Contract (..),
   Endpoint,
-  submitTx,
  )
+import Plutus.Contract.Request (submitTx)
 import Spec.MockContract (
   contractEnv,
   mockBudget,

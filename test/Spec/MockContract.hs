@@ -62,6 +62,7 @@ import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
+  Activity (Active),
   BudgetEstimationError,
   CollateralUtxo (CollateralUtxo, collateralTxOutRef),
   CollateralVar (CollateralVar),
@@ -164,7 +165,6 @@ import Plutus.ChainIndex.Tx qualified as CIT
 import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
-import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
 import Plutus.V1.Ledger.Api qualified as V1
 import Plutus.V1.Ledger.Credential (Credential (PubKeyCredential))
 import PlutusTx.Builtins (fromBuiltin)
@@ -475,7 +475,7 @@ mockQueryUtxo :: forall (w :: Type). Text -> MockContract w String
 mockQueryUtxo addr = do
   state <- get @(MockContractState w)
 
-  let network = (state ^. contractEnv).cePABConfig.pcNetwork
+  let network = pcNetwork $ cePABConfig (state ^. contractEnv)
   pure $
     mockQueryUtxoOut $
       filter
