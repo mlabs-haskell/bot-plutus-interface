@@ -10,8 +10,6 @@ module Spec.RandomLedger (
   randomTxOutRefs,
 ) where
 
-import Plutus.PAB.Arbitrary ()
-
 import Control.Lens (folded, (%~), (&), (^..))
 import Control.Monad (replicateM)
 import Data.List.Extra (mconcatMap)
@@ -21,6 +19,7 @@ import GHC.Natural (Natural)
 import Ledger.Tx (TxOut (..), TxOutRef (..))
 import Ledger.Value (AssetClass (AssetClass), Value)
 import Ledger.Value qualified as Value
+import Spec.ArbitraryLedger ()
 import Test.QuickCheck (Arbitrary (arbitrary), Gen, elements)
 import Prelude
 

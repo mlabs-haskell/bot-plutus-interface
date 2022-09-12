@@ -27,7 +27,8 @@ common common-lang
     -Wall -Wcompat -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
     -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
-    -- -fplugin=RecordDotPreprocessor
+
+  -- -fplugin=RecordDotPreprocessor
 
   -- -Werror
 
@@ -105,10 +106,10 @@ library
     PlutusConfig.Types
 
   build-depends:
-    , aeson                      
+    , aeson
     , attoparsec                 >=0.13.2.2
     , bytestring                 ^>=0.10.12.0
-    , cardano-api >= 1.35
+    , cardano-api                >=1.35
     , cardano-crypto
     , cardano-ledger-alonzo
     , cardano-ledger-babbage
@@ -178,6 +179,7 @@ test-suite bot-plutus-interface-test
   main-is:        Spec.hs
   ghc-options:    -fplugin-opt PlutusTx.Plugin:defer-errors
   other-modules:
+    Spec.ArbitraryLedger
     Spec.BotPlutusInterface.AdjustUnbalanced
     Spec.BotPlutusInterface.Balance
     Spec.BotPlutusInterface.CoinSelection
@@ -191,13 +193,13 @@ test-suite bot-plutus-interface-test
     Spec.RandomLedger
 
   build-depends:
-    , aeson                     
+    , aeson
     , attoparsec
     , base
     , base-compat
     , bot-plutus-interface
     , bytestring                 ^>=0.10.12.0
-    , cardano-api >= 1.35
+    , cardano-api                >=1.35
     , cardano-crypto-class
     , containers
     , data-default
