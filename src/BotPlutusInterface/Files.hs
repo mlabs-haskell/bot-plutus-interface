@@ -93,33 +93,33 @@ import Prelude
 
 -- | Filename of a minting policy script
 policyScriptFilePath :: PABConfig -> CurrencySymbol -> Text
-policyScriptFilePath pabConf curSymbol =
+policyScriptFilePath _pabConf curSymbol =
   let c = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
-   in pabConf.pcScriptFileDir <> "/policy-" <> c <> ".plutus"
+   in "pcScriptFileDir" <> "/policy-" <> c <> ".plutus"
 
 -- | Path and filename of a validator script
 validatorScriptFilePath :: PABConfig -> ValidatorHash -> Text
-validatorScriptFilePath pabConf (ValidatorHash valHash) =
+validatorScriptFilePath _pabConf (ValidatorHash valHash) =
   let h = encodeByteString $ fromBuiltin valHash
-   in pabConf.pcScriptFileDir <> "/validator-" <> h <> ".plutus"
+   in "pcScriptFileDir" <> "/validator-" <> h <> ".plutus"
 
 datumJsonFilePath :: PABConfig -> DatumHash -> Text
-datumJsonFilePath pabConf (DatumHash datumHash) =
+datumJsonFilePath _pabConf (DatumHash datumHash) =
   let h = encodeByteString $ fromBuiltin datumHash
-   in pabConf.pcScriptFileDir <> "/datum-" <> h <> ".json"
+   in "pcScriptFileDir" <> "/datum-" <> h <> ".json"
 
 redeemerJsonFilePath :: PABConfig -> RedeemerHash -> Text
-redeemerJsonFilePath pabConf (RedeemerHash redeemerHash) =
+redeemerJsonFilePath _pabConf (RedeemerHash redeemerHash) =
   let h = encodeByteString $ fromBuiltin redeemerHash
-   in pabConf.pcScriptFileDir <> "/redeemer-" <> h <> ".json"
+   in "pcScriptFileDir" <> "/redeemer-" <> h <> ".json"
 
 signingKeyFilePath :: PABConfig -> PubKeyHash -> Text
-signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
+signingKeyFilePath _pabConf (PubKeyHash pubKeyHash) =
   let h = encodeByteString $ fromBuiltin pubKeyHash
-   in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
+   in "pcSigningKeyFileDir" <> "/signing-key-" <> h <> ".skey"
 
 txFilePath :: PABConfig -> Text -> Tx.TxId -> Text
-txFilePath pabConf ext txId = pabConf.pcTxFileDir <> "/" <> txFileName txId ext
+txFilePath _pabConf ext txId = "pcTxFileDir" <> "/" <> txFileName txId ext
 
 txFileName :: Tx.TxId -> Text -> Text
 txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext
@@ -144,9 +144,9 @@ writePolicyScriptFile ::
   MintingPolicy ->
   Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
-  let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
+  let script = serialiseScript @PlutusScriptV1 $ Ledger.unMintingPolicyScript mintingPolicy
       filepath = policyScriptFilePath pabConf (ScriptUtils.scriptCurrencySymbol mintingPolicy)
-   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
+   in fmap (const filepath) <$> writeFileTextEnvelope @w @_ (Text.unpack filepath) Nothing script
 
 -- | Compiles and writes a script file under the given folder
 writeValidatorScriptFile ::
@@ -156,9 +156,9 @@ writeValidatorScriptFile ::
   Validator ->
   Eff effs (Either (FileError ()) Text)
 writeValidatorScriptFile pabConf validatorScript =
-  let script = serialiseScript $ Ledger.unValidatorScript validatorScript
+  let script = serialiseScript @PlutusScriptV1 $ Ledger.unValidatorScript validatorScript
       filepath = validatorScriptFilePath pabConf (ScriptUtils.validatorHash validatorScript)
-   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
+   in fmap (const filepath) <$> writeFileTextEnvelope @w @_ (Text.unpack filepath) Nothing script
 
 -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
 -- -- | Writes metadata file under the given folder
@@ -180,7 +180,7 @@ writeAll ::
   Tx ->
   Eff effs (Either (FileError ()) [Text])
 writeAll pabConf tx = do
-  createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
+  createDirectoryIfMissing @w False (Text.unpack "pcScriptFileDir")
   -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
   -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
@@ -209,14 +209,14 @@ readPrivateKeys ::
   Member (PABEffect w) effs =>
   PABConfig ->
   Eff effs (Either Text (Map PubKeyHash DummyPrivKey))
-readPrivateKeys pabConf = do
-  files <- listDirectory @w $ Text.unpack pabConf.pcSigningKeyFileDir
+readPrivateKeys _pabConf = do
+  files <- listDirectory @w $ Text.unpack "pcSigningKeyFileDir"
 
   privKeys <-
     catMaybes
       <$> mapM
         ( \filename ->
-            let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
+            let fullPath = Text.unpack "pcSigningKeyFileDir" </> filename
              in case takeExtension filename of
                   ".vkey" -> Just <$> readVerificationKey @w fullPath
                   ".skey" -> Just <$> readSigningKey @w fullPath
@@ -295,7 +295,7 @@ mkDummyPrivateKey (PubKey (LedgerBytes pubkey)) =
         Crypto.xprv $
           mconcat [dummyPrivKey, dummyPrivKeySuffix, pubkeyBS, dummyChainCode]
 
-serialiseScript :: Script -> PlutusScript PlutusScriptV1
+serialiseScript :: forall ver. Script -> PlutusScript ver
 serialiseScript =
   PlutusScriptSerialised
     . ShortByteString.toShort
