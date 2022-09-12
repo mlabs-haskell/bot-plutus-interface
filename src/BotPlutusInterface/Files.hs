@@ -41,10 +41,10 @@ import Cardano.Api (
   SigningKey,
   getVerificationKey,
   serialiseToRawBytes,
+  PlutusScriptV2
  )
 import Cardano.Api.Shelley (
   PlutusScript (PlutusScriptSerialised),
-  PlutusScriptV1,
   ScriptDataJsonSchema (ScriptDataJsonDetailedSchema),
   fromPlutusData,
   scriptDataToJson,
@@ -295,7 +295,7 @@ mkDummyPrivateKey (PubKey (LedgerBytes pubkey)) =
         Crypto.xprv $
           mconcat [dummyPrivKey, dummyPrivKeySuffix, pubkeyBS, dummyChainCode]
 
-serialiseScript :: Script -> PlutusScript PlutusScriptV1
+serialiseScript :: Script -> PlutusScript PlutusScriptV2
 serialiseScript =
   PlutusScriptSerialised
     . ShortByteString.toShort
