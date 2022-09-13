@@ -20,16 +20,13 @@ import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
-import Ledger (validatorHash)
+import Ledger (StakePubKeyHash (StakePubKeyHash))
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Address (scriptHashAddress)
-import Ledger.Address qualified as Address
 import Ledger.Constraints qualified as Constraints
 import Ledger.Interval (interval)
 import Ledger.Scripts qualified as Scripts
 import Ledger.Slot (Slot)
-import Ledger.Time (POSIXTime (POSIXTime))
 import Ledger.Tx (
   CardanoTx,
   ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
@@ -48,7 +45,9 @@ import Plutus.Contract (
   utxosAt,
   waitNSlots,
  )
+import Plutus.Script.Utils.V2.Address qualified as ScriptUtils
 import Plutus.Script.Utils.V2.Scripts qualified as ScriptUtils
+import Plutus.V2.Ledger.Api (ValidatorHash (ValidatorHash), POSIXTime (POSIXTime), Datum (Datum), DatumHash (DatumHash), RedeemerHash (RedeemerHash), Validator, MintingPolicy, CurrencySymbol, Address)
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import Pretty.Diff (
@@ -210,7 +209,7 @@ sendAdaStaking = do
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
-      stakePkh3 = Address.StakePubKeyHash pkh3
+      stakePkh3 = StakePubKeyHash pkh3
       addr2Staking = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 (Just stakePkh3))
 
       contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
@@ -443,17 +442,17 @@ mintTokens = do
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
       collateralTxId = encodeByteString $ fromBuiltin $ Tx.getTxId theCollateralTxId
 
-      mintingPolicy :: Scripts.MintingPolicy
+      mintingPolicy :: MintingPolicy
       mintingPolicy = Scripts.mkMintingPolicyScript $$(PlutusTx.compile [||(\_ _ -> ())||])
 
-      curSymbol :: Ledger.CurrencySymbol
+      curSymbol :: CurrencySymbol
       curSymbol = ScriptUtils.scriptCurrencySymbol mintingPolicy
 
       curSymbol' :: Text
       curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
 
       redeemerHash =
-        let (Scripts.RedeemerHash rh) = ScriptUtils.redeemerHash Scripts.unitRedeemer
+        let (RedeemerHash rh) = ScriptUtils.redeemerHash Scripts.unitRedeemer
          in encodeByteString $ fromBuiltin rh
 
       contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
@@ -521,33 +520,33 @@ spendToValidator = do
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
-      validator :: Scripts.Validator
+      validator :: Validator
       validator =
         Scripts.mkValidatorScript
           $$(PlutusTx.compile [||(\_ _ _ -> ())||])
 
-      valHash :: Ledger.ValidatorHash
-      valHash = Ledger.validatorHash validator
+      valHash :: ValidatorHash
+      valHash = ScriptUtils.validatorHash validator
 
-      valAddr :: Ledger.Address
-      valAddr = scriptHashAddress $ validatorHash validator
+      valAddr :: Address
+      valAddr = ScriptUtils.mkValidatorAddress validator
 
       valAddr' :: Text
       valAddr' = unsafeSerialiseAddress Mainnet valAddr
 
       valHash' :: Text
       valHash' =
-        let (Scripts.ValidatorHash vh) = valHash
+        let (ValidatorHash vh) = valHash
          in encodeByteString $ fromBuiltin vh
 
-      datum :: Scripts.Datum
-      datum = Scripts.Datum $ PlutusTx.toBuiltinData (11 :: Integer)
+      datum :: Datum
+      datum = Datum $ PlutusTx.toBuiltinData (11 :: Integer)
 
-      datumHash :: ScriptUtils.DatumHash
+      datumHash :: DatumHash
       datumHash = ScriptUtils.datumHash datum
 
       datumHash' =
-        let (Scripts.DatumHash dh) = datumHash
+        let (DatumHash dh) = datumHash
          in encodeByteString $ fromBuiltin dh
 
       contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
@@ -610,46 +609,46 @@ redeemFromValidator = do
           (Ada.lovelaceValueOf 1250)
           (datumHash, Nothing)
           Nothing
-          (validatorHash validator, Just validator)
+          (ScriptUtils.validatorHash validator, Just validator)
       initState = def & utxos <>~ [(txOutRef, txOut), (txOutRef', txOut')]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
       collateralTxId = encodeByteString $ fromBuiltin $ Tx.getTxId theCollateralTxId
 
-      validator :: Scripts.Validator
+      validator :: Validator
       validator =
         Scripts.mkValidatorScript
           $$(PlutusTx.compile [||(\_ _ _ -> ())||])
 
-      valHash :: Scripts.ValidatorHash
-      valHash = Scripts.validatorHash validator
+      valHash :: ValidatorHash
+      valHash = ScriptUtils.validatorHash validator
 
       valAddr :: Ledger.Address
-      valAddr = scriptHashAddress $ validatorHash validator
+      valAddr = ScriptUtils.mkValidatorAddress validator
 
       valHash' :: Text
       valHash' =
-        let (Scripts.ValidatorHash vh) = valHash
+        let (ValidatorHash vh) = valHash
          in encodeByteString $ fromBuiltin vh
 
-      datum :: Scripts.Datum
-      datum = Scripts.Datum $ PlutusTx.toBuiltinData (11 :: Integer)
+      datum :: Datum
+      datum = Datum $ PlutusTx.toBuiltinData (11 :: Integer)
 
-      datumHash :: Scripts.DatumHash
+      datumHash :: DatumHash
       datumHash = ScriptUtils.datumHash datum
 
       datumHash' =
-        let (Scripts.DatumHash dh) = datumHash
+        let (DatumHash dh) = datumHash
          in encodeByteString $ fromBuiltin dh
 
       redeemerHash =
-        let (Scripts.RedeemerHash rh) = ScriptUtils.redeemerHash Scripts.unitRedeemer
+        let (RedeemerHash rh) = ScriptUtils.redeemerHash Scripts.unitRedeemer
          in encodeByteString $ fromBuiltin rh
 
       contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         utxos' <- Plutus.Contract.utxosAt valAddr
         let lookups =
-              Constraints.plutusV1OtherScript validator
+              Constraints.plutusV2OtherScript validator
                 <> Constraints.otherData datum
                 <> Constraints.unspentOutputs utxos'
         let constraints =

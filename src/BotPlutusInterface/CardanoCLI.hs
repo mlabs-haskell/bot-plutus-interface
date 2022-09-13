@@ -70,7 +70,6 @@ import Ledger.Interval (
   UpperBound (UpperBound),
  )
 import Ledger.Scripts (Datum, DatumHash (..))
-import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   RedeemerPtr (RedeemerPtr),
   Redeemers,
@@ -258,7 +257,7 @@ txInOpts spendIndex pabConf =
             mconcat
               [
                 [ "--tx-in-script-file"
-                , validatorScriptFilePath pabConf (Scripts.validatorHash validator)
+                , validatorScriptFilePath pabConf (ScriptUtils.validatorHash validator)
                 ]
               ,
                 [ "--tx-in-datum-file"
@@ -295,11 +294,11 @@ mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
           ( \(idx, policy) ->
               let redeemerPtr = RedeemerPtr Mint idx
                   redeemer = Map.lookup redeemerPtr redeemers
-                  curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
+                  curSymbol = Value.mpsSymbol $ ScriptUtils.mintingPolicyHash policy
                   exBudget =
                     Map.findWithDefault
                       mempty
-                      (Scripts.mintingPolicyHash policy)
+                      (ScriptUtils.mintingPolicyHash policy)
                       mintIndex
                   toOpts r =
                     (,exBudget) $
