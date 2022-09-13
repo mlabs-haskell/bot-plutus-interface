@@ -24,7 +24,7 @@ import Ledger.Tx (ChainIndexTxOut (..))
 import Ledger.Tx.CardanoAPI qualified as TxApi
 import Ouroboros.Consensus.HardFork.History qualified as Consensus
 import Ouroboros.Consensus.HardFork.History.Qry qualified as HF
-import Plutus.Script.Utils.Scripts qualified as ScriptUtils
+import Plutus.Script.Utils.V2.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (Credential (..))
 import Plutus.V2.Ledger.Tx qualified as V2
 import PlutusTx.Prelude qualified as PlutusTx

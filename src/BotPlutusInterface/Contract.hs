@@ -257,7 +257,7 @@ awaitTxStatusChange contractEnv txId = do
   printBpiLog @w (Debug [PABLog]) $ pretty $ "Awaiting status change for " ++ show txId
 
   let txStatusPolling = contractEnv.cePABConfig.pcTxStatusPolling
-      pollInterval = fromIntegral $ txStatusPolling.spInterval
+      pollInterval = fromIntegral txStatusPolling.spInterval
       pollTimeout = txStatusPolling.spBlocksTimeOut
       cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
 

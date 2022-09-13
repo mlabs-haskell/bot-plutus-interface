@@ -157,8 +157,12 @@ handlePABEffect contractEnv =
     ( \case
         CallCommand shellArgs ->
           case contractEnv.cePABConfig.pcCliLocation of
-            Local -> callLocalCommand shellArgs
-            Remote ipAddr -> callRemoteCommand ipAddr shellArgs
+            Local -> do
+              putStrLn $ "CallCommand: " <> show (Local, shellArgs)
+              callLocalCommand shellArgs
+            Remote ipAddr -> do
+              putStrLn $ "CallCommand: " <> show (Remote ipAddr, shellArgs)
+              callRemoteCommand ipAddr shellArgs
         CreateDirectoryIfMissing createParents filePath ->
           Directory.createDirectoryIfMissing createParents filePath
         CreateDirectoryIfMissingCLI createParents filePath ->

@@ -70,8 +70,7 @@ import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
-import Plutus.Script.Utils.Scripts qualified as ScriptUtils
-import Plutus.Script.Utils.V1.Scripts qualified as ScriptUtils
+import Plutus.Script.Utils.V2.Scripts qualified as ScriptUtilsV2
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),
@@ -145,7 +144,7 @@ writePolicyScriptFile ::
   Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
   let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
-      filepath = policyScriptFilePath pabConf (ScriptUtils.scriptCurrencySymbol mintingPolicy)
+      filepath = policyScriptFilePath pabConf (ScriptUtilsV2.scriptCurrencySymbol mintingPolicy)
    in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
 -- | Compiles and writes a script file under the given folder
@@ -157,7 +156,7 @@ writeValidatorScriptFile ::
   Eff effs (Either (FileError ()) Text)
 writeValidatorScriptFile pabConf validatorScript =
   let script = serialiseScript $ Ledger.unValidatorScript validatorScript
-      filepath = validatorScriptFilePath pabConf (ScriptUtils.validatorHash validatorScript)
+      filepath = validatorScriptFilePath pabConf (ScriptUtilsV2.validatorHash validatorScript)
    in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
 -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
@@ -296,8 +295,7 @@ mkDummyPrivateKey (PubKey (LedgerBytes pubkey)) =
           mconcat [dummyPrivKey, dummyPrivKeySuffix, pubkeyBS, dummyChainCode]
 
 serialiseScript :: Script -> PlutusScript PlutusScriptV2
-serialiseScript =
-  PlutusScriptSerialised
+serialiseScript = PlutusScriptSerialised
     . ShortByteString.toShort
     . LazyByteString.toStrict
     . Codec.serialise
@@ -310,7 +308,7 @@ writeDatumJsonFile ::
   Eff effs (Either (FileError ()) Text)
 writeDatumJsonFile pabConf datum =
   let json = dataToJson $ getDatum datum
-      filepath = datumJsonFilePath pabConf (ScriptUtils.datumHash datum)
+      filepath = datumJsonFilePath pabConf (ScriptUtilsV2.datumHash datum)
    in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
 
 writeRedeemerJsonFile ::
@@ -321,7 +319,7 @@ writeRedeemerJsonFile ::
   Eff effs (Either (FileError ()) Text)
 writeRedeemerJsonFile pabConf redeemer =
   let json = dataToJson $ getRedeemer redeemer
-      filepath = redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
+      filepath = redeemerJsonFilePath pabConf (ScriptUtilsV2.redeemerHash redeemer)
    in fmap (const filepath) <$> writeFileJSON @w (Text.unpack filepath) json
 
 dataToJson :: forall (a :: Type). ToData a => a -> JSON.Value

@@ -48,7 +48,7 @@ import Plutus.Contract (
   utxosAt,
   waitNSlots,
  )
-import Plutus.Script.Utils.Scripts qualified as ScriptUtils
+import Plutus.Script.Utils.V2.Scripts qualified as ScriptUtils
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import Pretty.Diff (
@@ -447,7 +447,7 @@ mintTokens = do
       mintingPolicy = Scripts.mkMintingPolicyScript $$(PlutusTx.compile [||(\_ _ -> ())||])
 
       curSymbol :: Ledger.CurrencySymbol
-      curSymbol = Ledger.scriptCurrencySymbol mintingPolicy
+      curSymbol = ScriptUtils.scriptCurrencySymbol mintingPolicy
 
       curSymbol' :: Text
       curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
@@ -459,7 +459,7 @@ mintTokens = do
       contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let lookups =
-              Constraints.plutusV1MintingPolicy mintingPolicy
+              Constraints.plutusV2MintingPolicy mintingPolicy
         let constraints =
               Constraints.mustMintValue (Value.singleton curSymbol "testToken" 5)
                 <> Constraints.mustPayToPubKey

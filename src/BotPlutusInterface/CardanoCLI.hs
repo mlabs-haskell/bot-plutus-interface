@@ -97,7 +97,7 @@ import Ledger.Tx (
 import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
-import Plutus.Script.Utils.Scripts qualified as ScriptUtils
+import Plutus.Script.Utils.V2.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (unCurrencySymbol),
   ExBudget (ExBudget),
