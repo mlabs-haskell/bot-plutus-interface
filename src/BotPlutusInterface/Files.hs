@@ -59,7 +59,7 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
-import Data.List (sortOn, unzip4)
+import Data.List (sortOn, unzip4, isPrefixOf)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
@@ -218,8 +218,8 @@ readPrivateKeys pabConf = do
         ( \filename ->
             let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
              in case takeExtension filename of
-                  ".vkey" -> Just <$> readVerificationKey @w fullPath
-                  ".skey" -> Just <$> readSigningKey @w fullPath
+                  ".vkey" -> if "verification-key" `isPrefixOf` filename then Just <$> readVerificationKey @w fullPath else pure Nothing
+                  ".skey" -> if "signing-key" `isPrefixOf` filename then Just <$> readSigningKey @w fullPath else pure Nothing
                   _ -> pure Nothing
         )
         files
