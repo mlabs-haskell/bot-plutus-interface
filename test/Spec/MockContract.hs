@@ -54,9 +54,12 @@ module Spec.MockContract (
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt, UtxosAtExcluding))
 import BotPlutusInterface.CardanoNode.Query (toQueryError)
-import BotPlutusInterface.Collateral (removeCollateralFromPage)
+
+-- import BotPlutusInterface.Collateral (removeCollateralFromPage)
+
+import BotPlutusInterface.Collateral (adjustChainIndexResponse)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
 import BotPlutusInterface.Files qualified as Files
@@ -613,91 +616,95 @@ mockUploadDir :: forall (w :: Type). Text -> MockContract w ()
 mockUploadDir _ = pure ()
 
 mockQueryChainIndex :: forall (w :: Type). ChainIndexQuery -> MockContract w ChainIndexResponse
-mockQueryChainIndex = \case
-  DatumFromHash _ ->
-    -- pure $ DatumHashResponse Nothing
-    throwError @Text "DatumFromHash is unimplemented"
-  ValidatorFromHash _ ->
-    -- pure $ ValidatorHashResponse Nothing
-    throwError @Text "ValidatorFromHashis unimplemented"
-  MintingPolicyFromHash _ ->
-    -- pure $ MintingPolicyHashResponse Nothing
-    throwError @Text "GetTip is unimplemented"
-  StakeValidatorFromHash _ ->
-    -- pure $ StakeValidatorHashResponse Nothing
-    throwError @Text "StakeValidatorFromHash is unimplemented"
-  RedeemerFromHash _ ->
-    -- pure $ RedeemerHashResponse Nothing
-    throwError @Text "RedeemerFromHash is unimplemented"
-  TxOutFromRef txOutRef -> do
-    state <- get @(MockContractState w)
-    pure $ TxOutRefResponse $ lookup txOutRef (state ^. utxos)
-  UnspentTxOutFromRef txOutRef -> do
-    state <- get @(MockContractState w)
-    pure $ UnspentTxOutResponse $ lookup txOutRef (state ^. utxos)
-  UnspentTxOutSetAtAddress _ _ -> do
-    state <- get @(MockContractState w)
-    pure $ UnspentTxOutsAtResponse $ QueryResponse (state ^. utxos) Nothing
-  TxFromTxId txId ->
-    if txId == nonExistingTxId
-      then pure $ TxIdResponse Nothing
-      else do
-        -- TODO: Track some kind of state here, add tests to ensure this works correctly
-        -- For now, empty txs
-        state <- get @(MockContractState w)
-        let knownUtxos = state ^. utxos
-        pure . TxIdResponse . Just $
-          ChainIndexTx
-            { _citxTxId = txId
-            , _citxInputs = mempty
-            , _citxOutputs = buildOutputsFromKnownUTxOs knownUtxos txId
-            , _citxValidRange = Ledger.always
-            , _citxData = mempty
-            , _citxRedeemers = mempty
-            , _citxScripts = mempty
-            , _citxCardanoTx = Nothing
-            }
-  UtxoSetMembership _ ->
-    throwError @Text "UtxoSetMembership is unimplemented"
-  UtxoSetAtAddress pageQuery _ -> do
-    state <- get @(MockContractState w)
-    pure $
-      UtxoSetAtResponse $
-        UtxosResponse
-          (state ^. tip)
-          (removeCollateralFromPage (_collateralUtxo state) $ pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
-  UtxoSetWithCurrency pageQuery _ -> do
-    state <- get @(MockContractState w)
-    pure $
-      UtxoSetAtResponse $
-        UtxosResponse
-          (state ^. tip)
-          (removeCollateralFromPage (_collateralUtxo state) (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))))
-  TxsFromTxIds ids -> do
-    -- TODO: Track some kind of state here, add tests to ensure this works correctly
-    -- For now, empty txs
-    state <- get @(MockContractState w)
-    let knownUtxos = state ^. utxos
-    pure . TxIdsResponse . (<$> ids) $ \txId ->
-      ChainIndexTx
-        { _citxTxId = txId
-        , _citxInputs = mempty
-        , _citxOutputs = buildOutputsFromKnownUTxOs knownUtxos txId
-        , _citxValidRange = Ledger.always
-        , _citxData = mempty
-        , _citxRedeemers = mempty
-        , _citxScripts = mempty
-        , _citxCardanoTx = Nothing
-        }
-  TxoSetAtAddress _ _ ->
-    throwError @Text "TxoSetAtAddress is unimplemented"
-  GetTip -> do
-    state <- get @(MockContractState w)
-    pure $ GetTipResponse (state ^. tip)
+mockQueryChainIndex ciq = do
+  result <- case ciq of
+    DatumFromHash _ ->
+      -- pure $ DatumHashResponse Nothing
+      throwError @Text "DatumFromHash is unimplemented"
+    ValidatorFromHash _ ->
+      -- pure $ ValidatorHashResponse Nothing
+      throwError @Text "ValidatorFromHashis unimplemented"
+    MintingPolicyFromHash _ ->
+      -- pure $ MintingPolicyHashResponse Nothing
+      throwError @Text "GetTip is unimplemented"
+    StakeValidatorFromHash _ ->
+      -- pure $ StakeValidatorHashResponse Nothing
+      throwError @Text "StakeValidatorFromHash is unimplemented"
+    RedeemerFromHash _ ->
+      -- pure $ RedeemerHashResponse Nothing
+      throwError @Text "RedeemerFromHash is unimplemented"
+    TxOutFromRef txOutRef -> do
+      state <- get @(MockContractState w)
+      pure $ TxOutRefResponse $ lookup txOutRef (state ^. utxos)
+    UnspentTxOutFromRef txOutRef -> do
+      state <- get @(MockContractState w)
+      pure $ UnspentTxOutResponse $ lookup txOutRef (state ^. utxos)
+    UnspentTxOutSetAtAddress _ _ -> do
+      state <- get @(MockContractState w)
+      pure $ UnspentTxOutsAtResponse $ QueryResponse (state ^. utxos) Nothing
+    TxFromTxId txId ->
+      if txId == nonExistingTxId
+        then pure $ TxIdResponse Nothing
+        else do
+          -- TODO: Track some kind of state here, add tests to ensure this works correctly
+          -- For now, empty txs
+          state <- get @(MockContractState w)
+          let knownUtxos = state ^. utxos
+          pure . TxIdResponse . Just $
+            ChainIndexTx
+              { _citxTxId = txId
+              , _citxInputs = mempty
+              , _citxOutputs = buildOutputsFromKnownUTxOs knownUtxos txId
+              , _citxValidRange = Ledger.always
+              , _citxData = mempty
+              , _citxRedeemers = mempty
+              , _citxScripts = mempty
+              , _citxCardanoTx = Nothing
+              }
+    UtxoSetMembership _ ->
+      throwError @Text "UtxoSetMembership is unimplemented"
+    UtxoSetAtAddress pageQuery _ -> do
+      state <- get @(MockContractState w)
+      pure $
+        UtxoSetAtResponse $
+          UtxosResponse
+            (state ^. tip)
+            (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+    UtxoSetWithCurrency pageQuery _ -> do
+      state <- get @(MockContractState w)
+      pure $
+        UtxoSetAtResponse $
+          UtxosResponse
+            (state ^. tip)
+            ((pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))))
+    TxsFromTxIds ids -> do
+      -- TODO: Track some kind of state here, add tests to ensure this works correctly
+      -- For now, empty txs
+      state <- get @(MockContractState w)
+      let knownUtxos = state ^. utxos
+      pure . TxIdsResponse . (<$> ids) $ \txId ->
+        ChainIndexTx
+          { _citxTxId = txId
+          , _citxInputs = mempty
+          , _citxOutputs = buildOutputsFromKnownUTxOs knownUtxos txId
+          , _citxValidRange = Ledger.always
+          , _citxData = mempty
+          , _citxRedeemers = mempty
+          , _citxScripts = mempty
+          , _citxCardanoTx = Nothing
+          }
+    TxoSetAtAddress _ _ ->
+      throwError @Text "TxoSetAtAddress is unimplemented"
+    GetTip -> do
+      state <- get @(MockContractState w)
+      pure $ GetTipResponse (state ^. tip)
+
+  state <- get @(MockContractState w)
+  pure $ adjustChainIndexResponse (_collateralUtxo state) ciq result
 
 -- | Fills in gaps of inputs with garbage TxOuts, so that the indexes we know about are in the correct positions
 buildOutputsFromKnownUTxOs :: [(TxOutRef, ChainIndexTxOut)] -> TxId -> ChainIndexTxOutputs
-buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map converCiTxOut $ fillGaps sortedRelatedRefs 0
+buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map convertCiTxOut $ fillGaps sortedRelatedRefs 0
   where
     sortedRelatedRefs = sortOn (Tx.txOutRefIdx . fst) $ filter ((== txId) . Tx.txOutRefId . fst) knownUtxos
     fillGaps :: [(TxOutRef, ChainIndexTxOut)] -> Integer -> [ChainIndexTxOut]
@@ -712,10 +719,10 @@ buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map converCiTxOut $ fillG
         Nothing
         Nothing
 
-converCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
-converCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
+convertCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
+convertCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
   CIT.ChainIndexTxOut addr val (convertMaybeDatum dat) (convertRefScript maybeRefSc)
-converCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
+convertCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
   let datum = case eitherDatum of
         (dh, Nothing) -> OutputDatumHash dh
         (_, Just d) -> OutputDatum d
@@ -801,12 +808,16 @@ mockQueryNode ::
   forall (w :: Type) (a :: Type).
   NodeQuery a ->
   MockContract w a
-mockQueryNode (UtxosAt _addr) = do
-  state <- get @(MockContractState w)
-  return $ Right $ Map.fromList (state ^. utxos)
-mockQueryNode PParams = do
-  state <- get @(MockContractState w)
-
-  case pcProtocolParams $ cePABConfig $ _contractEnv state of
-    Nothing -> return $ Left $ toQueryError @String "Not able to get protocol parameters."
-    (Just pparams) -> return $ Right pparams
+mockQueryNode = \case
+  UtxosAt _addr -> do
+    state <- get @(MockContractState w)
+    return $ Right $ Map.fromList (state ^. utxos)
+  UtxosAtExcluding _addr excluded -> do
+    state <- get @(MockContractState w)
+    let filterOuts = Map.filterWithKey (\oref _ -> not $ oref `Set.member` excluded)
+    return . Right . filterOuts $ Map.fromList (state ^. utxos)
+  PParams -> do
+    state <- get @(MockContractState w)
+    case pcProtocolParams $ cePABConfig $ _contractEnv state of
+      Nothing -> return $ Left $ toQueryError @String "Not able to get protocol parameters."
+      (Just pparams) -> return $ Right pparams

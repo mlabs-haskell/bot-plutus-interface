@@ -4,7 +4,7 @@ module BotPlutusInterface.ChainIndex (
   handleChainIndexReq,
 ) where
 
-import BotPlutusInterface.Collateral (removeCollateralFromPage)
+import BotPlutusInterface.Collateral (adjustChainIndexResponse)
 import BotPlutusInterface.Types (
   ContractEnvironment (ContractEnvironment, cePABConfig),
   PABConfig,
@@ -21,10 +21,10 @@ import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Api (
   QueryAtAddressRequest (QueryAtAddressRequest),
   TxoAtAddressRequest (TxoAtAddressRequest),
-  TxosResponse (TxosResponse),
+  TxosResponse,
   UtxoAtAddressRequest (UtxoAtAddressRequest),
   UtxoWithCurrencyRequest (UtxoWithCurrencyRequest),
-  UtxosResponse (UtxosResponse),
+  UtxosResponse,
  )
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
@@ -38,8 +38,8 @@ import Servant.Client (
 import Prelude
 
 handleChainIndexReq :: forall (w :: Type). ContractEnvironment w -> ChainIndexQuery -> IO ChainIndexResponse
-handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
-  \case
+handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} ciq = do
+  response <- case ciq of
     DatumFromHash datumHash ->
       DatumHashResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getDatum datumHash)
     ValidatorFromHash validatorHash ->
@@ -86,6 +86,9 @@ handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
           contractEnv
           (ChainIndexClient.getTxoSetAtAddress (TxoAtAddressRequest (Just page) credential))
 
+  collateralUtxo <- readCollateralUtxo contractEnv -- TODO: move inside adjustChainIndexResponse?
+  pure $ adjustChainIndexResponse collateralUtxo ciq response
+
 chainIndexQuery' :: forall (a :: Type). PABConfig -> ClientM a -> IO (Either ClientError a)
 chainIndexQuery' pabConf endpoint = do
   manager' <- newManager defaultManagerSettings {managerResponseTimeout = responseTimeoutNone}
@@ -105,24 +108,16 @@ chainIndexQueryOne pabConf endpoint = do
       | otherwise -> error (show failureResp)
     Left failureResp -> error (show failureResp)
 
--- | Query for utxo's and filter collateral utxo from result.
+-- | Query for utxo's.
 chainIndexUtxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM UtxosResponse -> IO UtxosResponse
 chainIndexUtxoQuery contractEnv query = do
-  collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral :: UtxosResponse -> UtxosResponse
-      removeCollateral (UtxosResponse tip page) = UtxosResponse tip (removeCollateralFromPage collateralUtxo page)
-  removeCollateral
-    <$> chainIndexQueryMany
-      contractEnv.cePABConfig
-      query
+  chainIndexQueryMany
+    contractEnv.cePABConfig
+    query
 
--- | Query for txo's and filter collateral txo from result.
+-- | Query for txo's.
 chainIndexTxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM TxosResponse -> IO TxosResponse
 chainIndexTxoQuery contractEnv query = do
-  collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral :: TxosResponse -> TxosResponse
-      removeCollateral (TxosResponse page) = TxosResponse (removeCollateralFromPage collateralUtxo page)
-  removeCollateral
-    <$> chainIndexQueryMany
-      contractEnv.cePABConfig
-      query
+  chainIndexQueryMany
+    contractEnv.cePABConfig
+    query

@@ -664,7 +664,7 @@ redeemFromValidator = do
         ( 1
         , [text|
           cardano-cli transaction build-raw --babbage-era
-          --tx-in ${collateralTxId}#0
+          --tx-in ${collateralTxId}#0 -- FIXME: redeem: we shouldn't see collateral out here I think, as it not suppose to participate in balancing
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json

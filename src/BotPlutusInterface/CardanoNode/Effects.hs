@@ -30,7 +30,7 @@ import BotPlutusInterface.CardanoAPI (
   fromCardanoTxOut,
  )
 
-import BotPlutusInterface.Types (PABConfig)
+import BotPlutusInterface.Types (PABConfig, cePABConfig)
 import Cardano.Api (LocalNodeConnectInfo (..))
 import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley qualified as CApi.S
@@ -41,9 +41,10 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (firstEitherT, hoistEither, newEitherT, runEitherT)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set (Set)
 import Data.Set qualified as Set
 import Ledger.Address (Address)
-import Ledger.Tx (ChainIndexTxOut (..))
+import Ledger.Tx (ChainIndexTxOut (..), TxOutRef)
 import Ledger.Tx.CardanoAPI qualified as TxApi
 import Plutus.V2.Ledger.Tx qualified as V2
 import Prelude
@@ -54,6 +55,9 @@ import Prelude
 data NodeQuery a where
   -- | 'UtxosAt' queries local node to get all the utxos at particular address.
   UtxosAt :: Address -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
+  -- | 'UtxosAt' queries local node to get all the utxos at particular address.
+  -- Does not return collateral UTxO created by BPI.
+  UtxosAtExcluding :: Address -> Set TxOutRef -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
   -- | 'PParams' queries local node to get it's 'ProtocolParameters'.
   PParams :: NodeQuery (Either NodeQueryError CApi.S.ProtocolParameters)
 
@@ -78,6 +82,9 @@ handleNodeQuery =
   interpret $ \case
     UtxosAt addr -> handleUtxosAt addr
     PParams -> queryBabbageEra CApi.QueryProtocolParameters
+    UtxosAtExcluding addr excluded ->
+      let filterOuts = Map.filterWithKey (\oref _ -> not $ oref `Set.member` excluded)
+       in fmap filterOuts <$> handleUtxosAt addr
 
 handleUtxosAt ::
   forall effs.
