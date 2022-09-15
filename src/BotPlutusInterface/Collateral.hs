@@ -10,6 +10,7 @@ import BotPlutusInterface.Types (
   ContractEnvironment (ceCollateral),
   PABConfig (pcOwnPubKeyHash),
   collateralValue,
+  pcOwnStakePubKeyHash,
   unCollateralVar,
  )
 import Cardano.Prelude (Void)
@@ -54,7 +55,13 @@ mkCollateralTx :: PABConfig -> Either Constraints.MkTxError Constraints.Unbalanc
 mkCollateralTx pabConf = Constraints.mkTx @Void mempty txc
   where
     txc :: Constraints.TxConstraints Void Void
-    txc = Constraints.mustPayToPubKey (PaymentPubKeyHash $ pcOwnPubKeyHash pabConf) (collateralValue pabConf)
+    txc =
+      maybe -- pay to either a base or enterprise address
+        Constraints.mustPayToPubKey
+        (flip Constraints.mustPayToPubKeyAddress)
+        (pcOwnStakePubKeyHash pabConf)
+        (PaymentPubKeyHash $ pcOwnPubKeyHash pabConf)
+        (collateralValue pabConf)
 
 -- | Middleware to run `chain-index` queries and filter out collateral output from response.
 withCollateralHandling ::
