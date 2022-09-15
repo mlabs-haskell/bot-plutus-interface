@@ -676,7 +676,7 @@ mockQueryChainIndex ciq = do
         UtxoSetAtResponse $
           UtxosResponse
             (state ^. tip)
-            ((pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))))
+            (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
     TxsFromTxIds ids -> do
       -- TODO: Track some kind of state here, add tests to ensure this works correctly
       -- For now, empty txs
