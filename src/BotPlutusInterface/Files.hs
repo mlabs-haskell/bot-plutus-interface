@@ -59,7 +59,7 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
-import Data.List (sortOn, unzip4, isPrefixOf)
+import Data.List (isPrefixOf, sortOn, unzip4)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
