@@ -19,12 +19,10 @@ import BotPlutusInterface.Types (
 import Cardano.Prelude (Void)
 import Control.Concurrent.STM (atomically, readTVarIO, writeTVar)
 import Data.Kind (Type)
-import Data.Map (Map)
-import Data.Map qualified as Map
-import Ledger (ChainIndexTxOut, PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
+import Ledger (PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
 import Ledger.Constraints qualified as Constraints
 import Plutus.ChainIndex (Page (pageItems))
-import Plutus.ChainIndex.Api (QueryResponse (QueryResponse), TxosResponse (paget), UtxosResponse (page))
+import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), QueryResponse (QueryResponse), TxosResponse (paget), UtxosResponse (page))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (TxOutRefResponse, TxoSetAtResponse, UnspentTxOutResponse, UnspentTxOutsAtResponse, UtxoSetAtResponse, UtxoSetMembershipResponse))
 import Prelude
 
@@ -49,28 +47,35 @@ filterCollateral (CollateralUtxo collateralTxOutRef) = filter (/= collateralTxOu
 removeCollateralFromPage :: Maybe CollateralUtxo -> Page TxOutRef -> Page TxOutRef
 removeCollateralFromPage = \case
   Nothing -> id
-  Just txOutRef -> \page -> page {pageItems = filterCollateral txOutRef (pageItems page)}
+  Just txOutRef -> \page' -> page' {pageItems = filterCollateral txOutRef (pageItems page')}
 
 adjustChainIndexResponse :: Maybe CollateralUtxo -> ChainIndexQuery -> ChainIndexResponse -> ChainIndexResponse
 adjustChainIndexResponse mc ciQuery ciResponse =
   case mc of
     Nothing -> ciResponse
-    Just (CollateralUtxo collateralOref) -> case (ciQuery, ciResponse) of -- FIXME: should `matches` from plutus-apps be used to make sure request matches response?
+    Just (CollateralUtxo collateralOref) -> case (ciQuery, ciResponse) of
+      -- adjustment based on response
       (_, UtxoSetAtResponse utxosResp) ->
         let newPage = removeCollateralFromPage mc (page utxosResp)
          in UtxoSetAtResponse $ utxosResp {page = newPage}
       (_, TxoSetAtResponse txosResp) ->
         let newPaget = removeCollateralFromPage mc (paget txosResp)
          in TxoSetAtResponse $ txosResp {paget = newPaget}
-      (UnspentTxOutFromRef oref, _) -> if collateralOref == oref then UnspentTxOutResponse Nothing else ciResponse
       (_, UnspentTxOutsAtResponse (QueryResponse refsAndOuts nq)) ->
         let filtered = filter (\v -> fst v /= collateralOref) refsAndOuts
          in UnspentTxOutsAtResponse $ QueryResponse filtered nq
-      (TxOutFromRef oref,  _) ->  if collateralOref == oref then TxOutRefResponse Nothing else ciResponse
-      (_, UtxoSetMembershipResponse _) -> error "TODO"
-      (_, rest) -> rest -- FIXME: would it be better to pattern match everything?
-
-removeCollateralFromMap :: Maybe CollateralUtxo -> Map TxOutRef ChainIndexTxOut -> Map TxOutRef ChainIndexTxOut
-removeCollateralFromMap = \case
-  Nothing -> id
-  Just (CollateralUtxo collateral) -> Map.filterWithKey (\oref _ -> collateral /= oref)
+      -- adjustment based on request
+      (UtxoSetMembership oref, UtxoSetMembershipResponse (IsUtxoResponse ct isU)) ->
+        UtxoSetMembershipResponse $
+          IsUtxoResponse ct $
+            oref /= collateralOref && isU
+      (TxOutFromRef oref, TxOutRefResponse _) ->
+        if collateralOref == oref
+          then TxOutRefResponse Nothing
+          else ciResponse
+      (UnspentTxOutFromRef oref, UnspentTxOutResponse _) ->
+        if collateralOref == oref
+          then UnspentTxOutResponse Nothing
+          else ciResponse
+      -- all other cases
+      (_, rest) -> rest

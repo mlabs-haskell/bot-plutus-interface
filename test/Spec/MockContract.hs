@@ -814,8 +814,8 @@ mockQueryNode = \case
     return $ Right $ Map.fromList (state ^. utxos)
   UtxosAtExcluding _addr excluded -> do
     state <- get @(MockContractState w)
-    let filterOuts = Map.filterWithKey (\oref _ -> not $ oref `Set.member` excluded)
-    return . Right . filterOuts $ Map.fromList (state ^. utxos)
+    let filterNotExcluded = filter (not . (`Set.member` excluded) . fst)
+    return . Right . Map.fromList . filterNotExcluded $ (state ^. utxos)
   PParams -> do
     state <- get @(MockContractState w)
     case pcProtocolParams $ cePABConfig $ _contractEnv state of

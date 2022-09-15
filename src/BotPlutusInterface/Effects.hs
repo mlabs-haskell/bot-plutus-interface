@@ -37,6 +37,7 @@ module BotPlutusInterface.Effects (
 
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery, runNodeQuery)
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
+import BotPlutusInterface.Collateral (adjustChainIndexResponse)
 import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.ExBudget qualified as ExBudget
 import BotPlutusInterface.TimeSlot qualified as TimeSlot
@@ -68,7 +69,7 @@ import Cardano.Prelude (maybeToEither)
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM (TVar, atomically, modifyTVar, modifyTVar')
 import Control.Lens ((^.))
-import Control.Monad (void, when)
+import Control.Monad (unless, void, when)
 import Control.Monad.Freer (Eff, LastMember, Member, interpretM, reinterpret, send, subsume, type (~>))
 import Control.Monad.Freer.Extras (LogMsg (LMessage))
 import Control.Monad.Freer.Extras qualified as Freer
@@ -87,7 +88,7 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Tx.CardanoAPI qualified as TxApi
 import Ledger.Validation (Coin (Coin))
-import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
+import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse, PABReq (ChainIndexQueryReq), PABResp (ChainIndexQueryResp), matches)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty)
@@ -193,8 +194,13 @@ handlePABEffect contractEnv =
             Local -> pure ()
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
-        QueryChainIndex query ->
-          handleChainIndexReq contractEnv query
+        QueryChainIndex query -> do
+          collateralUtxo <- Collateral.getInMemCollateral contractEnv
+          response <-
+            adjustChainIndexResponse collateralUtxo query
+              <$> handleChainIndexReq contractEnv query
+          ensureMatches query response
+          pure response
         QueryNode query -> runNodeQuery contractEnv.cePABConfig (send query)
         EstimateBudget txPath ->
           ExBudget.estimateBudget contractEnv.cePABConfig txPath
@@ -209,6 +215,15 @@ handlePABEffect contractEnv =
         SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
         MinUtxo utxo -> return $ calcMinUtxo contractEnv.cePABConfig utxo
     )
+  where
+    ensureMatches query result =
+      unless (matches (ChainIndexQueryReq query) (ChainIndexQueryResp result)) $
+        error $
+          mconcat
+            [ "Chain-index request doesn't match response."
+            , "\nRequest: " ++ show query
+            , "\nResponse:" ++ show result
+            ]
 
 printLog' :: LogLevel -> LogLine -> IO ()
 printLog' logLevelSetting logLine =

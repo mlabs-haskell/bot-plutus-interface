@@ -30,7 +30,7 @@ import BotPlutusInterface.CardanoAPI (
   fromCardanoTxOut,
  )
 
-import BotPlutusInterface.Types (PABConfig, cePABConfig)
+import BotPlutusInterface.Types (PABConfig)
 import Cardano.Api (LocalNodeConnectInfo (..))
 import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley qualified as CApi.S
@@ -56,7 +56,7 @@ data NodeQuery a where
   -- | 'UtxosAt' queries local node to get all the utxos at particular address.
   UtxosAt :: Address -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
   -- | 'UtxosAt' queries local node to get all the utxos at particular address.
-  -- Does not return collateral UTxO created by BPI.
+  -- excluding `TxOutRefs`'s specified in `Set`.
   UtxosAtExcluding :: Address -> Set TxOutRef -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
   -- | 'PParams' queries local node to get it's 'ProtocolParameters'.
   PParams :: NodeQuery (Either NodeQueryError CApi.S.ProtocolParameters)
