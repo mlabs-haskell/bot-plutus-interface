@@ -1,12 +1,8 @@
 module BotPlutusInterface.Collateral (
   getInMemCollateral,
   setInMemCollateral,
-  filterCollateral,
   mkCollateralTx,
-  -- removeCollateralFromPage,
-  -- removeCollateralFromMap,
-  adjustChainIndexResponse,
-  -- filterNodeResponseByQuery,
+  withColalteralHandling,
 ) where
 
 import BotPlutusInterface.Types (
@@ -18,12 +14,13 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Prelude (Void)
 import Control.Concurrent.STM (atomically, readTVarIO, writeTVar)
+import Control.Monad (unless)
 import Data.Kind (Type)
 import Ledger (PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
 import Ledger.Constraints qualified as Constraints
 import Plutus.ChainIndex (Page (pageItems))
 import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), QueryResponse (QueryResponse), TxosResponse (paget), UtxosResponse (page))
-import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (TxOutRefResponse, TxoSetAtResponse, UnspentTxOutResponse, UnspentTxOutsAtResponse, UtxoSetAtResponse, UtxoSetMembershipResponse))
+import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (TxOutRefResponse, TxoSetAtResponse, UnspentTxOutResponse, UnspentTxOutsAtResponse, UtxoSetAtResponse, UtxoSetMembershipResponse), PABReq (ChainIndexQueryReq), PABResp (ChainIndexQueryResp), matches)
 import Prelude
 
 getInMemCollateral :: forall (w :: Type). ContractEnvironment w -> IO (Maybe CollateralUtxo)
@@ -40,14 +37,28 @@ mkCollateralTx pabConf = Constraints.mkTx @Void mempty txc
     txc :: Constraints.TxConstraints Void Void
     txc = Constraints.mustPayToPubKey (PaymentPubKeyHash $ pcOwnPubKeyHash pabConf) (collateralValue pabConf)
 
-filterCollateral :: CollateralUtxo -> [TxOutRef] -> [TxOutRef]
-filterCollateral (CollateralUtxo collateralTxOutRef) = filter (/= collateralTxOutRef)
-
--- | Removes collateral utxo from the UtxoResponse page. Receives `Nothing` if Collateral uninitialized.
-removeCollateralFromPage :: Maybe CollateralUtxo -> Page TxOutRef -> Page TxOutRef
-removeCollateralFromPage = \case
-  Nothing -> id
-  Just txOutRef -> \page' -> page' {pageItems = filterCollateral txOutRef (pageItems page')}
+-- | Middleware to run `chain-index` queries and filter out collateral output from response.
+withColalteralHandling ::
+  Monad m =>
+  Maybe CollateralUtxo ->
+  (ChainIndexQuery -> m ChainIndexResponse) ->
+  ChainIndexQuery ->
+  m ChainIndexResponse
+withColalteralHandling mCollateral runChainIndexQuery = \query -> do
+  response <-
+    adjustChainIndexResponse mCollateral query
+      <$> runChainIndexQuery query
+  ensureMatches query response
+  pure response
+  where
+    ensureMatches query result =
+      unless (matches (ChainIndexQueryReq query) (ChainIndexQueryResp result)) $
+        error $
+          mconcat
+            [ "Chain-index request doesn't match response."
+            , "\nRequest: " ++ show query
+            , "\nResponse:" ++ show result
+            ]
 
 adjustChainIndexResponse :: Maybe CollateralUtxo -> ChainIndexQuery -> ChainIndexResponse -> ChainIndexResponse
 adjustChainIndexResponse mc ciQuery ciResponse =
@@ -79,3 +90,12 @@ adjustChainIndexResponse mc ciQuery ciResponse =
           else ciResponse
       -- all other cases
       (_, rest) -> rest
+
+-- | Removes collateral utxo from the UtxoResponse page. Receives `Nothing` if Collateral uninitialized.
+removeCollateralFromPage :: Maybe CollateralUtxo -> Page TxOutRef -> Page TxOutRef
+removeCollateralFromPage = \case
+  Nothing -> id
+  Just txOutRef -> \page' -> page' {pageItems = filterCollateral txOutRef (pageItems page')}
+
+filterCollateral :: CollateralUtxo -> [TxOutRef] -> [TxOutRef]
+filterCollateral (CollateralUtxo collateralTxOutRef) = filter (/= collateralTxOutRef)
