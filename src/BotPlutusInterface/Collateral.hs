@@ -19,8 +19,27 @@ import Data.Kind (Type)
 import Ledger (PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
 import Ledger.Constraints qualified as Constraints
 import Plutus.ChainIndex (Page (pageItems))
-import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), QueryResponse (QueryResponse), TxosResponse (paget), UtxosResponse (page))
-import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (TxOutRefResponse, TxoSetAtResponse, UnspentTxOutResponse, UnspentTxOutsAtResponse, UtxoSetAtResponse, UtxoSetMembershipResponse), PABReq (ChainIndexQueryReq), PABResp (ChainIndexQueryResp), matches)
+import Plutus.ChainIndex.Api (
+  IsUtxoResponse (IsUtxoResponse),
+  QueryResponse (QueryResponse),
+  TxosResponse (paget),
+  UtxosResponse (page),
+ )
+import Plutus.Contract.Effects (
+  ChainIndexQuery (..),
+  ChainIndexResponse (
+    TxOutRefResponse,
+    TxoSetAtResponse,
+    UnspentTxOutResponse,
+    UnspentTxOutsAtResponse,
+    UtxoSetAtResponse,
+    UtxoSetMembershipResponse,
+    UtxoSetWithCurrencyResponse
+  ),
+  PABReq (ChainIndexQueryReq),
+  PABResp (ChainIndexQueryResp),
+  matches,
+ )
 import Prelude
 
 getInMemCollateral :: forall (w :: Type). ContractEnvironment w -> IO (Maybe CollateralUtxo)
@@ -75,6 +94,9 @@ adjustChainIndexResponse mc ciQuery ciResponse =
       (_, UnspentTxOutsAtResponse (QueryResponse refsAndOuts nq)) ->
         let filtered = filter (\v -> fst v /= collateralOref) refsAndOuts
          in UnspentTxOutsAtResponse $ QueryResponse filtered nq
+      (_, UtxoSetWithCurrencyResponse utxosResp) ->
+        let newPage = removeCollateralFromPage mc (page utxosResp)
+         in UtxoSetWithCurrencyResponse $ utxosResp {page = newPage}
       -- adjustment based on request
       (UtxoSetMembership oref, UtxoSetMembershipResponse (IsUtxoResponse ct isU)) ->
         UtxoSetMembershipResponse $

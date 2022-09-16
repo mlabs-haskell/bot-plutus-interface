@@ -70,7 +70,7 @@ handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} = \case
         contractEnv
         (ChainIndexClient.getUtxoSetAtAddress (UtxoAtAddressRequest (Just page) credential))
   UtxoSetWithCurrency page assetClass ->
-    UtxoSetAtResponse
+    UtxoSetWithCurrencyResponse
       <$> chainIndexUtxoQuery
         contractEnv
         (ChainIndexClient.getUtxoSetWithCurrency (UtxoWithCurrencyRequest (Just page) assetClass))

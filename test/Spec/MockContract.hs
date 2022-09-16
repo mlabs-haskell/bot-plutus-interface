@@ -677,7 +677,7 @@ mockQueryChainIndex = \case
   UtxoSetWithCurrency pageQuery _ -> do
     state <- get @(MockContractState w)
     pure $
-      UtxoSetAtResponse $
+      UtxoSetWithCurrencyResponse $
         UtxosResponse
           (state ^. tip)
           (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
