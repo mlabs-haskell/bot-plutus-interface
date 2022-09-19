@@ -79,7 +79,7 @@ tests =
         "Should create collateral utxo if not present in user's wallets"
         testTxCreatesCollateralCorrectly
     , testCase
-        "Should not return collateral utxo in chai-index responses"
+        "Should not return collateral utxo in chain-index responses"
         testCollateralFiltering
     ]
 
@@ -254,7 +254,7 @@ testCollateralFiltering = do
     (Left e, _) -> assertFailure $ "Contract execution failed: " <> show e
   where
     assertCollateralNotRetunredBy request txOutFromRef' =
-      assertBool (request <> " should not return Nothing for collateral UTxO") (isNothing txOutFromRef')
+      assertBool (request <> " should return Nothing for collateral UTxO") (isNothing txOutFromRef')
 
     assertNotFoundIn :: (Foldable t, Eq a) => String -> a -> t a -> Assertion
     assertNotFoundIn what collateralOref outs =
