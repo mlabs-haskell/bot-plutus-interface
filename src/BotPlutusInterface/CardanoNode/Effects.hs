@@ -55,7 +55,7 @@ import Prelude
 data NodeQuery a where
   -- | 'UtxosAt' queries local node to get all the utxos at particular address.
   UtxosAt :: Address -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
-  -- | 'UtxosAt' queries local node to get all the utxos at particular address.
+  -- | 'UtxosAtExcluding' queries local node to get all the utxos at particular address
   -- excluding `TxOutRefs`'s specified in `Set`.
   UtxosAtExcluding :: Address -> Set TxOutRef -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
   -- | 'PParams' queries local node to get it's 'ProtocolParameters'.
