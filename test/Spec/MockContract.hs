@@ -122,7 +122,7 @@ import Data.Kind (Type)
 import Data.List (isPrefixOf, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Row (Row)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -156,7 +156,7 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.ChainIndex.Api (QueryResponse (QueryResponse), UtxosResponse (..))
+import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), QueryResponse (QueryResponse), UtxosResponse (..))
 import Plutus.ChainIndex.Tx (
   ChainIndexTx (..),
   ChainIndexTxOutputs (ValidTx),
@@ -665,8 +665,11 @@ mockQueryChainIndex = \case
             , _citxScripts = mempty
             , _citxCardanoTx = Nothing
             }
-  UtxoSetMembership _ ->
-    throwError @Text "UtxoSetMembership is unimplemented"
+  UtxoSetMembership oref -> do
+    state <- get @(MockContractState w)
+    pure $
+      UtxoSetMembershipResponse $
+        IsUtxoResponse (state ^. tip) (isJust $ lookup oref (state ^. utxos))
   UtxoSetAtAddress pageQuery _ -> do
     state <- get @(MockContractState w)
     pure $

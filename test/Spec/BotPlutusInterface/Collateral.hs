@@ -25,6 +25,7 @@ import Plutus.Contract (
   submitTxConstraintsWith,
   txOutFromRef,
   unspentTxOutFromRef,
+  utxoRefMembership,
   utxoRefsAt,
   utxoRefsWithCurrency,
   utxosAt,
@@ -59,7 +60,7 @@ import Data.Map qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Ledger.Value (CurrencySymbol (CurrencySymbol), TokenName (TokenName), assetClass)
 import Plutus.ChainIndex (Page (pageItems), PageQuery (PageQuery), PageSize (PageSize))
-import Plutus.ChainIndex.Api (UtxosResponse, page)
+import Plutus.ChainIndex.Api (IsUtxoResponse, UtxosResponse, isUtxo, page)
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import System.IO.Unsafe (unsafePerformIO)
@@ -185,6 +186,7 @@ mintingPolicy =
 type ContractResult =
   ( Maybe TxId.ChainIndexTxOut
   , Maybe TxId.ChainIndexTxOut
+  , IsUtxoResponse
   , UtxosResponse
   , UtxosResponse
   , Map TxOutRef TxId.ChainIndexTxOut
@@ -202,22 +204,54 @@ testCollateralFiltering = do
         (ownAddress :| _) <- ownAddresses
         txOutFromRef' <- txOutFromRef collateralOref
         unspentTxOutFromRef' <- unspentTxOutFromRef collateralOref
-        -- utxoRefMembershipC <- utxoRefMembership collateralOref -- FIXME: not implemented in mock interpreter
+        utxoRefMembership' <- utxoRefMembership collateralOref
         utxoRefsAt' <- utxoRefsAt (PageQuery (PageSize 10) Nothing) ownAddress
 
         let adaAsset = assetClass (CurrencySymbol "") (TokenName "")
         utxoRefsWithCurrency' <- utxoRefsWithCurrency (PageQuery (PageSize 10) Nothing) adaAsset
         utxosAt' <- utxosAt ownAddress
-        pure (txOutFromRef', unspentTxOutFromRef', utxoRefsAt', utxoRefsWithCurrency', utxosAt')
+        pure
+          ( txOutFromRef'
+          , unspentTxOutFromRef'
+          , utxoRefMembership'
+          , utxoRefsAt'
+          , utxoRefsWithCurrency'
+          , utxosAt'
+          )
 
   case runContractPure contract initState of
-    (Right (txOutFromRef', unspentTxOutFromRef', utxoRefsAt', utxoRefsWithCurrency', utxosAt'), st) -> do
-      assertCollateralInDistribution collateralOref (st ^. utxos)
-      assertCollateralNotRetunredBy "txOutFromRef" txOutFromRef'
-      assertCollateralNotRetunredBy "unspentTxOutFromRef" unspentTxOutFromRef'
-      assertNotFoundIn "utxoRefsAt response" collateralOref (pageItems $ page utxoRefsAt')
-      assertNotFoundIn "utxoRefsWithCurrency response" collateralOref (pageItems $ page utxoRefsWithCurrency')
-      assertNotFoundIn "utxosAt response" collateralOref (Map.keys utxosAt')
+    ( Right
+        ( txOutFromRef'
+          , unspentTxOutFromRef'
+          , utxoRefMembership'
+          , utxoRefsAt'
+          , utxoRefsWithCurrency'
+          , utxosAt'
+          )
+      , st
+      ) -> do
+        assertCollateralInDistribution collateralOref (st ^. utxos)
+        assertCollateralNotRetunredBy
+          "txOutFromRef"
+          txOutFromRef'
+        assertCollateralNotRetunredBy
+          "unspentTxOutFromRef"
+          unspentTxOutFromRef'
+        assertBool
+          "collateral should not be member of UTxO set"
+          (not $ isUtxo utxoRefMembership')
+        assertNotFoundIn
+          "utxoRefsAt response"
+          collateralOref
+          (pageItems $ page utxoRefsAt')
+        assertNotFoundIn
+          "utxoRefsWithCurrency response"
+          collateralOref
+          (pageItems $ page utxoRefsWithCurrency')
+        assertNotFoundIn
+          "utxosAt response"
+          collateralOref
+          (Map.keys utxosAt')
     (Left e, _) -> assertFailure $ "Contract execution failed: " <> show e
   where
     assertCollateralNotRetunredBy request txOutFromRef' =
