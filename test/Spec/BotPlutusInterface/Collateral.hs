@@ -72,24 +72,30 @@ tests :: TestTree
 tests =
   testGroup
     "Collateral handling"
-    [ -- FIXME: fix commented out
-      --   testCase
-      --     "Use collateral utxo present in the user's wallet, instead of creating new one."
-      --     testTxUsesCollateralCorrectly
-      -- , testCase "create collateral utxo" testTxCreatesCollateralCorrectly
-      -- ,
-      testCase "collateral filtering" testCollateralFiltering
+    [ testCase
+        "Should use collateral utxo present in the user's wallet, instead of creating new one."
+        testTxUsesCollateralCorrectly
+    , testCase
+        "Should create collateral utxo if not present in user's wallets"
+        testTxCreatesCollateralCorrectly
+    , testCase
+        "Should not return collateral utxo in chai-index responses"
+        testCollateralFiltering
     ]
 
 -- Test to check that correct UTxo is selected from user's wallet as collateral.
 testTxUsesCollateralCorrectly :: Assertion
 testTxUsesCollateralCorrectly = do
-  let txOutRef1 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
+  let -- txOutRef1 should be picked up and used as collateral UTxO
+      txOutRef1 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
       txOut1 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 10_000_000) Nothing Nothing
       txOutRef2 = TxOutRef "d406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e4" 0
       txOut2 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 90_000_000) Nothing Nothing
       cenv' = def {ceCollateral = CollateralVar $ unsafePerformIO $ newTVarIO Nothing}
-      initState = def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)] & contractEnv .~ cenv' & collateralUtxo .~ Nothing
+      initState =
+        def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
+          & contractEnv .~ cenv'
+          & collateralUtxo .~ Nothing
 
       collatUtxo = Just $ CollateralUtxo txOutRef1
 
@@ -107,17 +113,17 @@ testTxUsesCollateralCorrectly = do
       [
         ( 3
         , [text|
-            cardano-cli transaction build-raw --alonzo-era
+            cardano-cli transaction build-raw --babbage-era
             --tx-in ${inTxId}#0
             --tx-in-collateral ${collateralTxId}#0
-            --tx-out ${addr2}+1000 + 5 648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198.74657374546F6B656E
-            --mint-script-file ./result-scripts/policy-648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198.plutus
+            --tx-out ${addr2}+3000000 + 5 363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f.74657374546F6B656E
+            --mint-script-file ./result-scripts/policy-363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f.plutus
             --mint-redeemer-file ./result-scripts/redeemer-923918e403bf43c34b4ef6b48eb2ee04babed17320d8d1b9ff9ad086e86f44ec.json
             --mint-execution-units (0,0)
-            --mint 5 648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198.74657374546F6B656E
+            --mint 5 363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f.74657374546F6B656E
             --required-signer ./signing-keys/signing-key-${pkh1'}.skey
             --fee 0 --protocol-params-file ./protocol.json
-            --out-file ./txs/tx-9e13584e45ce4c310f2b0f14341b9ab51bd3ec7978caeaf8e395f7a54315f94e.raw
+            --out-file ./txs/tx-?.raw
           |]
         )
       ]
@@ -138,25 +144,16 @@ testTxCreatesCollateralCorrectly = do
   assertCommandHistory
     state
     [
-      ( 2
-      , [text|
-         cardano-cli transaction calculate-min-required-utxo
-         --alonzo-era
-         --tx-out ${addr1}+${collatVal}
-         --protocol-params-file ./protocol.json
-       |]
-      )
-    ,
       ( 3
       , [text|
          cardano-cli transaction build-raw
-         --alonzo-era
+         --babbage-era
          --tx-in ${inTxId}#0
          --tx-out ${addr1}+${collatVal}
          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
          --fee 0
          --protocol-params-file ./protocol.json
-         --out-file ./txs/tx-fa4c303a2d6feb62b43440d6e0b9a90f5b20b00ecfe5364b6927806b0e8e0198.raw
+         --out-file ./txs/tx-?.raw
        |]
       )
     ]
@@ -175,7 +172,9 @@ mintContract = do
         Constraints.mustMintValue (Value.singleton curSymbol "testToken" 5)
           <> Constraints.mustPayToPubKey
             paymentPkh2
-            (Ada.lovelaceValueOf 1000 <> Value.singleton curSymbol "testToken" 5)
+            ( Ada.adaValueOf 3 -- use big enough Value to not to deal with min Ada adjustment
+                <> Value.singleton curSymbol "testToken" 5
+            )
   submitTxConstraintsWith @Void lookups constraints
 
 mintingPolicy :: Scripts.MintingPolicy
