@@ -664,7 +664,7 @@ redeemFromValidator = do
         ( 1
         , [text|
           cardano-cli transaction build-raw --babbage-era
-          --tx-in ${collateralTxId}#0
+          --tx-in ${inTxId}#0
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
@@ -680,7 +680,7 @@ redeemFromValidator = do
         ( 13
         , [text|
           cardano-cli transaction build-raw --babbage-era
-          --tx-in ${collateralTxId}#0
+          --tx-in ${inTxId}#0
           --tx-in ${inTxId}#1
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
@@ -688,7 +688,7 @@ redeemFromValidator = do
           --tx-in-execution-units (500000,2000)
           --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+857690
-          --tx-out ${addr1}+9143160
+          --tx-out ${addr1}+49143160
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 400
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw

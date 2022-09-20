@@ -13,9 +13,9 @@ module BotPlutusInterface.Balance (
 
 import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt, UtxosAtExcluding))
 import BotPlutusInterface.CoinSelection (selectTxIns)
-import BotPlutusInterface.Collateral (removeCollateralFromMap)
+
 import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissingCLI,
@@ -247,8 +247,14 @@ utxosAndCollateralAtAddress ::
   Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
 utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
   runEitherT $ do
-    utxos <- firstEitherT (Text.pack . show) $ newEitherT $ queryNode @w (UtxosAt changeAddr)
     inMemCollateral <- lift $ getInMemCollateral @w
+    let nodeQuery =
+          maybe
+            (UtxosAt changeAddr)
+            (UtxosAtExcluding changeAddr . Set.singleton . collateralTxOutRef)
+            inMemCollateral
+
+    utxos <- firstEitherT (Text.pack . show) $ newEitherT $ queryNode @w nodeQuery
 
     -- check if `bcHasScripts` is true, if this is the case then we search of
     -- collateral UTxO in the environment, if such collateral is not present we throw Error.
@@ -259,9 +265,9 @@ utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
               "The given transaction uses script, but there's no collateral provided."
                 <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
           )
-          (const $ pure (removeCollateralFromMap inMemCollateral utxos, inMemCollateral))
+          (const $ pure (utxos, inMemCollateral))
           inMemCollateral
-      else pure (removeCollateralFromMap inMemCollateral utxos, Nothing)
+      else pure (utxos, Nothing)
 
 hasChangeUTxO :: Address -> Tx -> Bool
 hasChangeUTxO changeAddr tx =

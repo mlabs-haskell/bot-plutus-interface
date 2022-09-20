@@ -4,11 +4,9 @@ module BotPlutusInterface.ChainIndex (
   handleChainIndexReq,
 ) where
 
-import BotPlutusInterface.Collateral (removeCollateralFromPage)
 import BotPlutusInterface.Types (
   ContractEnvironment (ContractEnvironment, cePABConfig),
   PABConfig,
-  readCollateralUtxo,
  )
 import Data.Kind (Type)
 import Network.HTTP.Client (
@@ -21,10 +19,10 @@ import Network.HTTP.Types (Status (statusCode))
 import Plutus.ChainIndex.Api (
   QueryAtAddressRequest (QueryAtAddressRequest),
   TxoAtAddressRequest (TxoAtAddressRequest),
-  TxosResponse (TxosResponse),
+  TxosResponse,
   UtxoAtAddressRequest (UtxoAtAddressRequest),
   UtxoWithCurrencyRequest (UtxoWithCurrencyRequest),
-  UtxosResponse (UtxosResponse),
+  UtxosResponse,
  )
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
@@ -73,7 +71,7 @@ handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
           contractEnv
           (ChainIndexClient.getUtxoSetAtAddress (UtxoAtAddressRequest (Just page) credential))
     UtxoSetWithCurrency page assetClass ->
-      UtxoSetAtResponse
+      UtxoSetWithCurrencyResponse
         <$> chainIndexUtxoQuery
           contractEnv
           (ChainIndexClient.getUtxoSetWithCurrency (UtxoWithCurrencyRequest (Just page) assetClass))
@@ -105,24 +103,16 @@ chainIndexQueryOne pabConf endpoint = do
       | otherwise -> error (show failureResp)
     Left failureResp -> error (show failureResp)
 
--- | Query for utxo's and filter collateral utxo from result.
+-- | Query for utxo's.
 chainIndexUtxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM UtxosResponse -> IO UtxosResponse
 chainIndexUtxoQuery contractEnv query = do
-  collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral :: UtxosResponse -> UtxosResponse
-      removeCollateral (UtxosResponse tip page) = UtxosResponse tip (removeCollateralFromPage collateralUtxo page)
-  removeCollateral
-    <$> chainIndexQueryMany
-      contractEnv.cePABConfig
-      query
+  chainIndexQueryMany
+    contractEnv.cePABConfig
+    query
 
--- | Query for txo's and filter collateral txo from result.
+-- | Query for txo's.
 chainIndexTxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM TxosResponse -> IO TxosResponse
 chainIndexTxoQuery contractEnv query = do
-  collateralUtxo <- readCollateralUtxo contractEnv
-  let removeCollateral :: TxosResponse -> TxosResponse
-      removeCollateral (TxosResponse page) = TxosResponse (removeCollateralFromPage collateralUtxo page)
-  removeCollateral
-    <$> chainIndexQueryMany
-      contractEnv.cePABConfig
-      query
+  chainIndexQueryMany
+    contractEnv.cePABConfig
+    query
