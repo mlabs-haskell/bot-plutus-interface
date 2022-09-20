@@ -230,10 +230,10 @@ testCollateralFiltering = do
       , st
       ) -> do
         assertCollateralInDistribution collateralOref (st ^. utxos)
-        assertCollateralNotRetunredBy
+        assertCollateralNotReturnedBy
           "txOutFromRef"
           txOutFromRef'
-        assertCollateralNotRetunredBy
+        assertCollateralNotReturnedBy
           "unspentTxOutFromRef"
           unspentTxOutFromRef'
         assertBool
@@ -253,7 +253,7 @@ testCollateralFiltering = do
           (Map.keys utxosAt')
     (Left e, _) -> assertFailure $ "Contract execution failed: " <> show e
   where
-    assertCollateralNotRetunredBy request txOutFromRef' =
+    assertCollateralNotReturnedBy request txOutFromRef' =
       assertBool (request <> " should return Nothing for collateral UTxO") (isNothing txOutFromRef')
 
     assertNotFoundIn :: (Foldable t, Eq a) => String -> a -> t a -> Assertion
@@ -262,8 +262,8 @@ testCollateralFiltering = do
 
     assertCollateralInDistribution :: TxOutRef -> [(TxOutRef, Ledger.Tx.ChainIndexTxOut)] -> Assertion
     assertCollateralInDistribution collateralOref utxs =
-      let colalteral = lookup collateralOref utxs
-       in if isJust colalteral
+      let collateral = lookup collateralOref utxs
+       in if isJust collateral
             then pure ()
             else
               assertFailure

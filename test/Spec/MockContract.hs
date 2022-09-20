@@ -57,8 +57,6 @@ import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt, UtxosAtExcluding))
 import BotPlutusInterface.CardanoNode.Query (toQueryError)
 
--- import BotPlutusInterface.Collateral (removeCollateralFromPage)
-
 import BotPlutusInterface.Collateral (withCollateralHandling)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
