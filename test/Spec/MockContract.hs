@@ -59,7 +59,7 @@ import BotPlutusInterface.CardanoNode.Query (toQueryError)
 
 -- import BotPlutusInterface.Collateral (removeCollateralFromPage)
 
-import BotPlutusInterface.Collateral (withColalteralHandling)
+import BotPlutusInterface.Collateral (withCollateralHandling)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
 import BotPlutusInterface.Files qualified as Files
@@ -375,7 +375,7 @@ runPABEffectPure initState req =
     go (UploadDir dir) = mockUploadDir dir
     go (QueryChainIndex query) = do
       mCollateral <- _collateralUtxo <$> get @(MockContractState w)
-      withColalteralHandling
+      withCollateralHandling
         mCollateral
         mockQueryChainIndex
         query

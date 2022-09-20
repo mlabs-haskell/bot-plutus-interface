@@ -16,7 +16,6 @@ import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt, UtxosAtExcluding))
 import BotPlutusInterface.CoinSelection (selectTxIns)
 
--- import BotPlutusInterface.Collateral (removeCollateralFromMap)
 import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissingCLI,
@@ -85,8 +84,6 @@ import Plutus.V1.Ledger.Api (
 import Ledger.Constraints.OffChain qualified as Constraints
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
-
--- import BotPlutusInterface.Collateral (removeCollateralFromMap)
 
 -- Config for balancing a `Tx`.
 data BalanceConfig = BalanceConfig

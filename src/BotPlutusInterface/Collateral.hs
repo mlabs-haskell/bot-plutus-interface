@@ -2,7 +2,7 @@ module BotPlutusInterface.Collateral (
   getInMemCollateral,
   setInMemCollateral,
   mkCollateralTx,
-  withColalteralHandling,
+  withCollateralHandling,
 ) where
 
 import BotPlutusInterface.Types (
@@ -57,13 +57,13 @@ mkCollateralTx pabConf = Constraints.mkTx @Void mempty txc
     txc = Constraints.mustPayToPubKey (PaymentPubKeyHash $ pcOwnPubKeyHash pabConf) (collateralValue pabConf)
 
 -- | Middleware to run `chain-index` queries and filter out collateral output from response.
-withColalteralHandling ::
+withCollateralHandling ::
   Monad m =>
   Maybe CollateralUtxo ->
   (ChainIndexQuery -> m ChainIndexResponse) ->
   ChainIndexQuery ->
   m ChainIndexResponse
-withColalteralHandling mCollateral runChainIndexQuery = \query -> do
+withCollateralHandling mCollateral runChainIndexQuery = \query -> do
   response <-
     adjustChainIndexResponse mCollateral query
       <$> runChainIndexQuery query

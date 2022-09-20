@@ -37,7 +37,7 @@ module BotPlutusInterface.Effects (
 
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery, runNodeQuery)
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
-import BotPlutusInterface.Collateral (withColalteralHandling)
+import BotPlutusInterface.Collateral (withCollateralHandling)
 import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.ExBudget qualified as ExBudget
 import BotPlutusInterface.TimeSlot qualified as TimeSlot
@@ -196,7 +196,7 @@ handlePABEffect contractEnv =
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query -> do
           collateralUtxo <- Collateral.getInMemCollateral contractEnv
-          withColalteralHandling
+          withCollateralHandling
             collateralUtxo
             (handleChainIndexReq contractEnv)
             query
