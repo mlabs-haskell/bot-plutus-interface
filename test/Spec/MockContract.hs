@@ -250,7 +250,7 @@ toSigningKeyFile signingKeyFileDir sKey =
 
 toVerificationKeyFile :: FilePath -> VerificationKey PaymentKey -> (FilePath, MockFile)
 toVerificationKeyFile signingKeyFileDir vKey =
-  ( signingKeyFileDir ++ "/signing-key-" ++ show (Ledger.pubKeyHash (vkeyToPubKey vKey)) ++ ".vkey"
+  ( signingKeyFileDir ++ "/verification-key-" ++ show (Ledger.pubKeyHash (vkeyToPubKey vKey)) ++ ".vkey"
   , TextEnvelopeFile $ serialiseToTextEnvelope Nothing vKey
   )
 
