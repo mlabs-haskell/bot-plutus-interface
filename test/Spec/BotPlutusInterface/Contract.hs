@@ -47,7 +47,7 @@ import Plutus.Contract (
  )
 import Plutus.Script.Utils.V2.Address qualified as ScriptUtils
 import Plutus.Script.Utils.V2.Scripts qualified as ScriptUtils
-import Plutus.V2.Ledger.Api (ValidatorHash (ValidatorHash), POSIXTime (POSIXTime), Datum (Datum), DatumHash (DatumHash), RedeemerHash (RedeemerHash), Validator, MintingPolicy, CurrencySymbol, Address)
+import Plutus.V2.Ledger.Api (Address, CurrencySymbol, Datum (Datum), DatumHash (DatumHash), MintingPolicy, POSIXTime (POSIXTime), RedeemerHash (RedeemerHash), Validator, ValidatorHash (ValidatorHash))
 import PlutusTx qualified
 import PlutusTx.Builtins (fromBuiltin)
 import Pretty.Diff (
