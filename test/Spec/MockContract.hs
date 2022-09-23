@@ -54,9 +54,10 @@ module Spec.MockContract (
 ) where
 
 import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt, UtxosAtExcluding))
 import BotPlutusInterface.CardanoNode.Query (toQueryError)
-import BotPlutusInterface.Collateral (removeCollateralFromPage)
+
+import BotPlutusInterface.Collateral (withCollateralHandling)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
 import BotPlutusInterface.Files qualified as Files
@@ -119,7 +120,7 @@ import Data.Kind (Type)
 import Data.List (isPrefixOf, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Row (Row)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -153,7 +154,7 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.ChainIndex.Api (QueryResponse (QueryResponse), UtxosResponse (..))
+import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), QueryResponse (QueryResponse), UtxosResponse (..))
 import Plutus.ChainIndex.Tx (
   ChainIndexTx (..),
   ChainIndexTxOutputs (ValidTx),
@@ -370,7 +371,12 @@ runPABEffectPure initState req =
       mockWriteFileTextEnvelope filepath envelopeDescr contents
     go (ListDirectory dir) = mockListDirectory dir
     go (UploadDir dir) = mockUploadDir dir
-    go (QueryChainIndex query) = mockQueryChainIndex query
+    go (QueryChainIndex query) = do
+      mCollateral <- _collateralUtxo <$> get @(MockContractState w)
+      withCollateralHandling
+        mCollateral
+        mockQueryChainIndex
+        query
     go (EstimateBudget file) = mockExBudget file
     go (SaveBudget txId budget) = mockSaveBudget txId budget
     go (SlotToPOSIXTime _) = pure $ Right 1506203091
@@ -657,22 +663,25 @@ mockQueryChainIndex = \case
             , _citxScripts = mempty
             , _citxCardanoTx = Nothing
             }
-  UtxoSetMembership _ ->
-    throwError @Text "UtxoSetMembership is unimplemented"
+  UtxoSetMembership oref -> do
+    state <- get @(MockContractState w)
+    pure $
+      UtxoSetMembershipResponse $
+        IsUtxoResponse (state ^. tip) (isJust $ lookup oref (state ^. utxos))
   UtxoSetAtAddress pageQuery _ -> do
     state <- get @(MockContractState w)
     pure $
       UtxoSetAtResponse $
         UtxosResponse
           (state ^. tip)
-          (removeCollateralFromPage (_collateralUtxo state) $ pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
+          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   UtxoSetWithCurrency pageQuery _ -> do
     state <- get @(MockContractState w)
     pure $
-      UtxoSetAtResponse $
+      UtxoSetWithCurrencyResponse $
         UtxosResponse
           (state ^. tip)
-          (removeCollateralFromPage (_collateralUtxo state) (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1))))
+          (pageOf pageQuery (Set.fromList (state ^. utxos ^.. traverse . _1)))
   TxsFromTxIds ids -> do
     -- TODO: Track some kind of state here, add tests to ensure this works correctly
     -- For now, empty txs
@@ -697,7 +706,7 @@ mockQueryChainIndex = \case
 
 -- | Fills in gaps of inputs with garbage TxOuts, so that the indexes we know about are in the correct positions
 buildOutputsFromKnownUTxOs :: [(TxOutRef, ChainIndexTxOut)] -> TxId -> ChainIndexTxOutputs
-buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map converCiTxOut $ fillGaps sortedRelatedRefs 0
+buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map convertCiTxOut $ fillGaps sortedRelatedRefs 0
   where
     sortedRelatedRefs = sortOn (Tx.txOutRefIdx . fst) $ filter ((== txId) . Tx.txOutRefId . fst) knownUtxos
     fillGaps :: [(TxOutRef, ChainIndexTxOut)] -> Integer -> [ChainIndexTxOut]
@@ -712,10 +721,10 @@ buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map converCiTxOut $ fillG
         Nothing
         Nothing
 
-converCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
-converCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
+convertCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
+convertCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
   CIT.ChainIndexTxOut addr val (convertMaybeDatum dat) (convertRefScript maybeRefSc)
-converCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
+convertCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
   let datum = case eitherDatum of
         (dh, Nothing) -> OutputDatumHash dh
         (_, Just d) -> OutputDatum d
@@ -801,12 +810,16 @@ mockQueryNode ::
   forall (w :: Type) (a :: Type).
   NodeQuery a ->
   MockContract w a
-mockQueryNode (UtxosAt _addr) = do
-  state <- get @(MockContractState w)
-  return $ Right $ Map.fromList (state ^. utxos)
-mockQueryNode PParams = do
-  state <- get @(MockContractState w)
-
-  case pcProtocolParams $ cePABConfig $ _contractEnv state of
-    Nothing -> return $ Left $ toQueryError @String "Not able to get protocol parameters."
-    (Just pparams) -> return $ Right pparams
+mockQueryNode = \case
+  UtxosAt _addr -> do
+    state <- get @(MockContractState w)
+    return $ Right $ Map.fromList (state ^. utxos)
+  UtxosAtExcluding _addr excluded -> do
+    state <- get @(MockContractState w)
+    let filterNotExcluded = filter (not . (`Set.member` excluded) . fst)
+    return . Right . Map.fromList . filterNotExcluded $ (state ^. utxos)
+  PParams -> do
+    state <- get @(MockContractState w)
+    case pcProtocolParams $ cePABConfig $ _contractEnv state of
+      Nothing -> return $ Left $ toQueryError @String "Not able to get protocol parameters."
+      (Just pparams) -> return $ Right pparams
