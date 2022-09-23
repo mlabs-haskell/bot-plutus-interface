@@ -105,7 +105,7 @@ data ShellArgs a = ShellArgs
   }
 
 instance Show (ShellArgs a) where
-  show ShellArgs {cmdName, cmdArgs} = Text.unpack $ cmdName <> mconcat cmdArgs
+  show ShellArgs {cmdName, cmdArgs} = Text.unpack $ cmdName <> mconcat [" " <> a | a <- cmdArgs]
 
 data PABEffect (w :: Type) (r :: Type) where
   CallCommand :: ShellArgs a -> PABEffect w (Either Text a)

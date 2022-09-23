@@ -135,7 +135,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
             balanceCfg
             pabConf
             changeAddr
-
+      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxos
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
       let utxoIndex :: Map TxOutRef TxOut
