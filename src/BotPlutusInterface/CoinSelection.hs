@@ -28,7 +28,7 @@ import Control.Lens (
 import Control.Monad.Except (foldM, throwError, unless)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT, firstEitherT)
 import Data.Either.Combinators (isRight, maybeToRight)
 import Data.Kind (Type)
 import Data.List qualified as List
@@ -52,6 +52,7 @@ import Plutus.V1.Ledger.Api (
  )
 import Prettyprinter (pretty, (<+>))
 import Prelude
+import qualified Wallet.API as WAPI
 
 {-
 
@@ -184,7 +185,7 @@ selectTxIns ::
   Set TxIn -> -- Inputs `TxIn` of the transaction.
   Map TxOutRef TxOut -> -- Map of utxos that can be spent
   Value -> -- total output value of the Tx.
-  Eff effs (Either Text (Set TxIn))
+  Eff effs (Either WAPI.WalletAPIError (Set TxIn))
 selectTxIns originalTxIns utxosIndex outValue =
   runEitherT $ do
     let -- This represents the input value.
@@ -227,13 +228,14 @@ selectTxIns originalTxIns utxosIndex outValue =
     -- we use the default search strategy to get indexes of optimal utxos, these indexes are for the
     -- remainingUtxos, as we are sampling utxos from that set.
     selectedUtxosIdxs <-
-      newEitherT $
-        searchTxIns @w
-          defaultSearchStrategy
-          (isSufficient outVec)
-          outVec
-          txInsVec
-          remainingUtxosVec
+      firstEitherT WAPI.OtherError $
+        newEitherT $
+          searchTxIns @w
+            defaultSearchStrategy
+            (isSufficient outVec)
+            outVec
+            txInsVec
+            remainingUtxosVec
 
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "" <+> "Selected UTxOs Index: " <+> pretty selectedUtxosIdxs
 
@@ -244,10 +246,10 @@ selectTxIns originalTxIns utxosIndex outValue =
         selectedVectors :: [ValueVector]
         selectedVectors = selectedUtxosIdxs ^.. folded . to (\idx -> remainingUtxosVec ^? ix idx) . folded
 
-    finalTxInputVector <- hoistEither $ foldM addVec txInsVec selectedVectors
-    unless (isSufficient outVec finalTxInputVector) $ throwError "Insufficient Funds"
+    finalTxInputVector <- firstEitherT WAPI.OtherError $ hoistEither $ foldM addVec txInsVec selectedVectors
+    unless (isSufficient outVec finalTxInputVector) $ throwError (WAPI.InsufficientFunds "Insufficient funds in the final vector.")
 
-    selectedTxIns <- hoistEither $ mapM txOutToTxIn selectedUtxos
+    selectedTxIns <- firstEitherT WAPI.OtherError $ hoistEither $ mapM txOutToTxIn selectedUtxos
 
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "Selected TxIns: " <+> pretty selectedTxIns
 
@@ -447,9 +449,9 @@ zeroVec :: Int -> Vector Integer
 zeroVec n = Vec.replicate n 0
 
 -- | Convert a value to a vector.
-valueToVec :: Set AssetClass -> Value -> Either Text ValueVector
+valueToVec :: Set AssetClass -> Value -> Either WAPI.WalletAPIError ValueVector
 valueToVec allAssetClasses v =
-  maybeToRight "Error: Not able to uncons from empty vector." $
+  maybeToRight (WAPI.OtherError "Error: Not able to uncons from empty vector.") $
     (over _Just fst . uncons) $ valuesToVecs allAssetClasses [v]
 
 -- | Convert values to a list of vectors.

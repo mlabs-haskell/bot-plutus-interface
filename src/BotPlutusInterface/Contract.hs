@@ -95,6 +95,8 @@ import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
+import qualified Wallet.API as WAPI
+import qualified Data.Text as T
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).
@@ -325,7 +327,7 @@ balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
   result <- handleCollateral @w contractEnv
 
   case result of
-    Left e -> pure $ BalanceTxFailed (OtherError e)
+    Left e -> pure $ BalanceTxFailed e
     _ -> do
       uploadDir @w pabConf.pcSigningKeyFileDir
       eitherBalancedTx <-
@@ -337,7 +339,7 @@ balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
           pabConf.pcOwnPubKeyHash
           unbalancedTx
 
-      pure $ either (BalanceTxFailed . OtherError) (BalanceTxSuccess . EmulatorTx) eitherBalancedTx
+      pure $ either BalanceTxFailed (BalanceTxSuccess . EmulatorTx) eitherBalancedTx
 
 fromCardanoTx :: CardanoTx -> Tx.Tx
 fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
@@ -499,7 +501,7 @@ handleCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs (Either Text ())
+  Eff effs (Either WAPI.WalletAPIError ())
 handleCollateral cEnv = do
   result <- (fmap swapEither . runEitherT) $
     do
@@ -525,13 +527,13 @@ handleCollateral cEnv = do
       helperLog
         ("Failed to create collateral UTxO: " <> pretty notCreatedCollateral)
 
-      pure ("Failed to create collateral UTxO: " <> notCreatedCollateral)
+      pure ("Failed to create collateral UTxO: " <> show notCreatedCollateral)
 
   case result of
     Right collteralUtxo ->
       setInMemCollateral @w collteralUtxo
         >> Right <$> printBpiLog @w (Debug [CollateralLog]) "successfully set the collateral utxo in env."
-    Left err -> pure $ Left $ "Failed to make collateral: " <> err
+    Left err -> pure $ Left $ WAPI.OtherError $ T.pack $ "Failed to make collateral: " <> show err
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.
@@ -540,13 +542,13 @@ makeCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs (Either Text CollateralUtxo)
+  Eff effs (Either WAPI.WalletAPIError CollateralUtxo)
 makeCollateral cEnv = runEitherT $ do
   lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
   let pabConf = cEnv.cePABConfig
   unbalancedTx <-
-    firstEitherT (Text.pack . show) $
+    firstEitherT (WAPI.OtherError . Text.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
 
   balancedTx <-
@@ -558,7 +560,7 @@ makeCollateral cEnv = runEitherT $ do
 
   wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)
   case wbr of
-    WriteBalancedTxFailed e -> throwE . Text.pack $ "Failed to create collateral output: " <> show e
+    WriteBalancedTxFailed e -> throwE . WAPI.OtherError . Text.pack $ "Failed to create collateral output: " <> show e
     WriteBalancedTxSuccess cTx -> do
       status <- lift $ awaitTxStatusChange cEnv (getCardanoTxId cTx)
       lift $ printBpiLog @w (Notice [CollateralLog]) $ "Collateral Tx Status: " <> pretty status
@@ -569,7 +571,7 @@ findCollateralAtOwnPKH ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
-  Eff effs (Either Text CollateralUtxo)
+  Eff effs (Either WAPI.WalletAPIError CollateralUtxo)
 findCollateralAtOwnPKH cEnv =
   runEitherT $
     CollateralUtxo <$> do
@@ -580,11 +582,11 @@ findCollateralAtOwnPKH cEnv =
               pabConf.pcOwnStakePubKeyHash
 
       r <-
-        firstEitherT (Text.pack . show) $
+        firstEitherT (WAPI.OtherError . Text.pack . show) $
           newEitherT $ queryNode @w (UtxosAt changeAddr)
       let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
       hoistEither $ case filter check refsAndOuts of
-        [] -> Left "Couldn't find collateral UTxO"
+        [] -> Left $ WAPI.OtherError "Couldn't find collateral UTxO"
         ((oref, _) : _) -> Right oref
   where
     check (_, txOut) = Tx.txOutValue txOut == collateralValue (cePABConfig cEnv)

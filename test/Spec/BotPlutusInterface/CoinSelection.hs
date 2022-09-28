@@ -33,6 +33,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase, (@?=))
 import Test.Tasty.QuickCheck (testProperty)
 import Prelude
+import qualified Wallet.API as WAPI
 
 tests :: TestTree
 tests =
@@ -175,7 +176,8 @@ validateBalancing = withMaxSuccess 10000 (forAll balanceGen validate)
   where
     validate :: (TxOut, Map TxOutRef TxOut) -> Bool
     validate (txOutput, utxos) =
-      let result :: (Either Text (Either Text (Set TxIn)))
+      let 
+          result :: Either Text (Either WAPI.WalletAPIError (Set TxIn))
           result =
             fst $
               runPABEffectPure def $
