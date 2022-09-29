@@ -68,6 +68,7 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Vector qualified as V
 import Ledger (POSIXTime, getCardanoTxId)
@@ -93,10 +94,9 @@ import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
+import Wallet.API qualified as WAPI
 import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
-import qualified Wallet.API as WAPI
-import qualified Data.Text as T
 
 runContract ::
   forall (w :: Type) (s :: Row Type) (e :: Type) (a :: Type).

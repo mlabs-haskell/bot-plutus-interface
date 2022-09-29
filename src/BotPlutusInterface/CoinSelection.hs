@@ -28,7 +28,7 @@ import Control.Lens (
 import Control.Monad.Except (foldM, throwError, unless)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (hoistEither, newEitherT, runEitherT, firstEitherT)
+import Control.Monad.Trans.Either (firstEitherT, hoistEither, newEitherT, runEitherT)
 import Data.Either.Combinators (isRight, maybeToRight)
 import Data.Kind (Type)
 import Data.List qualified as List
@@ -51,8 +51,8 @@ import Plutus.V1.Ledger.Api (
   Credential (PubKeyCredential, ScriptCredential),
  )
 import Prettyprinter (pretty, (<+>))
+import Wallet.API qualified as WAPI
 import Prelude
-import qualified Wallet.API as WAPI
 
 {-
 

@@ -66,11 +66,12 @@ import Ledger.Interval (
  )
 import Ledger.Time (POSIXTimeRange)
 import Ledger.Tx (
+  ToCardanoError (InvalidValidityRange),
   Tx (..),
   TxIn (..),
   TxInType (..),
   TxOut (..),
-  TxOutRef (..), ToCardanoError (InvalidValidityRange)
+  TxOutRef (..),
  )
 import Ledger.Tx qualified as Tx
 import Ledger.Tx.CardanoAPI (CardanoBuildTx)
@@ -83,8 +84,8 @@ import Plutus.V1.Ledger.Api (
 
 import Ledger.Constraints.OffChain qualified as Constraints
 import Prettyprinter (pretty, viaShow, (<+>))
+import Wallet.API qualified as WAPI
 import Prelude
-import qualified Wallet.API as WAPI
 
 -- Config for balancing a `Tx`.
 data BalanceConfig = BalanceConfig
@@ -262,9 +263,10 @@ utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
     if bcHasScripts balanceCfg
       then
         maybe
-          ( throwE $ WAPI.OtherError $
-              "The given transaction uses script, but there's no collateral provided."
-                <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
+          ( throwE $
+              WAPI.OtherError $
+                "The given transaction uses script, but there's no collateral provided."
+                  <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
           )
           (const $ pure (utxos, inMemCollateral))
           inMemCollateral
@@ -467,7 +469,8 @@ addOutput changeAddr tx =
             , txOutDatumHash = Nothing
             }
 
-    changeTxOutWithMinAmt <- newEitherT $
+    changeTxOutWithMinAmt <-
+      newEitherT $
         minUtxo @w changeTxOut
 
     return $ tx {txOutputs = txOutputs tx ++ [changeTxOutWithMinAmt]}
