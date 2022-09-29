@@ -86,6 +86,8 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
+import Ledger.Tx (TxOut (TxOut))
+import Ledger.Tx.CardanoAPI (toCardanoAddressInEra, toCardanoValue)
 import Ledger.Tx.CardanoAPI qualified as TxApi
 import Ledger.Validation (Coin (Coin))
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
@@ -294,7 +296,7 @@ calcMinUtxo pabconf txout = do
 
   ctxout <-
     mapLeft (Text.pack . show) $
-      TxApi.toCardanoTxOut netId TxApi.toCardanoTxOutDatumHash txout
+      toCardanoTxOutForked netId TxApi.toCardanoTxOutDatumHash txout
 
   let (Coin minTxOut) =
         evaluateMinLovelaceOutput pparamsInEra $
@@ -305,6 +307,17 @@ calcMinUtxo pabconf txout = do
   if missingLovelace > 0
     then calcMinUtxo pabconf (txout {Ledger.txOutValue = Ledger.txOutValue txout <> Ada.toValue missingLovelace})
     else return txout
+  where
+    -- We need to redefine this to remove error reporting with 0 ada outputs.
+    toCardanoTxOutValue value = do
+      -- when (Ada.fromValue value == mempty) (Left OutputHasZeroAda)
+      CApi.TxOutValue CApi.MultiAssetInBabbageEra <$> toCardanoValue value
+
+    toCardanoTxOutForked networkId fromHash (TxOut addr value datumHash) =
+      CApi.TxOut <$> toCardanoAddressInEra networkId addr
+        <*> toCardanoTxOutValue value
+        <*> fromHash datumHash
+        <*> pure CApi.S.ReferenceScriptNone
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@
