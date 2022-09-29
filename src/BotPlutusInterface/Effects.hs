@@ -296,7 +296,7 @@ calcMinUtxo pabconf txout = do
 
   ctxout <-
     mapLeft (Text.pack . show) $
-      toCardanoTxOutForked netId TxApi.toCardanoTxOutDatumHash txout
+      toCardanoTxOutPossibleZeroAda netId TxApi.toCardanoTxOutDatumHash txout
 
   let (Coin minTxOut) =
         evaluateMinLovelaceOutput pparamsInEra $
@@ -309,13 +309,13 @@ calcMinUtxo pabconf txout = do
     else return txout
   where
     -- We need to redefine this to remove error reporting with 0 ada outputs.
-    toCardanoTxOutValue value = do
+    toCardanoTxOutValuePossibleZeroAda value = do
       -- when (Ada.fromValue value == mempty) (Left OutputHasZeroAda)
       CApi.TxOutValue CApi.MultiAssetInBabbageEra <$> toCardanoValue value
 
-    toCardanoTxOutForked networkId fromHash (TxOut addr value datumHash) =
+    toCardanoTxOutPossibleZeroAda networkId fromHash (TxOut addr value datumHash) =
       CApi.TxOut <$> toCardanoAddressInEra networkId addr
-        <*> toCardanoTxOutValue value
+        <*> toCardanoTxOutValuePossibleZeroAda value
         <*> fromHash datumHash
         <*> pure CApi.S.ReferenceScriptNone
 
