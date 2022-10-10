@@ -237,8 +237,8 @@ dontAddChangeToDatum = do
 
   unbalancedTx <- liftAssertFailure eunbalancedTx (\err -> "MkTx Error: " <> show err)
   let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
-  eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> Text.unpack txt)
-  trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> Text.unpack txt)
+  eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> show txt)
+  trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> show txt)
   let scrTxOut'' = scrTxOut & Ledger.ciTxOutValue .~ payToScriptValue
       scrTxOutExpected = Ledger.toTxOut scrTxOut''
       isScrUtxo :: TxOut -> Bool
@@ -307,8 +307,8 @@ dontAddChangeToDatum2 = do
 
   unbalancedTx <- liftAssertFailure eunbalancedTx (\err -> "MkTx Error: " <> show err)
   let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
-  eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> Text.unpack txt)
-  trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> Text.unpack txt)
+  eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> show txt)
+  trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> show txt)
   let scrTxOut'' = scrTxOut & Ledger.ciTxOutValue .~ payToScrValue
       scrTxOutExpected = Ledger.toTxOut scrTxOut''
       isScrUtxo :: TxOut -> Bool

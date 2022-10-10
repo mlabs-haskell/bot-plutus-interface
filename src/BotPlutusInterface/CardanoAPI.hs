@@ -6,9 +6,11 @@ module BotPlutusInterface.CardanoAPI (
   fromCardanoSlotNo,
   fromCardanoEpochInfo,
   posixTimeToSlot,
+  toCardanoTxOut',
 ) where
 
 import Cardano.Api qualified as CApi
+import Cardano.Api.Shelley qualified as CApi.S
 import Cardano.Ledger.Slot (EpochInfo)
 import Cardano.Prelude (maybeToEither)
 import Cardano.Slotting.EpochInfo (hoistEpochInfo)
@@ -99,3 +101,22 @@ convertOutputDatum = \case
   V2.NoOutputDatum -> Nothing
   V2.OutputDatumHash dh -> Just (dh, Nothing)
   V2.OutputDatum d -> Just (ScriptUtils.datumHash d, Just d)
+
+{- | Custom version of `toCardanoTxOut` from `plutus-ledger`
+ which doesn't throw an error in case `Value` has 0 Ada
+-}
+toCardanoTxOut' ::
+  CApi.S.NetworkId ->
+  ( Maybe ScriptUtils.DatumHash ->
+    Either TxApi.ToCardanoError (CApi.S.TxOutDatum ctx CApi.S.BabbageEra)
+  ) ->
+  Ledger.TxOut ->
+  Either TxApi.ToCardanoError (CApi.S.TxOut ctx CApi.S.BabbageEra)
+toCardanoTxOut' networkId fromHash (Ledger.TxOut addr value datumHash) =
+  CApi.TxOut <$> TxApi.toCardanoAddressInEra networkId addr
+    <*> toCardanoTxOutValue' value
+    <*> fromHash datumHash
+    <*> pure CApi.S.ReferenceScriptNone
+  where
+    toCardanoTxOutValue' v = do
+      CApi.TxOutValue CApi.MultiAssetInBabbageEra <$> TxApi.toCardanoValue v

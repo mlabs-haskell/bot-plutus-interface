@@ -35,6 +35,7 @@ module BotPlutusInterface.Effects (
   calcMinUtxo,
 ) where
 
+import BotPlutusInterface.CardanoAPI qualified as BPI.CApi
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery, runNodeQuery)
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.Collateral (withCollateralHandling)
@@ -294,7 +295,7 @@ calcMinUtxo pabconf txout = do
 
   ctxout <-
     mapLeft (Text.pack . show) $
-      TxApi.toCardanoTxOut netId TxApi.toCardanoTxOutDatumHash txout
+      BPI.CApi.toCardanoTxOut' netId TxApi.toCardanoTxOutDatumHash txout
 
   let (Coin minTxOut) =
         evaluateMinLovelaceOutput pparamsInEra $
