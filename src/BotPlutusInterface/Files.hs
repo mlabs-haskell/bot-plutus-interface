@@ -211,21 +211,30 @@ readPrivateKeys ::
   Eff effs (Either Text (Map PubKeyHash DummyPrivKey))
 readPrivateKeys pabConf = do
   files <- listDirectory @w $ Text.unpack pabConf.pcSigningKeyFileDir
-
-  privKeys <-
-    catMaybes
-      <$> mapM
-        ( \filename ->
-            let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
-             in case takeExtension filename of
-                  ".vkey" -> if "verification-key" `isPrefixOf` filename then Just <$> readVerificationKey @w fullPath else pure Nothing
-                  ".skey" -> if "signing-key" `isPrefixOf` filename then Just <$> readSigningKey @w fullPath else pure Nothing
-                  _ -> pure Nothing
-        )
-        files
-
+  privKeys <- catMaybes <$> mapM readKey files
   pure $ toPrivKeyMap <$> sequence privKeys
   where
+    readKey filename =
+      let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
+       in case takeExtension filename of
+            ".vkey" ->
+              guardPaymentKey paymentVKeyPrefix filename
+                <$> readVerificationKey @w fullPath
+            ".skey" ->
+              guardPaymentKey paymentSKeyPrefix filename
+                <$> readSigningKey @w fullPath
+            _ -> pure Nothing
+
+    paymentVKeyPrefix = "verification-key"
+    paymentSKeyPrefix = "signing-key"
+
+    {- this filtering ensures that only payment keys are read,
+     it allows to store other types of keys in the same drirectory if required
+     by altering filename prefix
+    -}
+    guardPaymentKey prefix filename =
+      if prefix `isPrefixOf` filename then Just else const Nothing
+
     toPrivKeyMap :: [DummyPrivKey] -> Map PubKeyHash DummyPrivKey
     toPrivKeyMap =
       foldl
