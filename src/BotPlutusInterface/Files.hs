@@ -59,7 +59,7 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
-import Data.List (sortOn, unzip4)
+import Data.List (isPrefixOf, sortOn, unzip4)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
@@ -211,21 +211,30 @@ readPrivateKeys ::
   Eff effs (Either Text (Map PubKeyHash DummyPrivKey))
 readPrivateKeys pabConf = do
   files <- listDirectory @w $ Text.unpack pabConf.pcSigningKeyFileDir
-
-  privKeys <-
-    catMaybes
-      <$> mapM
-        ( \filename ->
-            let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
-             in case takeExtension filename of
-                  ".vkey" -> Just <$> readVerificationKey @w fullPath
-                  ".skey" -> Just <$> readSigningKey @w fullPath
-                  _ -> pure Nothing
-        )
-        files
-
+  privKeys <- catMaybes <$> mapM readKey files
   pure $ toPrivKeyMap <$> sequence privKeys
   where
+    readKey filename =
+      let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
+       in case takeExtension filename of
+            ".vkey" ->
+              guardPaymentKey paymentVKeyPrefix filename
+                <$> readVerificationKey @w fullPath
+            ".skey" ->
+              guardPaymentKey paymentSKeyPrefix filename
+                <$> readSigningKey @w fullPath
+            _ -> pure Nothing
+
+    paymentVKeyPrefix = "verification-key"
+    paymentSKeyPrefix = "signing-key"
+
+    {- this filtering ensures that only payment keys are read,
+     it allows to store other types of keys in the same drirectory if required
+     by altering filename prefix
+    -}
+    guardPaymentKey prefix filename =
+      if prefix `isPrefixOf` filename then Just else const Nothing
+
     toPrivKeyMap :: [DummyPrivKey] -> Map PubKeyHash DummyPrivKey
     toPrivKeyMap =
       foldl

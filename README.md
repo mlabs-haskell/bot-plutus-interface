@@ -140,7 +140,7 @@ cardano-cli query protocol-parameters --testnet-magic 42 --out-file protocol.jso
 ```
 
 5. Create a `signing-keys` folder under your projects root with the necessary signig key file(s).
-   The files should be named in the following format: `signing-key-PUBKEYHASH.skey`
+   The files should be named in the following format: `signing-key-PUBKEYHASHHEX.skey` and `verification-key-PUBKEYHASHHEX.vkey`
 
 Use the cardano-cli to find out the pub key hash for your key:
 
