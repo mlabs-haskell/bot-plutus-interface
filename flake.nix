@@ -22,7 +22,7 @@
     };
     cardano-base = {
       url =
-        "github:input-output-hk/cardano-base/0f3a867493059e650cda69e20a5cbf1ace289a57";
+        "github:input-output-hk/cardano-base/c16a1ebf60a27051303ec4ea76495311e3d2c4b1";
       flake = false;
     };
     cardano-config = {
@@ -107,7 +107,7 @@
     };
     plutus = {
       url =
-        "github:input-output-hk/plutus/a56c96598b4b25c9e28215214d25189331087244";
+        "github:input-output-hk/plutus/d5f6f4a5505094490f61c8d164515adf7c8f46cc";
       flake = false;
     };
     plutus-apps = {
@@ -170,7 +170,7 @@
               plutus-script-utils.flags.defer-plugin-errors = true;
               plutus-contract.flags.defer-plugin-errors = true;
               cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-              cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf pkgs.secp256k1 ] ];
               cardano-wallet-core.components.library.build-tools = [
                 pkgs.buildPackages.buildPackages.gitMinimal
               ];
