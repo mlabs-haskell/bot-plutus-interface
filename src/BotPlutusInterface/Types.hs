@@ -33,9 +33,10 @@ module BotPlutusInterface.Types (
   readCollateralUtxo,
   collateralValue,
   sufficientLogLevel,
+  ownAddress,
 ) where
 
-import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
+import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex, AddressInEra, BabbageEra)
 import Cardano.Api.Shelley (ProtocolParameters)
 import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
@@ -59,6 +60,7 @@ import Ledger (
  )
 import Ledger qualified
 import Ledger.Ada qualified as Ada
+import Ledger.Tx.CardanoAPI.Internal (toCardanoAddressInEra)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -110,6 +112,12 @@ data PABConfig = PABConfig
 
 collateralValue :: PABConfig -> Ledger.Value
 collateralValue = Ada.lovelaceValueOf . toInteger . pcCollateralSize
+
+ownAddress :: PABConfig -> Either Ledger.ToCardanoError (AddressInEra BabbageEra)
+ownAddress pabConf = toCardanoAddressInEra pabConf.pcNetwork $
+  Ledger.pubKeyHashAddress
+    (Ledger.PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
+    pabConf.pcOwnStakePubKeyHash
 
 {- | Settings for `Contract.awaitTxStatusChange` implementation.
  See also `BotPlutusInterface.Contract.awaitTxStatusChange`

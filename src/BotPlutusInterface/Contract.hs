@@ -42,6 +42,7 @@ import BotPlutusInterface.Types (
   Tip (block, slot),
   TxFile (Signed),
   collateralValue,
+  ownAddress,
  )
 import Cardano.Api (
   AsType (..),
@@ -61,6 +62,7 @@ import Control.Monad.Trans.Except (ExceptT, throwE)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Aeson.KeyMap qualified as KeyMap
+import Data.Bifunctor (first)
 import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Function (fix, (&))
 import Data.Kind (Type)
@@ -207,7 +209,7 @@ handlePABReq contractEnv req = do
       WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx'
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
     AwaitTimeReq t -> AwaitTimeResp <$> awaitTime @w contractEnv t
-    CurrentPABSlotReq -> CurrentPABSlotResp <$> currentSlot @w contractEnv
+    CurrentNodeClientSlotReq -> CurrentNodeClientSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
       either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
@@ -223,6 +225,7 @@ handlePABReq contractEnv req = do
     ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
     YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
     CurrentChainIndexSlotReq -> error ("Unsupported PAB effect: " ++ show req)
+    CurrentNodeClientTimeRangeReq -> error ("Unsupported PAB effect: " ++ show req)
 
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
@@ -320,8 +323,8 @@ balanceTx ::
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTx _ (UnbalancedTx (Left _) _ _ _) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
-balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
+balanceTx _ (UnbalancedCardanoTx {}) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
+balanceTx contractEnv unbalancedTx@(UnbalancedEmulatorTx {}) = do
   let pabConf = contractEnv.cePABConfig
 
   result <- handleCollateral @w contractEnv
@@ -333,8 +336,6 @@ balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
       eitherBalancedTx <-
         Balance.balanceTxIO' @w
           Balance.defaultBalanceConfig
-            { Balance.bcHasScripts = Balance.txUsesScripts tx'
-            }
           pabConf
           pabConf.pcOwnPubKeyHash
           unbalancedTx
@@ -344,7 +345,6 @@ balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
 fromCardanoTx :: CardanoTx -> Tx.Tx
 fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
 fromCardanoTx (EmulatorTx tx') = tx'
-fromCardanoTx (Tx.Both tx' _) = tx'
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -554,7 +554,7 @@ makeCollateral cEnv = runEitherT $ do
   balancedTx <-
     newEitherT $
       Balance.balanceTxIO' @w
-        Balance.defaultBalanceConfig {Balance.bcHasScripts = False, Balance.bcSeparateChange = True}
+        Balance.defaultBalanceConfig {Balance.bcSeparateChange = True}
         pabConf
         pabConf.pcOwnPubKeyHash unbalancedTx
 
@@ -576,20 +576,18 @@ findCollateralAtOwnPKH cEnv =
   runEitherT $
     CollateralUtxo <$> do
       let pabConf = cePABConfig cEnv
-          changeAddr =
-            Ledger.pubKeyHashAddress
-              (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
-              pabConf.pcOwnStakePubKeyHash
+      
+      changeAddr <- hoistEither $ first WAPI.ToCardanoError $ ownAddress pabConf
 
       r <-
         firstEitherT (WAPI.OtherError . Text.pack . show) $
           newEitherT $ queryNode @w (UtxosAt changeAddr)
-      let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
-      hoistEither $ case filter check refsAndOuts of
+      let refsAndValues = Map.toList $ Tx._ciTxOutValue <$> r
+      hoistEither $ case filter check refsAndValues of
         [] -> Left $ WAPI.OtherError "Couldn't find collateral UTxO"
         ((oref, _) : _) -> Right oref
   where
-    check (_, txOut) = Tx.txOutValue txOut == collateralValue (cePABConfig cEnv)
+    check (_, v) = v == collateralValue (cePABConfig cEnv)
 
 {- | Construct a 'NonEmpty' list from a single element.
  Should be replaced by NonEmpty.singleton after updating to base 4.15

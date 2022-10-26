@@ -3,7 +3,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.Balance (
-  BalanceConfig (BalanceConfig, bcHasScripts, bcSeparateChange),
+  BalanceConfig (BalanceConfig, bcSeparateChange),
   balanceTxStep,
   balanceTxIO,
   balanceTxIO',
@@ -34,6 +34,7 @@ import BotPlutusInterface.Types (
   LogType (TxBalancingLog),
   PABConfig,
   collateralTxOutRef,
+  ownAddress,
  )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api qualified as CApi
@@ -88,15 +89,13 @@ import Prelude
 
 -- Config for balancing a `Tx`.
 data BalanceConfig = BalanceConfig
-  { -- | This field represents whether the current `Tx` that needs to be balanced uses scripts.
-    bcHasScripts :: Bool
-  , -- | This field represents whether the ada change should be in separate UTxO.
+  { -- | This field represents whether the ada change should be in separate UTxO.
     bcSeparateChange :: Bool
   }
   deriving stock (Show, Eq)
 
 defaultBalanceConfig :: BalanceConfig
-defaultBalanceConfig = BalanceConfig {bcHasScripts = False, bcSeparateChange = False}
+defaultBalanceConfig = BalanceConfig {bcSeparateChange = False}
 
 {- | Collect necessary tx inputs and collaterals, add minimum lovelace values and balance non ada
      assets. `balanceTxIO` calls `balanceTxIO' with default `BalanceConfig`.
@@ -127,14 +126,16 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
           newEitherT $
             sequence <$> traverse (minUtxo @w) (unbalancedTx' ^. Constraints.tx . Tx.outputs)
 
+      changeAddr <- hoistEither $ first WAPI.ToCardanoError $ ownAddress pabConf
+
       let unbalancedTx = unbalancedTx' & (Constraints.tx . Tx.outputs .~ updatedOuts)
+          tx = unBalancedEmulatorTx unbalancedTx
 
       (utxos, mcollateral) <-
         newEitherT $
           utxosAndCollateralAtAddress
             @w
-            balanceCfg
-            pabConf
+            tx
             changeAddr
 
       privKeys <- firstEitherT WAPI.OtherError $ newEitherT $ Files.readPrivateKeys @w pabConf
@@ -147,9 +148,6 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
           requiredSigs =
             unBalancedTxRequiredSignatories unbalancedTx
               ^.. folded . to Ledger.unPaymentPubKeyHash
-          
-          tx :: Tx
-          tx = unBalancedEmulatorTx unbalancedTx
 
       lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxoIndex
 
@@ -165,24 +163,19 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       -- We may need to reimplement mkTx, and mkSomeTx so we can pass in the initial constraint state, and use reasonable Params
       unless (validateRange $ txValidRange tx) $ throwE $ WAPI.OtherError "Invalid validity range on tx"
 
-      -- Adds required collaterals in the `Tx`, if `bcHasScripts`
+      -- Adds required collaterals in the `Tx`
       -- is true. Also adds signatures for fee calculation
       preBalancedTx <-
-        if bcHasScripts balanceCfg
-          then
-            maybe
-              (throwE $ WAPI.OtherError "Tx uses script but no collateral was provided.")
-              (hoistEither . addSignatories ownPkh privKeys requiredSigs . flip addTxCollaterals tx)
-              mcollateral
-          else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
+        hoistEither $ addSignatories ownPkh privKeys requiredSigs $ 
+          maybe tx (flip addTxCollaterals tx) mcollateral
 
       -- Balance the tx
-      balancedTx <- balanceTxLoop utxoIndex privKeys preBalancedTx
+      balancedTx <- balanceTxLoop utxoIndex privKeys changeAddr preBalancedTx
       changeTxOutWithMinAmt <- firstEitherT WAPI.OtherError $ newEitherT $ addOutput @w changeAddr balancedTx
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
-          bTx = balanceTxLoop utxoIndex privKeys changeTxOutWithMinAmt
+          bTx = balanceTxLoop utxoIndex privKeys changeAddr changeTxOutWithMinAmt
 
       -- Checks if there's ada change left, if there is then we check
       -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
@@ -211,19 +204,13 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
-    changeAddr :: CApi.AddressInEra CApi.BabbageEra
-    changeAddr = undefined
-    -- TODO: build the new address type, it might need to handle failure
-      -- Ledger.pubKeyHashAddress
-      --   (Ledger.PaymentPubKeyHash ownPkh)
-      --   pabConf.pcOwnStakePubKeyHash
-
     balanceTxLoop ::
       Map TxOutRef TxOut ->
       Map PubKeyHash DummyPrivKey ->
+      CApi.AddressInEra CApi.BabbageEra ->
       Tx ->
       EitherT WAPI.WalletAPIError (Eff effs) Tx
-    balanceTxLoop utxoIndex privKeys tx = do
+    balanceTxLoop utxoIndex privKeys changeAddr tx = do
       void $ lift $ Files.writeAll @w pabConf tx
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
@@ -243,18 +230,17 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
 
       if balancedTx == tx
         then pure balancedTx
-        else balanceTxLoop utxoIndex privKeys balancedTx
+        else balanceTxLoop utxoIndex privKeys changeAddr balancedTx
 
 -- `utxosAndCollateralAtAddress` returns all the utxos that can be used as an input of a `Tx`,
 -- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
 utxosAndCollateralAtAddress ::
   forall (w :: Type) (effs :: [Type -> Type]).
   (Member (PABEffect w) effs) =>
-  BalanceConfig ->
-  PABConfig ->
+  Tx ->
   CApi.AddressInEra CApi.BabbageEra ->
   Eff effs (Either WAPI.WalletAPIError (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
-utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
+utxosAndCollateralAtAddress tx changeAddr =
   runEitherT $ do
     inMemCollateral <- lift $ getInMemCollateral @w
     let nodeQuery =
@@ -265,9 +251,9 @@ utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
 
     utxos <- firstEitherT (WAPI.OtherError . Text.pack . show) $ newEitherT $ queryNode @w nodeQuery
 
-    -- check if `bcHasScripts` is true, if this is the case then we search of
-    -- collateral UTxO in the environment, if such collateral is not present we throw Error.
-    if bcHasScripts balanceCfg
+    -- check if transaction requires a collateral, if it does, search for
+    -- collateral UTxO in the environment, error on missing input
+    if txUsesScripts tx
       then
         maybe
           ( throwE $
@@ -369,11 +355,9 @@ balanceTxIns utxos tx = do
         { txInputs = Set.fromList (txInputs tx) ^.. to (<> txIns) . folded
         }
 
--- | Set collateral or fail in case it's required but not available
+-- | Set collateral
 addTxCollaterals :: CollateralUtxo -> Tx -> Tx
-addTxCollaterals cOut tx
-  | txUsesScripts tx = tx {txCollateral = [Tx.pubKeyTxInput (collateralTxOutRef cOut)]}
-  | otherwise = tx
+addTxCollaterals cOut tx = tx {txCollateral = [Tx.pubKeyTxInput (collateralTxOutRef cOut)]}
 
 txUsesScripts :: Tx -> Bool
 txUsesScripts Tx {txInputs, txScripts} = 
