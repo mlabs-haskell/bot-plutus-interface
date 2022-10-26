@@ -35,7 +35,6 @@ module BotPlutusInterface.Effects (
   calcMinUtxo,
 ) where
 
-import BotPlutusInterface.CardanoAPI qualified as BPI.CApi
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery, runNodeQuery)
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.Collateral (withCollateralHandling)
@@ -60,7 +59,6 @@ import BotPlutusInterface.Types (
   sufficientLogLevel,
  )
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
-import Cardano.Api qualified
 import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley qualified as CApi.S
 import Cardano.Ledger.Shelley.API.Wallet (
@@ -79,7 +77,6 @@ import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
-import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
 import Data.Maybe (catMaybes)
 import Data.String (IsString, fromString)
@@ -87,7 +84,6 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Tx.CardanoAPI qualified as TxApi
 import Ledger.Validation (Coin (Coin))
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -181,14 +177,14 @@ handlePABEffect contractEnv =
             modifyTVar contractEnv.ceContractState $
               \(ContractState s w') -> ContractState s (w' <> w)
         ThreadDelay microSeconds -> Concurrent.threadDelay microSeconds
-        ReadFileTextEnvelope asType filepath -> Cardano.Api.readFileTextEnvelope asType filepath
-        WriteFileJSON filepath value -> Cardano.Api.writeFileJSON filepath value
+        ReadFileTextEnvelope asType filepath -> CApi.readFileTextEnvelope asType filepath
+        WriteFileJSON filepath value -> CApi.writeFileJSON filepath value
         WriteFileRaw filepath (BuiltinByteString value) ->
           runExceptT $
             handleIOExceptT (FileIOError filepath) $
               ByteString.writeFile filepath value
         WriteFileTextEnvelope filepath envelopeDescr contents ->
-          Cardano.Api.writeFileTextEnvelope filepath envelopeDescr contents
+          CApi.writeFileTextEnvelope filepath envelopeDescr contents
         ListDirectory filepath -> Directory.listDirectory filepath
         UploadDir dir ->
           case contractEnv.cePABConfig.pcCliLocation of
@@ -291,21 +287,24 @@ calcMinUtxo pabconf txout = do
   params <- maybeToEither "Expected protocol parameters." $ pcProtocolParams pabconf
 
   let pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage params
-      netId = pcNetwork pabconf
-
-  ctxout <-
-    mapLeft (Text.pack . show) $
-      BPI.CApi.toCardanoTxOut' netId TxApi.toCardanoTxOutDatumHash txout
-
-  let (Coin minTxOut) =
+      (Coin minTxOut) =
         evaluateMinLovelaceOutput pparamsInEra $
-          CApi.S.toShelleyTxOut CApi.ShelleyBasedEraBabbage ctxout
+          CApi.S.toShelleyTxOut CApi.ShelleyBasedEraBabbage $
+          CApi.toCtxUTxOTxOut $
+          Ledger.getTxOut txout
 
       missingLovelace = Ada.lovelaceOf minTxOut - Ada.fromValue (Ledger.txOutValue txout)
 
   if missingLovelace > 0
-    then calcMinUtxo pabconf (txout {Ledger.txOutValue = Ledger.txOutValue txout <> Ada.toValue missingLovelace})
+    then calcMinUtxo pabconf (addValue txout $ adaToCApiValue missingLovelace)
     else return txout
+
+adaToCApiValue :: Ada.Ada -> CApi.Value
+adaToCApiValue = CApi.lovelaceToValue . CApi.Lovelace . Ada.getLovelace
+
+addValue :: Ledger.TxOut -> CApi.Value -> Ledger.TxOut
+addValue (Ledger.TxOut (CApi.TxOut addr (CApi.TxOutValue era v) datum rScript)) v' = Ledger.TxOut $ CApi.TxOut addr (CApi.TxOutValue era $ v <> v') datum rScript
+addValue _ _ = undefined -- Ghc complaining about missing a match for a type that is impossible to construct
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@

@@ -7,7 +7,6 @@ module BotPlutusInterface.CardanoCLI (
   buildTx,
   signTx,
   validatorScriptFilePath,
-  unsafeSerialiseAddress,
   policyScriptFilePath,
   queryTip,
 ) where
@@ -34,9 +33,11 @@ import BotPlutusInterface.Types (
   spendBudgets,
  )
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
+import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley (
   NetworkId (Mainnet, Testnet),
   NetworkMagic (NetworkMagic),
+  ReferenceScript (ReferenceScript, ReferenceScriptNone),
   serialiseAddress,
  )
 import Control.Monad (join)
@@ -48,7 +49,6 @@ import Data.Bifunctor (first)
 import Data.Bool (bool)
 import Data.ByteString.Lazy.Char8 qualified as Char8
 import Data.Either.Combinators (mapLeft)
-import Data.Hex (hex)
 import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
@@ -56,12 +56,9 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Encoding (decodeUtf8)
-import Ledger (Slot (Slot), SlotRange, TxInType (ConsumeScriptAddress))
+import Ledger (Slot (Slot), SlotRange)
 import Ledger qualified
 import Ledger.Ada (fromValue, getLovelace)
-import Ledger.Ada qualified as Ada
-import Ledger.Address (Address (..))
 import Ledger.Crypto (PubKey, PubKeyHash (getPubKeyHash))
 import Ledger.Interval (
   Extended (Finite),
@@ -72,40 +69,33 @@ import Ledger.Interval (
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
-  RedeemerPtr (RedeemerPtr),
-  Redeemers,
-  ScriptTag (Mint),
   Tx (
     txCollateral,
     txData,
     txFee,
     txInputs,
     txMint,
-    txMintScripts,
+    txMintingScripts,
     txOutputs,
-    txRedeemers,
     txSignatures,
     txValidRange
   ),
   TxId (TxId),
-  TxIn (TxIn),
-  TxInType (ConsumePublicKeyAddress, ConsumeSimpleScriptAddress),
+  TxInput (TxInput),
+  TxInputType (TxScriptAddress),
   TxOut (TxOut),
   TxOutRef (TxOutRef),
   txId,
  )
-import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
-import Ledger.Value (Value)
+import Ledger.Tx.CardanoAPI (toCardanoValue)
 import Ledger.Value qualified as Value
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
-  CurrencySymbol (unCurrencySymbol),
   ExBudget (ExBudget),
   ExCPU (ExCPU),
   ExMemory (ExMemory),
-  TokenName (unTokenName),
  )
-import PlutusTx.Builtins (fromBuiltin)
+import PlutusTx.Builtins (fromBuiltin, toBuiltin)
 import Prelude
 
 -- | Getting information of the latest block
@@ -156,10 +146,13 @@ buildTx ::
   TxBudget ->
   Tx ->
   Eff effs (Either Text ExBudget)
-buildTx pabConf privKeys txBudget tx = do
-  let (ins, valBudget) = txInOpts (spendBudgets txBudget) pabConf (txInputs tx)
-      (mints, mintBudget) = mintOpts (mintBudgets txBudget) pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
-  callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const $ valBudget <> mintBudget)
+buildTx pabConf privKeys txBudget tx =
+  case toCardanoValue $ txMint tx of
+    Right mintValue -> do
+      let (ins, valBudget) = txInputOpts (spendBudgets txBudget) pabConf (txInputs tx)
+          (mints, mintBudget) = mintOpts (mintBudgets txBudget) pabConf (txMintingScripts tx) mintValue
+      callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const $ valBudget <> mintBudget)
+    Left err -> pure $ Left $ showText err
   where
     requiredSigners =
       concatMap
@@ -178,7 +171,7 @@ buildTx pabConf privKeys txBudget tx = do
       mconcat
         [ ["transaction", "build-raw", "--babbage-era"]
         , ins
-        , txInCollateralOpts (txCollateral tx)
+        , txInputCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mints
         , validRangeOpts (txValidRange tx)
@@ -235,13 +228,13 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInOpts :: SpendBudgets -> PABConfig -> [TxIn] -> ([Text], ExBudget)
-txInOpts spendIndex pabConf =
+txInputOpts :: SpendBudgets -> PABConfig -> [TxInput] -> ([Text], ExBudget)
+txInputOpts spendIndex pabConf =
   foldMap
-    ( \(TxIn txOutRef txInType) ->
+    ( \(TxInput txOutRef txInputType) ->
         let (opts, exBudget) =
               scriptInputs
-                txInType
+                txInputType
                 (Map.findWithDefault mempty txOutRef spendIndex)
          in (,exBudget) $
               mconcat
@@ -250,19 +243,22 @@ txInOpts spendIndex pabConf =
                 ]
     )
   where
-    scriptInputs :: Maybe TxInType -> ExBudget -> ([Text], ExBudget)
-    scriptInputs txInType exBudget =
-      case txInType of
-        Just (ConsumeScriptAddress _lang validator redeemer datum) ->
+    scriptInputs :: TxInputType -> ExBudget -> ([Text], ExBudget)
+    scriptInputs txInputType exBudget =
+      case txInputType of
+        TxScriptAddress redeemer eVHash dHash ->
           (,exBudget) $
             mconcat
               [
-                [ "--tx-in-script-file"
-                , validatorScriptFilePath pabConf (Scripts.validatorHash validator)
-                ]
+                case eVHash of
+                  Left vHash -> 
+                    [ "--tx-in-script-file"
+                    , validatorScriptFilePath pabConf vHash
+                    ]
+                  _ -> []
               ,
                 [ "--tx-in-datum-file"
-                , datumJsonFilePath pabConf (ScriptUtils.datumHash datum)
+                , datumJsonFilePath pabConf dHash
                 ]
               ,
                 [ "--tx-in-redeemer-file"
@@ -273,52 +269,45 @@ txInOpts spendIndex pabConf =
                 , exBudgetToCliArg exBudget
                 ]
               ]
-        Just ConsumePublicKeyAddress -> mempty
-        Just ConsumeSimpleScriptAddress -> mempty
-        Nothing -> mempty
+        _ -> mempty
 
-txInCollateralOpts :: [TxIn] -> [Text]
-txInCollateralOpts =
-  concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef])
+txInputCollateralOpts :: [TxInput] -> [Text]
+txInputCollateralOpts =
+  concatMap (\(TxInput txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef])
+
+isZero :: CApi.Value -> Bool
+isZero = not . any ((== 0) . snd) . CApi.valueToList
 
 -- Minting options
 mintOpts ::
   MintBudgets ->
   PABConfig ->
-  Map Ledger.MintingPolicyHash Ledger.MintingPolicy ->
-  Redeemers ->
-  Value ->
+  Map Scripts.MintingPolicyHash Ledger.Redeemer ->
+  CApi.Value ->
   ([Text], ExBudget)
-mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
+mintOpts mintIndex pabConf redeemers mintValue =
   let scriptOpts =
-        foldMap
-          ( \(idx, policy) ->
-              let redeemerPtr = RedeemerPtr Mint idx
-                  redeemer = Map.lookup redeemerPtr redeemers
-                  curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
+        Map.foldMapWithKey
+          ( \mph redeemer ->
+              let curSymbol = Value.mpsSymbol mph
                   exBudget =
                     Map.findWithDefault
                       mempty
-                      (Scripts.mintingPolicyHash policy)
+                      mph
                       mintIndex
-                  toOpts r =
-                    (,exBudget) $
-                      mconcat
-                        [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
-                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash r)]
-                        , ["--mint-execution-units", exBudgetToCliArg exBudget]
-                        ]
-               in orMempty $ fmap toOpts redeemer
+               in (,exBudget) $
+                    mconcat
+                      [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
+                      , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)]
+                      , ["--mint-execution-units", exBudgetToCliArg exBudget]
+                      ]
           )
-          $ zip [0 ..] $ Map.elems mintingPolicies
+          redeemers
       mintOpt =
-        if not (Value.isZero mintValue)
+        if not (isZero mintValue)
           then ["--mint", valueToCliArg mintValue]
           else []
    in first (<> mintOpt) scriptOpts
-
-orMempty :: forall (m :: Type). Monoid m => Maybe m -> m
-orMempty = fromMaybe mempty
 
 -- | This function does not check if the range is valid, for that see `PreBalance.validateRange`
 validRangeOpts :: SlotRange -> [Text]
@@ -337,24 +326,42 @@ validRangeOpts (Interval lowerBound upperBound) =
 txOutOpts :: PABConfig -> Map DatumHash Datum -> [TxOut] -> [Text]
 txOutOpts pabConf datums =
   concatMap
-    ( \TxOut {txOutAddress, txOutValue, txOutDatumHash} ->
+    ( \(TxOut (CApi.TxOut (CApi.AddressInEra _ addr) val datum refScript)) ->
         mconcat
           [
             [ "--tx-out"
             , Text.intercalate
                 "+"
-                [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
-                , valueToCliArg txOutValue
+                [ serialiseAddress $ CApi.toAddressAny addr
+                , valueToCliArg $ CApi.txOutValueToValue val
                 ]
             ]
-          , case txOutDatumHash of
-              Nothing -> []
-              Just datumHash@(DatumHash dh) ->
-                if Map.member datumHash datums
-                  then ["--tx-out-datum-embed-file", datumJsonFilePath pabConf datumHash]
-                  else ["--tx-out-datum-hash", encodeByteString $ fromBuiltin dh]
+          , case datum of
+              CApi.TxOutDatumNone -> []
+              CApi.TxOutDatumInTx _ scriptData -> datumTextFromScriptDataHash $ CApi.hashScriptData scriptData
+              CApi.TxOutDatumHash _ scriptDataHash -> datumTextFromScriptDataHash scriptDataHash
+              CApi.TxOutDatumInline _ scriptData ->
+                let datumHash = DatumHash $ toBuiltin $ CApi.serialiseToRawBytes $ CApi.hashScriptData scriptData
+                 in ["--tx-out-inline-datum-file", datumJsonFilePath pabConf datumHash]
+          , case refScript of
+              -- TODO: Writing a reference script.
+              -- Second arg is ScriptInAnyLang, takes path to the script.
+              -- Need to update Files.hs to write scripts from here.
+              -- no way to know if minting/validator without reading the UPLC, so lets give these a new naming scheme
+              -- This script can be simplev1/v2 or plutusv1/v2 (we'll not handle simple)
+              -- As such, helper function in Files will give name by script hash, prefixed with `reference` to avoid clash (though a clash is actually fine)
+              ReferenceScript _ _ -> []
+              ReferenceScriptNone -> []
           ]
     )
+  where
+  datumTextFromScriptDataHash :: CApi.Hash CApi.ScriptData -> [Text]
+  datumTextFromScriptDataHash scriptDataHash =
+    let dh = CApi.serialiseToRawBytes scriptDataHash
+        datumHash = DatumHash $ toBuiltin dh
+     in if Map.member datumHash datums
+          then ["--tx-out-datum-embed-file", datumJsonFilePath pabConf datumHash]
+          else ["--tx-out-datum-hash", encodeByteString dh]
 
 networkOpt :: PABConfig -> [Text]
 networkOpt pabConf = case pabConf.pcNetwork of
@@ -365,25 +372,17 @@ txOutRefToCliArg :: TxOutRef -> Text
 txOutRefToCliArg (TxOutRef (TxId tId) txIx) =
   encodeByteString (fromBuiltin tId) <> "#" <> showText txIx
 
-flatValueToCliArg :: (CurrencySymbol, TokenName, Integer) -> Text
-flatValueToCliArg (curSymbol, name, amount)
-  | curSymbol == Ada.adaSymbol = amountStr
-  | Text.null tokenNameStr = amountStr <> " " <> curSymbolStr
-  | otherwise = amountStr <> " " <> curSymbolStr <> "." <> tokenNameStr
-  where
-    amountStr = showText amount
-    curSymbolStr = encodeByteString $ fromBuiltin $ unCurrencySymbol curSymbol
-    tokenNameStr = decodeUtf8 $ hex $ fromBuiltin $ unTokenName name
+-- TODO: This show logic probably isn't correct, unsure how the asset name and currency symbol are encoded in the bytestring.
+-- Probably need Data.Bytestring.Base16.encodeBase16
+flatValueToCliArg :: (CApi.AssetId, CApi.Quantity) -> Text
+flatValueToCliArg (CApi.AdaAssetId, qty) = showText qty
+flatValueToCliArg (CApi.AssetId policyId assetName, qty)
+  | assetName == "" = showText qty <> " " <> showText policyId
+  | otherwise = showText qty <> " " <> showText policyId <> "." <> showText assetName
 
-valueToCliArg :: Value -> Text
+valueToCliArg :: CApi.Value -> Text
 valueToCliArg val =
-  Text.intercalate " + " $ map flatValueToCliArg $ sort $ Value.flattenValue val
-
-unsafeSerialiseAddress :: NetworkId -> Address -> Text
-unsafeSerialiseAddress network address =
-  case serialiseAddress <$> toCardanoAddressInEra network address of
-    Right a -> a
-    Left _ -> error "Couldn't create address"
+  Text.intercalate " + " $ map flatValueToCliArg $ sort $ CApi.valueToList val
 
 exBudgetToCliArg :: ExBudget -> Text
 exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =

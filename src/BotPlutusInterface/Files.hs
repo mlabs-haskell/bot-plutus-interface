@@ -36,15 +36,17 @@ import BotPlutusInterface.Types (PABConfig)
 import Cardano.Api (
   AsType (AsPaymentKey, AsSigningKey, AsVerificationKey),
   FileError,
+  HasTextEnvelope,
   Key (VerificationKey),
   PaymentKey,
+  PlutusScriptV1,
+  PlutusScriptV2,
   SigningKey,
   getVerificationKey,
   serialiseToRawBytes,
  )
 import Cardano.Api.Shelley (
   PlutusScript (PlutusScriptSerialised),
-  PlutusScriptV1,
   ScriptDataJsonSchema (ScriptDataJsonDetailedSchema),
   fromPlutusData,
   scriptDataToJson,
@@ -59,19 +61,20 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
-import Data.List (isPrefixOf, sortOn, unzip4)
+import Data.List (isPrefixOf, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Ledger qualified as Ledger
 import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
 import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
-import Plutus.Script.Utils.V1.Scripts qualified as ScriptUtils
+import Plutus.Script.Utils.Scripts (Versioned (Versioned))
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),
@@ -85,7 +88,6 @@ import Plutus.V1.Ledger.Api (
   ValidatorHash (..),
   toBuiltin,
  )
-import Plutus.V1.Ledger.Api qualified as Ledger
 import PlutusTx (ToData, toData)
 import PlutusTx.Builtins (fromBuiltin)
 import System.FilePath (takeExtension, (</>))
@@ -141,24 +143,24 @@ writePolicyScriptFile ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
-  MintingPolicy ->
+  Versioned MintingPolicy ->
   Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
-  let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
+  let script = Ledger.unMintingPolicyScript <$> mintingPolicy
       filepath = policyScriptFilePath pabConf (ScriptUtils.scriptCurrencySymbol mintingPolicy)
-   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
+   in writeScriptEnvelope @w script filepath
 
 -- | Compiles and writes a script file under the given folder
 writeValidatorScriptFile ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
-  Validator ->
+  Versioned Validator ->
   Eff effs (Either (FileError ()) Text)
 writeValidatorScriptFile pabConf validatorScript =
-  let script = serialiseScript $ Ledger.unValidatorScript validatorScript
+  let script = Ledger.unValidatorScript <$> validatorScript
       filepath = validatorScriptFilePath pabConf (ScriptUtils.validatorHash validatorScript)
-   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
+   in writeScriptEnvelope @w script filepath
 
 -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
 -- -- | Writes metadata file under the given folder
@@ -172,6 +174,19 @@ writeValidatorScriptFile pabConf validatorScript =
 --   let filepath = metadataFilePath pabConf metadata
 --    in const filepath <<$>> writeFileRaw @w (Text.unpack filepath) metadata
 
+txMintingPolicies :: Tx.Tx -> [Versioned MintingPolicy]
+txMintingPolicies tx = mapMaybe (Ledger.lookupMintingPolicy $ Tx.txScripts tx) $ Map.keys $ Tx.txMintingScripts tx
+
+txValidatorInputs :: Tx.Tx -> [(Maybe (Versioned Validator), Redeemer, Datum)]
+txValidatorInputs tx = mapMaybe (fromTxInputType . Tx.txInputType) $ Tx.txInputs tx <> Tx.txReferenceInputs tx
+  where
+  fromTxInputType :: Tx.TxInputType -> Maybe (Maybe (Versioned Validator), Redeemer, Datum)
+  fromTxInputType (Tx.TxScriptAddress r eVHash dHash) = do
+    mValidator <- either (Just <$> Tx.lookupValidator (Tx.txScripts tx)) (const $ pure Nothing) eVHash
+    datum <- Tx.lookupDatum tx dHash
+    pure (mValidator, r, datum)
+  fromTxInputType _ = Nothing
+
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -184,10 +199,9 @@ writeAll pabConf tx = do
   -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
   -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
-  let (_, validatorScripts, redeemers, datums) =
-        unzip4 $ mapMaybe Tx.inScripts $ Tx.txInputs tx
-
-      policyScripts = Map.elems $ Tx.txMintScripts tx
+  let (mValidatorScripts, redeemers, datums) = unzip3 $ txValidatorInputs tx
+      validatorScripts = catMaybes mValidatorScripts
+      policyScripts = txMintingPolicies tx
       allDatums = datums <> Map.elems (Tx.txData tx)
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
 
@@ -304,12 +318,31 @@ mkDummyPrivateKey (PubKey (LedgerBytes pubkey)) =
         Crypto.xprv $
           mconcat [dummyPrivKey, dummyPrivKeySuffix, pubkeyBS, dummyChainCode]
 
-serialiseScript :: Script -> PlutusScript PlutusScriptV1
+serialiseScript :: forall (lang :: Type). Script -> PlutusScript lang
 serialiseScript =
   PlutusScriptSerialised
     . ShortByteString.toShort
     . LazyByteString.toStrict
     . Codec.serialise
+
+writeScriptEnvelope ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Versioned Script ->
+  Text ->
+  Eff effs (Either (FileError ()) Text)
+writeScriptEnvelope vScript filepath =
+  fmap (const filepath) <$>
+    case vScript of
+      (Versioned s ScriptUtils.PlutusV1) -> writeScriptEnvelope' $ serialiseScript @PlutusScriptV1 s
+      (Versioned s ScriptUtils.PlutusV2) -> writeScriptEnvelope' $ serialiseScript @PlutusScriptV2 s
+  where
+    writeScriptEnvelope' ::
+      forall (a :: Type).
+      HasTextEnvelope a =>
+      a ->
+      Eff effs (Either (FileError ()) ())
+    writeScriptEnvelope' = writeFileTextEnvelope @w (Text.unpack filepath) Nothing
 
 writeDatumJsonFile ::
   forall (w :: Type) (effs :: [Type -> Type]).

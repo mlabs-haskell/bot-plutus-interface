@@ -53,7 +53,6 @@ module Spec.MockContract (
   theCollateralTxId,
 ) where
 
-import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt, UtxosAtExcluding))
 import BotPlutusInterface.CardanoNode.Query (toQueryError)
 
@@ -214,6 +213,7 @@ pkh1' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh1
 pkh2' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh2
 pkh3' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh3
 
+-- serialiseAddress . toAddressAny
 addr1, addr2, addr3 :: Text
 addr1 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh1 Nothing)
 addr2 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 Nothing)
