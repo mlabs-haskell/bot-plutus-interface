@@ -576,7 +576,7 @@ findCollateralAtOwnPKH cEnv =
   runEitherT $
     CollateralUtxo <$> do
       let pabConf = cePABConfig cEnv
-      
+
       changeAddr <- hoistEither $ first WAPI.ToCardanoError $ ownAddress pabConf
 
       r <-

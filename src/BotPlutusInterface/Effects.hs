@@ -291,8 +291,8 @@ calcMinUtxo pabconf txOut = do
       (Coin minTxOut) =
         evaluateMinLovelaceOutput pparamsInEra $
           CApi.S.toShelleyTxOut CApi.ShelleyBasedEraBabbage $
-          CApi.toCtxUTxOTxOut $
-          Ledger.getTxOut txOut
+            CApi.toCtxUTxOTxOut $
+              Ledger.getTxOut txOut
 
       missingLovelace = Ada.lovelaceOf minTxOut - Ada.fromValue (Ledger.txOutValue txOut)
 
@@ -305,7 +305,7 @@ adaToCApiValue = CApi.lovelaceToValue . CApi.Lovelace . Ada.getLovelace
 
 addValue :: CApi.Value -> Ledger.TxOut -> Ledger.TxOut
 addValue v' (Ledger.TxOut (CApi.TxOut addr (CApi.TxOutValue era v) datum rScript)) = Ledger.TxOut $ CApi.TxOut addr (CApi.TxOutValue era $ v <> v') datum rScript
-addValue _ (Ledger.TxOut (CApi.TxOut _ (CApi.TxOutAdaOnly eraProof _) _ _)) = case eraProof of {}
+addValue _ (Ledger.TxOut (CApi.TxOut _ (CApi.TxOutAdaOnly eraProof _) _ _)) = case eraProof of -- Formatter removes {}?
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@

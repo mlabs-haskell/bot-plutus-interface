@@ -73,8 +73,8 @@ import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
-import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.Script.Utils.Scripts (Versioned (Versioned))
+import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),
@@ -180,12 +180,12 @@ txMintingPolicies tx = mapMaybe (Ledger.lookupMintingPolicy $ Tx.txScripts tx) $
 txValidatorInputs :: Tx.Tx -> [(Maybe (Versioned Validator), Redeemer, Datum)]
 txValidatorInputs tx = mapMaybe (fromTxInputType . Tx.txInputType) $ Tx.txInputs tx <> Tx.txReferenceInputs tx
   where
-  fromTxInputType :: Tx.TxInputType -> Maybe (Maybe (Versioned Validator), Redeemer, Datum)
-  fromTxInputType (Tx.TxScriptAddress r eVHash dHash) = do
-    mValidator <- either (Just <$> Tx.lookupValidator (Tx.txScripts tx)) (const $ pure Nothing) eVHash
-    datum <- Tx.lookupDatum tx dHash
-    pure (mValidator, r, datum)
-  fromTxInputType _ = Nothing
+    fromTxInputType :: Tx.TxInputType -> Maybe (Maybe (Versioned Validator), Redeemer, Datum)
+    fromTxInputType (Tx.TxScriptAddress r eVHash dHash) = do
+      mValidator <- either (Just <$> Tx.lookupValidator (Tx.txScripts tx)) (const $ pure Nothing) eVHash
+      datum <- Tx.lookupDatum tx dHash
+      pure (mValidator, r, datum)
+    fromTxInputType _ = Nothing
 
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
@@ -332,8 +332,8 @@ writeScriptEnvelope ::
   Text ->
   Eff effs (Either (FileError ()) Text)
 writeScriptEnvelope vScript filepath =
-  fmap (const filepath) <$>
-    case vScript of
+  fmap (const filepath)
+    <$> case vScript of
       (Versioned s ScriptUtils.PlutusV1) -> writeScriptEnvelope' $ serialiseScript @PlutusScriptV1 s
       (Versioned s ScriptUtils.PlutusV2) -> writeScriptEnvelope' $ serialiseScript @PlutusScriptV2 s
   where

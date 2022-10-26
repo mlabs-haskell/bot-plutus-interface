@@ -141,8 +141,10 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       privKeys <- firstEitherT WAPI.OtherError $ newEitherT $ Files.readPrivateKeys @w pabConf
 
       -- utxoIndex :: Map TxOutRef TxOut
-      utxoIndex <- hoistEither $ first WAPI.ToCardanoError $
-        fmap (<> unBalancedTxUtxoIndex unbalancedTx) $ traverse (Tx.toTxOut pabConf.pcNetwork) utxos 
+      utxoIndex <-
+        hoistEither $
+          first WAPI.ToCardanoError $
+            fmap (<> unBalancedTxUtxoIndex unbalancedTx) $ traverse (Tx.toTxOut pabConf.pcNetwork) utxos
 
       let requiredSigs :: [PubKeyHash]
           requiredSigs =
@@ -153,7 +155,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
 
       -- We need this folder on the CLI machine, which may not be the local machine
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
-      
+
       -- TODO:
       -- Conversion from POSIXTime to Slot range now occurs in constraints unfortunately, using default params
       -- These default params use default slot config of
@@ -166,8 +168,9 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       -- Adds required collaterals in the `Tx`
       -- is true. Also adds signatures for fee calculation
       preBalancedTx <-
-        hoistEither $ addSignatories ownPkh privKeys requiredSigs $ 
-          maybe tx (flip addTxCollaterals tx) mcollateral
+        hoistEither $
+          addSignatories ownPkh privKeys requiredSigs $
+            maybe tx (flip addTxCollaterals tx) mcollateral
 
       -- Balance the tx
       balancedTx <- balanceTxLoop utxoIndex privKeys changeAddr preBalancedTx
@@ -360,13 +363,13 @@ addTxCollaterals :: CollateralUtxo -> Tx -> Tx
 addTxCollaterals cOut tx = tx {txCollateral = [Tx.pubKeyTxInput (collateralTxOutRef cOut)]}
 
 txUsesScripts :: Tx -> Bool
-txUsesScripts Tx {txInputs, txScripts} = 
+txUsesScripts Tx {txInputs, txScripts} =
   not (null txScripts) -- No provided scripts
     || any (txInputUsesRef . Tx.txInputType) txInputs -- No reference scripts
   where
-  txInputUsesRef :: Ledger.TxInputType -> Bool
-  txInputUsesRef (Ledger.TxScriptAddress _ (Right _) _) = True
-  txInputUsesRef _ = False
+    txInputUsesRef :: Ledger.TxInputType -> Bool
+    txInputUsesRef (Ledger.TxScriptAddress _ (Right _) _) = True
+    txInputUsesRef _ = False
 
 addressTxOut :: CApi.Value -> CApi.AddressInEra CApi.BabbageEra -> TxOut
 addressTxOut v addr = TxOut $ CApi.TxOut addr (CApi.TxOutValue CApi.MultiAssetInBabbageEra v) CApi.TxOutDatumNone ReferenceScriptNone
@@ -388,7 +391,7 @@ handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
       nonAdaChange = getNonAdaChange utxos tx
 
       predicate :: TxOut -> Bool
-      predicate txOut = 
+      predicate txOut =
         txOutAddress txOut == changeAddr
           && hasNoDatum txOut
 
@@ -420,6 +423,7 @@ handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
     else throwE $ WAPI.InsufficientFunds "Not enough inputs to balance tokens."
 
 -- TODO: This function is horrible, too much repeated code
+
 {- | `addAdaChange` checks if `bcSeparateChange` is true,
       if it is then we add the ada change to seperate `TxOut` at changeAddr that contains only ada,
       else we add it to any `TxOut` present at changeAddr.

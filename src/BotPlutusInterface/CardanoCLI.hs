@@ -249,9 +249,8 @@ txInputOpts spendIndex pabConf =
         TxScriptAddress redeemer eVHash dHash ->
           (,exBudget) $
             mconcat
-              [
-                case eVHash of
-                  Left vHash -> 
+              [ case eVHash of
+                  Left vHash ->
                     [ "--tx-in-script-file"
                     , validatorScriptFilePath pabConf vHash
                     ]
@@ -356,13 +355,13 @@ txOutOpts pabConf datums =
           ]
     )
   where
-  datumTextFromScriptDataHash :: CApi.Hash CApi.ScriptData -> [Text]
-  datumTextFromScriptDataHash scriptDataHash =
-    let dh = CApi.serialiseToRawBytes scriptDataHash
-        datumHash = DatumHash $ toBuiltin dh
-     in if Map.member datumHash datums
-          then ["--tx-out-datum-embed-file", datumJsonFilePath pabConf datumHash]
-          else ["--tx-out-datum-hash", encodeByteString dh]
+    datumTextFromScriptDataHash :: CApi.Hash CApi.ScriptData -> [Text]
+    datumTextFromScriptDataHash scriptDataHash =
+      let dh = CApi.serialiseToRawBytes scriptDataHash
+          datumHash = DatumHash $ toBuiltin dh
+       in if Map.member datumHash datums
+            then ["--tx-out-datum-embed-file", datumJsonFilePath pabConf datumHash]
+            else ["--tx-out-datum-hash", encodeByteString dh]
 
 networkOpt :: PABConfig -> [Text]
 networkOpt pabConf = case pabConf.pcNetwork of
