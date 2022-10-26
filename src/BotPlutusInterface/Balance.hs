@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.Balance (
   BalanceConfig (BalanceConfig, bcHasScripts, bcSeparateChange),
@@ -18,10 +19,10 @@ import BotPlutusInterface.CoinSelection (selectTxIns)
 
 import BotPlutusInterface.Effects (
   PABEffect,
+  addValue,
   createDirectoryIfMissingCLI,
   getInMemCollateral,
   minUtxo,
-  posixTimeRangeToContainedSlotRange,
   printBpiLog,
   queryNode,
  )
@@ -35,15 +36,17 @@ import BotPlutusInterface.Types (
   collateralTxOutRef,
  )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
-import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
+import Cardano.Api qualified as CApi
+import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices), ReferenceScript (ReferenceScriptNone))
 import Control.Lens (folded, to, (&), (.~), (^.), (^..))
-import Control.Monad (foldM, void)
+import Control.Monad (foldM, unless, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (first)
 import Data.Coerce (coerce)
+import Data.Either (fromRight)
 import Data.Kind (Type)
 import Data.List qualified as List
 import Data.Map (Map)
@@ -55,7 +58,7 @@ import Data.Text qualified as Text
 import GHC.Real (Ratio ((:%)))
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Address (Address (..), PaymentPubKeyHash (PaymentPubKeyHash))
+import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Interval (
@@ -64,17 +67,13 @@ import Ledger.Interval (
   LowerBound (LowerBound),
   UpperBound (UpperBound),
  )
-import Ledger.Time (POSIXTimeRange)
 import Ledger.Tx (
-  ToCardanoError (InvalidValidityRange),
   Tx (..),
-  TxIn (..),
-  TxInType (..),
   TxOut (..),
   TxOutRef (..),
  )
 import Ledger.Tx qualified as Tx
-import Ledger.Tx.CardanoAPI (CardanoBuildTx)
+import Ledger.Tx.CardanoAPI.Internal (toCardanoValue)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
@@ -140,24 +139,31 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
 
       privKeys <- firstEitherT WAPI.OtherError $ newEitherT $ Files.readPrivateKeys @w pabConf
 
-      let utxoIndex :: Map TxOutRef TxOut
-          utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+      -- utxoIndex :: Map TxOutRef TxOut
+      utxoIndex <- hoistEither $ first WAPI.ToCardanoError $
+        fmap (<> unBalancedTxUtxoIndex unbalancedTx) $ traverse (Tx.toTxOut pabConf.pcNetwork) utxos 
 
-          requiredSigs :: [PubKeyHash]
+      let requiredSigs :: [PubKeyHash]
           requiredSigs =
             unBalancedTxRequiredSignatories unbalancedTx
               ^.. folded . to Ledger.unPaymentPubKeyHash
+          
+          tx :: Tx
+          tx = unBalancedEmulatorTx unbalancedTx
 
       lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxoIndex
 
       -- We need this folder on the CLI machine, which may not be the local machine
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
-
-      tx <-
-        newEitherT $
-          addValidRange @w
-            (unBalancedTxValidityTimeRange unbalancedTx)
-            (unBalancedTxTx unbalancedTx)
+      
+      -- TODO:
+      -- Conversion from POSIXTime to Slot range now occurs in constraints unfortunately, using default params
+      -- These default params use default slot config of
+      -- SlotConfig{ scSlotLength = 1000, scSlotZeroTime :: POSIXTime, scSlotZeroTime = POSIXTime beginningOfTime }
+      -- and default network of testnet magic 1
+      -- This is likely a breaking issue, the constraint interface no longer provides a way to see the original POSIXTime
+      -- We may need to reimplement mkTx, and mkSomeTx so we can pass in the initial constraint state, and use reasonable Params
+      unless (validateRange $ txValidRange tx) $ throwE $ WAPI.OtherError "Invalid validity range on tx"
 
       -- Adds required collaterals in the `Tx`, if `bcHasScripts`
       -- is true. Also adds signatures for fee calculation
@@ -205,11 +211,12 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       -- finally, we must update the signatories
       hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
-    changeAddr :: Address
-    changeAddr =
-      Ledger.pubKeyHashAddress
-        (Ledger.PaymentPubKeyHash ownPkh)
-        pabConf.pcOwnStakePubKeyHash
+    changeAddr :: CApi.AddressInEra CApi.BabbageEra
+    changeAddr = undefined
+    -- TODO: build the new address type, it might need to handle failure
+      -- Ledger.pubKeyHashAddress
+      --   (Ledger.PaymentPubKeyHash ownPkh)
+      --   pabConf.pcOwnStakePubKeyHash
 
     balanceTxLoop ::
       Map TxOutRef TxOut ->
@@ -245,7 +252,7 @@ utxosAndCollateralAtAddress ::
   (Member (PABEffect w) effs) =>
   BalanceConfig ->
   PABConfig ->
-  Address ->
+  CApi.AddressInEra CApi.BabbageEra ->
   Eff effs (Either WAPI.WalletAPIError (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
 utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
   runEitherT $ do
@@ -272,13 +279,12 @@ utxosAndCollateralAtAddress balanceCfg _pabConf changeAddr =
           inMemCollateral
       else pure (utxos, Nothing)
 
-hasChangeUTxO :: Address -> Tx -> Bool
+hasChangeUTxO :: CApi.AddressInEra CApi.BabbageEra -> Tx -> Bool
 hasChangeUTxO changeAddr tx =
   any check $ txOutputs tx
   where
     check :: TxOut -> Bool
-    check txOut =
-      Tx.txOutAddress txOut == changeAddr
+    check txOut = txOutAddress txOut == changeAddr
 
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
 getExecutionUnitPrices pabConf =
@@ -303,7 +309,7 @@ balanceTxStep ::
   Member (PABEffect w) effs =>
   BalanceConfig ->
   Map TxOutRef TxOut ->
-  Address ->
+  CApi.AddressInEra CApi.BabbageEra ->
   Tx ->
   Eff effs (Either WAPI.WalletAPIError Tx)
 balanceTxStep balanceCfg utxos changeAddr tx =
@@ -312,27 +318,31 @@ balanceTxStep balanceCfg utxos changeAddr tx =
       >>= newEitherT . handleNonAdaChange @w balanceCfg changeAddr utxos
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
-getChange :: Map TxOutRef TxOut -> Tx -> Value
+getChange :: Map TxOutRef TxOut -> Tx -> CApi.Value
 getChange utxos tx =
-  let fees = lovelaceValue $ txFee tx
-      txInRefs = map Tx.txInRef $ txInputs tx
-      inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
-      outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
-      nonMintedOutputValue = outputValue `minus` txMint tx
-      change = (inputValue `minus` nonMintedOutputValue) `minus` Ada.lovelaceValueOf fees
+  let fees = ledgerLovelaceValue $ txFee tx
+      txInputRefs = map Tx.txInputRef $ txInputs tx
+      inputValue = mconcat $ map txOutValue $ mapMaybe (`Map.lookup` utxos) txInputRefs
+      outputValue = mconcat $ map txOutValue $ txOutputs tx
+      mintedValue = fromRight mempty $ toCardanoValue $ txMint tx
+      nonMintedOutputValue = outputValue `minus` mintedValue
+      change = (inputValue `minus` nonMintedOutputValue) `minus` lovelaceValueOf fees
    in change
 
-lovelaceValue :: Value -> Integer
-lovelaceValue = flip Value.assetClassValueOf $ Value.assetClass "" ""
+ledgerLovelaceValue :: Value -> Integer
+ledgerLovelaceValue v = Value.valueOf v "" ""
+
+lovelaceValue :: CApi.Value -> Integer
+lovelaceValue = (\(CApi.Quantity i) -> i) . flip CApi.selectAsset CApi.AdaAssetId
 
 getAdaChange :: Map TxOutRef TxOut -> Tx -> Integer
 getAdaChange utxos = lovelaceValue . getChange utxos
 
-getNonAdaChange :: Map TxOutRef TxOut -> Tx -> Value
-getNonAdaChange utxos = Ledger.noAdaValue . getChange utxos
+getNonAdaChange :: Map TxOutRef TxOut -> Tx -> CApi.Value
+getNonAdaChange utxos = CApi.filterValue (/= CApi.AdaAssetId) . getChange utxos
 
 hasDatum :: TxOut -> Bool
-hasDatum = isJust . txOutDatumHash
+hasDatum = isJust . Tx.txOutDatumHash
 
 hasNoDatum :: TxOut -> Bool
 hasNoDatum = not . hasDatum
@@ -346,7 +356,7 @@ balanceTxIns ::
 balanceTxIns utxos tx = do
   runEitherT $ do
     let txOuts = Tx.txOutputs tx
-        nonMintedValue = mconcat (map Tx.txOutValue txOuts) `minus` txMint tx
+        nonMintedValue = mconcat (map Tx.txOutValue txOuts) `ledgerMinus` txMint tx
         minSpending =
           mconcat
             [ txFee tx
@@ -362,48 +372,53 @@ balanceTxIns utxos tx = do
 -- | Set collateral or fail in case it's required but not available
 addTxCollaterals :: CollateralUtxo -> Tx -> Tx
 addTxCollaterals cOut tx
-  | txUsesScripts tx = tx {txCollateral = [Tx.pubKeyTxIn (collateralTxOutRef cOut)]}
+  | txUsesScripts tx = tx {txCollateral = [Tx.pubKeyTxInput (collateralTxOutRef cOut)]}
   | otherwise = tx
 
 txUsesScripts :: Tx -> Bool
-txUsesScripts Tx {txInputs, txMintScripts} =
-  not (null txMintScripts)
-    || any
-      (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
-      txInputs
+txUsesScripts Tx {txInputs, txScripts} = 
+  not (null txScripts) -- No provided scripts
+    || any (txInputUsesRef . Tx.txInputType) txInputs -- No reference scripts
+  where
+  txInputUsesRef :: Ledger.TxInputType -> Bool
+  txInputUsesRef (Ledger.TxScriptAddress _ (Right _) _) = True
+  txInputUsesRef _ = False
+
+addressTxOut :: CApi.Value -> CApi.AddressInEra CApi.BabbageEra -> TxOut
+addressTxOut v addr = TxOut $ CApi.TxOut addr (CApi.TxOutValue CApi.MultiAssetInBabbageEra v) CApi.TxOutDatumNone ReferenceScriptNone
+
+lovelaceValueOf :: Integer -> CApi.Value
+lovelaceValueOf amt = CApi.valueFromList [(CApi.AdaAssetId, CApi.Quantity amt)]
 
 -- | Ensures all non ada change goes back to user
 handleNonAdaChange ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   BalanceConfig ->
-  Address ->
+  CApi.AddressInEra CApi.BabbageEra ->
   Map TxOutRef TxOut ->
   Tx ->
   Eff effs (Either WAPI.WalletAPIError Tx)
 handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
-  let nonAdaChange :: Value
+  let nonAdaChange :: CApi.Value
       nonAdaChange = getNonAdaChange utxos tx
 
       predicate :: TxOut -> Bool
-      predicate =
+      predicate txOut = 
+        txOutAddress txOut == changeAddr
+          && hasNoDatum txOut
+
+      predicateChange :: TxOut -> Bool
+      predicateChange =
         if bcSeparateChange balanceCfg
-          then
-            ( \txout ->
-                Tx.txOutAddress txout == changeAddr
-                  && not (justLovelace $ Tx.txOutValue txout)
-                  && hasNoDatum txout
-                  -- && hasNoDatum txout
-            )
-          else (\txout -> Tx.txOutAddress txout == changeAddr && hasNoDatum txout)
+          then \txOut -> predicate txOut && not (justLovelace $ txOutValue txOut)
+          else predicate
 
       newOutput :: TxOut
       newOutput =
-        TxOut
-          { txOutAddress = changeAddr
-          , txOutValue = nonAdaChange <> Ada.lovelaceValueOf 1
-          , txOutDatumHash = Nothing
-          }
+        addressTxOut
+          (nonAdaChange <> lovelaceValueOf 1)
+          changeAddr
 
   newOutputWithMinAmt <-
     firstEitherT WAPI.OtherError $
@@ -412,19 +427,20 @@ handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
   let outputs :: [TxOut]
       outputs =
         modifyFirst
-          predicate
-          (Just . maybe newOutputWithMinAmt (addValueToTxOut nonAdaChange))
+          predicateChange
+          (Just . maybe newOutputWithMinAmt (addValue nonAdaChange))
           (txOutputs tx)
 
   if isValueNat nonAdaChange
-    then return $ if Value.isZero nonAdaChange then tx else tx {txOutputs = outputs}
+    then return $ if isZero nonAdaChange then tx else tx {txOutputs = outputs}
     else throwE $ WAPI.InsufficientFunds "Not enough inputs to balance tokens."
 
+-- TODO: This function is horrible, too much repeated code
 {- | `addAdaChange` checks if `bcSeparateChange` is true,
       if it is then we add the ada change to seperate `TxOut` at changeAddr that contains only ada,
       else we add it to any `TxOut` present at changeAddr.
 -}
-addAdaChange :: BalanceConfig -> Address -> Integer -> Tx -> Tx
+addAdaChange :: BalanceConfig -> CApi.AddressInEra CApi.BabbageEra -> Integer -> Tx -> Tx
 addAdaChange _ _ 0 tx = tx
 addAdaChange balanceCfg changeAddr change tx
   | bcSeparateChange balanceCfg =
@@ -432,42 +448,37 @@ addAdaChange balanceCfg changeAddr change tx
       { txOutputs =
           List.reverse $
             modifyFirst
-              ( \txout ->
-                  Tx.txOutAddress txout == changeAddr
-                    && justLovelace (txOutValue txout)
-                    && hasNoDatum txout
+              ( \txOut ->
+                  txOutAddress txOut == changeAddr
+                    && justLovelace (txOutValue txOut)
+                    && hasNoDatum txOut
               )
-              (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
+              (fmap $ addValue $ lovelaceValueOf change)
               (List.reverse $ txOutputs tx)
       }
   | otherwise =
     tx
       { txOutputs =
           modifyFirst
-            (\txout -> Tx.txOutAddress txout == changeAddr && hasNoDatum txout)
-            (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
+            (\txOut -> txOutAddress txOut == changeAddr && hasNoDatum txOut)
+            (fmap $ addValue $ lovelaceValueOf change)
             (txOutputs tx)
       }
-
-addValueToTxOut :: Value -> TxOut -> TxOut
-addValueToTxOut val txOut = txOut {txOutValue = txOutValue txOut <> val}
 
 -- | creates a Tx output with min lovelace.
 addOutput ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  Address ->
+  CApi.AddressInEra CApi.BabbageEra ->
   Tx ->
   Eff effs (Either Text Tx)
 addOutput changeAddr tx =
   runEitherT $ do
     let changeTxOut :: TxOut
         changeTxOut =
-          TxOut
-            { txOutAddress = changeAddr
-            , txOutValue = Ada.lovelaceValueOf 1
-            , txOutDatumHash = Nothing
-            }
+          addressTxOut
+            (lovelaceValueOf 1)
+            changeAddr
 
     changeTxOutWithMinAmt <-
       newEitherT $
@@ -488,22 +499,6 @@ addSignatories ownPkh privKeys pkhs tx =
     )
     tx
     (ownPkh : pkhs)
-
-addValidRange ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  POSIXTimeRange ->
-  Either CardanoBuildTx Tx ->
-  Eff effs (Either WAPI.WalletAPIError Tx)
-addValidRange _ (Left _) = pure $ Left $ WAPI.OtherError "BPI is not using CardanoBuildTx"
-addValidRange timeRange (Right tx) =
-  if validateRange timeRange
-    then
-      bimap (WAPI.OtherError . Text.pack . show) (setRange tx)
-        <$> posixTimeRangeToContainedSlotRange @w timeRange
-    else pure $ Left $ WAPI.ToCardanoError InvalidValidityRange
-  where
-    setRange tx' range = tx' {txValidRange = range}
 
 validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
 validateRange (Interval (LowerBound PosInf _) _) = False
@@ -527,8 +522,11 @@ modifyFirst ::
 modifyFirst _ m [] = m Nothing `consJust` []
 modifyFirst p m (x : xs) = if p x then m (Just x) `consJust` xs else x : modifyFirst p m xs
 
-minus :: Value -> Value -> Value
-minus x y =
+minus :: CApi.Value -> CApi.Value -> CApi.Value
+minus a b = a <> CApi.negateValue b
+
+ledgerMinus :: Value -> Value -> Value
+ledgerMinus x y =
   let negativeValues = map (\(c, t, a) -> (c, t, - a)) $ Value.flattenValue y
    in x <> mconcat (map unflattenValue negativeValues)
 
@@ -536,12 +534,22 @@ unflattenValue :: (CurrencySymbol, TokenName, Integer) -> Value
 unflattenValue (curSymbol, tokenName, amount) =
   Value.assetClassValue (Value.assetClass curSymbol tokenName) amount
 
-isValueNat :: Value -> Bool
+isValueNat :: CApi.Value -> Bool
 isValueNat =
-  all (\(_, _, a) -> a >= 0) . Value.flattenValue
+  all (\(_, q) -> q >= 0) . CApi.valueToList
 
-justLovelace :: Value -> Bool
-justLovelace value = length (Value.flattenValue value) == 1 && lovelaceValue value /= 0
+isZero :: CApi.Value -> Bool
+isZero = null . CApi.valueToList
+
+justLovelace :: CApi.Value -> Bool
+justLovelace (CApi.valueToList -> [(CApi.AdaAssetId, _)]) = True
+justLovelace _ = False
+
+txOutValue :: TxOut -> CApi.Value
+txOutValue (TxOut (CApi.TxOut _ v _ _)) = CApi.txOutValueToValue v
+
+txOutAddress :: TxOut -> CApi.AddressInEra CApi.BabbageEra
+txOutAddress (TxOut (CApi.TxOut a _ _ _)) = a
 
 consJust :: forall (a :: Type). Maybe a -> [a] -> [a]
 consJust (Just x) = (x :)

@@ -255,7 +255,8 @@ txInputOpts spendIndex pabConf =
                     [ "--tx-in-script-file"
                     , validatorScriptFilePath pabConf vHash
                     ]
-                  _ -> []
+                  -- TODO: mention the reference input here that has the Script
+                  Right _scriptRef -> []
               ,
                 [ "--tx-in-datum-file"
                 , datumJsonFilePath pabConf dHash

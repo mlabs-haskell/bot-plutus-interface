@@ -132,8 +132,8 @@ tokenAsset = Value.assetClass currencySymbol1 "Token"
 
 addUtxosForFees :: Assertion
 addUtxosForFees = do
-  let txout = TxOut addr2 (Ada.lovelaceValueOf 1_000_000) Nothing
-      tx = mempty {txOutputs = [txout]} `withFee` 500_000
+  let txOut = TxOut addr2 (Ada.lovelaceValueOf 1_000_000) Nothing
+      tx = mempty {txOutputs = [txOut]} `withFee` 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
       ebalancedTx =
@@ -147,8 +147,8 @@ addUtxosForFees = do
 
 addUtxosForNativeTokens :: Assertion
 addUtxosForNativeTokens = do
-  let txout = TxOut addr2 (Value.singleton currencySymbol1 "Token" 123) Nothing
-      tx = mempty {txOutputs = [txout]} `withFee` 500_000
+  let txOut = TxOut addr2 (Value.singleton currencySymbol1 "Token" 123) Nothing
+      tx = mempty {txOutputs = [txOut]} `withFee` 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       ownAddr = addr1
       ebalancedTx =
@@ -162,8 +162,8 @@ addUtxosForNativeTokens = do
 
 addUtxosForChange :: Assertion
 addUtxosForChange = do
-  let txout = TxOut addr2 (Ada.lovelaceValueOf 1_600_000) Nothing
-      tx = mempty {txOutputs = [txout]} `withFee` 500_000
+  let txOut = TxOut addr2 (Ada.lovelaceValueOf 1_600_000) Nothing
+      tx = mempty {txOutputs = [txOut]} `withFee` 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
       ebalancedTx =

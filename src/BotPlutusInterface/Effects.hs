@@ -5,6 +5,7 @@
 module BotPlutusInterface.Effects (
   PABEffect (..),
   ShellArgs (..),
+  addValue,
   handlePABEffect,
   createDirectoryIfMissing,
   createDirectoryIfMissingCLI,
@@ -283,7 +284,7 @@ saveBudgetImpl contractEnv txId budget =
     modifyTVar' contractEnv.ceContractStats (addBudget txId budget)
 
 calcMinUtxo :: PABConfig -> Ledger.TxOut -> Either Text Ledger.TxOut
-calcMinUtxo pabconf txout = do
+calcMinUtxo pabconf txOut = do
   params <- maybeToEither "Expected protocol parameters." $ pcProtocolParams pabconf
 
   let pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage params
@@ -291,20 +292,20 @@ calcMinUtxo pabconf txout = do
         evaluateMinLovelaceOutput pparamsInEra $
           CApi.S.toShelleyTxOut CApi.ShelleyBasedEraBabbage $
           CApi.toCtxUTxOTxOut $
-          Ledger.getTxOut txout
+          Ledger.getTxOut txOut
 
-      missingLovelace = Ada.lovelaceOf minTxOut - Ada.fromValue (Ledger.txOutValue txout)
+      missingLovelace = Ada.lovelaceOf minTxOut - Ada.fromValue (Ledger.txOutValue txOut)
 
   if missingLovelace > 0
-    then calcMinUtxo pabconf (addValue txout $ adaToCApiValue missingLovelace)
-    else return txout
+    then calcMinUtxo pabconf $ addValue (adaToCApiValue missingLovelace) txOut
+    else return txOut
 
 adaToCApiValue :: Ada.Ada -> CApi.Value
 adaToCApiValue = CApi.lovelaceToValue . CApi.Lovelace . Ada.getLovelace
 
-addValue :: Ledger.TxOut -> CApi.Value -> Ledger.TxOut
-addValue (Ledger.TxOut (CApi.TxOut addr (CApi.TxOutValue era v) datum rScript)) v' = Ledger.TxOut $ CApi.TxOut addr (CApi.TxOutValue era $ v <> v') datum rScript
-addValue _ _ = undefined -- Ghc complaining about missing a match for a type that is impossible to construct
+addValue :: CApi.Value -> Ledger.TxOut -> Ledger.TxOut
+addValue v' (Ledger.TxOut (CApi.TxOut addr (CApi.TxOutValue era v) datum rScript)) = Ledger.TxOut $ CApi.TxOut addr (CApi.TxOutValue era $ v <> v') datum rScript
+addValue _ (Ledger.TxOut (CApi.TxOut _ (CApi.TxOutAdaOnly eraProof _) _ _)) = case eraProof of {}
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@
