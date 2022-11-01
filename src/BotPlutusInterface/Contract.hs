@@ -42,6 +42,7 @@ import BotPlutusInterface.Types (
   Tip (block, slot),
   TxFile (Signed),
   collateralValue,
+  pcCollateralSize,
  )
 import Cardano.Api (
   AsType (..),
@@ -105,7 +106,27 @@ runContract ::
   Contract w s e a ->
   IO (Either e a)
 runContract contractEnv (Contract effs) = do
-  runM $ handlePABEffect @w contractEnv $ raiseEnd $ handleContract contractEnv effs
+  -- try to create collateral before any contract is executed
+  res <- crateCollateralUtxo
+  case res of
+    Left e -> error $ mkError e
+    Right () -> runUserContract
+  where
+    crateCollateralUtxo =
+      runM $ handlePABEffect @w contractEnv (handleCollateral contractEnv)
+
+    runUserContract =
+      runM $
+        handlePABEffect @w contractEnv $
+          raiseEnd $
+            handleContract contractEnv effs
+
+    mkError e =
+      let collateralAmt = pcCollateralSize $ cePABConfig contractEnv
+       in "Tried to create collateral UTxO with " <> show collateralAmt
+            <> " lovealces, but failed:\n"
+            <> show e
+            <> "\nContract execution aborted."
 
 handleContract ::
   forall (w :: Type) (e :: Type) (a :: Type).
