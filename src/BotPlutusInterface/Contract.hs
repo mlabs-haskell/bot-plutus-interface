@@ -43,6 +43,7 @@ import BotPlutusInterface.Types (
   TxFile (Signed),
   collateralValue,
   pcCollateralSize,
+  pcOwnPubKeyHash,
  )
 import Cardano.Api (
   AsType (..),
@@ -524,6 +525,7 @@ handleCollateral ::
   ContractEnvironment w ->
   Eff effs (Either WAPI.WalletAPIError ())
 handleCollateral cEnv = do
+  let ownPkh = pcOwnPubKeyHash $ cePABConfig cEnv
   result <- (fmap swapEither . runEitherT) $
     do
       let helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
@@ -531,7 +533,7 @@ handleCollateral cEnv = do
 
       collateralNotInMem <-
         newEitherT $
-          maybeToLeft "Collateral UTxO not found in contract env."
+          maybeToLeft ("PKH: " <> pretty ownPkh <> ". Collateral UTxO not found in contract env.")
             <$> getInMemCollateral @w
 
       helperLog collateralNotInMem
@@ -539,22 +541,37 @@ handleCollateral cEnv = do
       collateralNotInWallet <- newEitherT $ swapEither <$> findCollateralAtOwnPKH cEnv
 
       helperLog
-        ("Collateral UTxO not found or failed to be found in wallet: " <> pretty collateralNotInWallet)
+        ( "PKH: " <> pretty ownPkh <> ". Collateral UTxO not found or failed to be found in wallet: "
+            <> pretty collateralNotInWallet
+        )
 
-      helperLog "Creating collateral UTxO."
+      helperLog ("PKH: " <> pretty ownPkh <> ". Creating collateral UTxO.")
 
       notCreatedCollateral <- newEitherT $ swapEither <$> makeCollateral @w cEnv
 
       helperLog
-        ("Failed to create collateral UTxO: " <> pretty notCreatedCollateral)
+        ( "PKH: " <> pretty ownPkh <> ". Failed to create collateral UTxO: "
+            <> pretty notCreatedCollateral
+        )
 
-      pure ("Failed to create collateral UTxO: " <> show notCreatedCollateral)
+      pure
+        ( "PKH: " <> show ownPkh <> ". Failed to create collateral UTxO: "
+            <> show notCreatedCollateral
+        )
 
   case result of
     Right collteralUtxo ->
       setInMemCollateral @w collteralUtxo
-        >> Right <$> printBpiLog @w (Debug [CollateralLog]) "successfully set the collateral utxo in env."
-    Left err -> pure $ Left $ WAPI.OtherError $ T.pack $ "Failed to make collateral: " <> show err
+        >> Right
+          <$> printBpiLog @w
+            (Debug [CollateralLog])
+            ("PKH: " <> pretty ownPkh <> ". Successfully set the collateral utxo in env.")
+    Left err ->
+      pure $
+        Left $
+          WAPI.OtherError $
+            T.pack $
+              "PKH: " <> show ownPkh <> ". Failed to make collateral: " <> show err
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.
