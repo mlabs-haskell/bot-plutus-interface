@@ -12,90 +12,20 @@ repository cardano-haskell-packages
 index-state: 2022-09-27T00:00:00Z
 index-state: cardano-haskell-packages 2022-10-25T20:00:00Z
 
-packages: ./bot-plutus-interface.cabal
-          ./examples/plutus-game/plutus-game.cabal
-          ./examples/plutus-transfer/plutus-transfer.cabal
-          ./examples/plutus-nft/plutus-nft.cabal
+packages: ./.
 
 tests: true
 benchmarks: true
-test-show-details: direct
 
-
-
-test-show-details: direct
-
-package ogmios
-  flags: +production
-
-test-show-details: direct
-
-package cardano-client
-  tests: false
-
-package git-th
-  tests: false
-
-package fast-bech32
-  tests: false
-
-package hspec-json-schema
-  tests: false
-
-package json-wsp
-  tests: false
-
-package cardano-api
-  ghc-options: -Werror
-
-package cardano-cli
-  ghc-options: -Werror
-
-package cardano-git-rev
-  ghc-options: -Werror
-
-package cardano-node
-  ghc-options: -Werror
-
-package cardano-node-chairman
-  ghc-options: -Werror
-
-package cardano-testnet
-  ghc-options: -Werror
-
-package tx-generator
-  ghc-options: -Werror
-
-package trace-dispatcher
-  ghc-options: -Werror
-
-package trace-resources
-  ghc-options: -Werror
-
-package cardano-tracer
-  ghc-options: -Werror
-
-package cardano-crypto-tests
-  ghc-options: -Wwarn
-
-package cryptonite
-  -- Using RDRAND instead of /dev/urandom as an entropy source for key
-  -- generation is dubious. Set the flag so we use /dev/urandom by default.
-  flags: -support_rdrand
+allow-newer:
+    *:aeson
+  , size-based:template-haskell
 
 constraints:
-    hedgehog >= 1.1
-  , bimap >= 0.4.0
-  , libsystemd-journal >= 1.4.4
-  , systemd >= 2.3.0
-    -- systemd-2.3.0 requires at least network 3.1.1.0 but it doesn't declare
-    -- that dependency
-  , network >= 3.1.1.0
-  , relude == 0.7.0.0
-  , graphviz >= 2999.20.1.0
-  , HSOpenSSL >= 0.11.7.2
-  , algebraic-graphs < 0.7
-  , protolude < 0.3.1
+    aeson >= 2
+  , hedgehog >= 1.1
+  , algebraic-graphs == 0.6.1
+  , resource-pool == 0.2.3.2
     -- TODO: these should be set in cabal files, but avoiding setting them in lower dependencies for initial CHaP release
   , cardano-prelude == 0.1.0.0
   , base-deriving-via == 0.1.0.0
@@ -104,6 +34,7 @@ constraints:
   , cardano-crypto-class  == 2.0.0.0.1
   , cardano-crypto-praos  == 2.0.0.0.1
   , cardano-crypto-tests  == 2.0.0.0.1
+  , cardano-prelude == 0.1.0.0
   , cardano-slotting  == 0.1.0.0
   , measures == 0.1.0.0
   , orphans-deriving-via == 0.1.0.0
@@ -112,31 +43,126 @@ constraints:
   , plutus-ledger-api == 1.0.0.1
   , plutus-tx == 1.0.0.0
   , plutus-tx-plugin == 1.0.0.0
+  , protolude == 0.3.0
   , prettyprinter-configurable == 0.1.0.0
   , plutus-ghc-stub == 8.6.5
   , word-array == 0.1.0.0
-  , word-array == 0.1.0.0
 
-allow-newer:
-  *:aeson,
-  size-based:template-haskell
-  , ouroboros-consensus-byron:formatting
-  , beam-sqlite:dlist
+extra-packages:
+    ouroboros-consensus-cardano-tools == 0.1.0.0
 
 source-repository-package
   type: git
   location: https://github.com/mlabs-haskell/plutus-apps
   tag: 31bfd4c7fff5158c9f2618b76b68dbbae410221d
   --sha256: 1s9a6fvb29blgk540hacm6wh2dg8d2j21b1ddc0lhl53m47v1r1n
+  subdir:
+    doc
+    freer-extras
+    playground-common
+    plutus-chain-index
+    plutus-chain-index-core
+    plutus-contract
+    plutus-example
+    plutus-hysterical-screams
+    plutus-contract-certification
+    plutus-ledger
+    plutus-ledger-constraints
+    plutus-pab
+    plutus-pab-executables
+    plutus-playground-server
+    plutus-script-utils
+    plutus-tx-constraints
+    plutus-use-cases
+    plutus-streaming
+    web-ghc
 
 source-repository-package
   type: git
-  location: https://github.com/KtorZ/hjsonschema
-  tag: 35e0b05c3867463363e67f00a5092cd39fa33313
-  --sha256: 1w78d0lk1gi908lklixpzpa2xkzbyhg77aixm9i4rznrzsnbwhfm
+  location: https://github.com/input-output-hk/cardano-wallet
+  tag: 9d34b2633ace6aa32c1556d33c8c2df63dbc8f5b
+  --sha256: 08xr0h8vbk9p0ycbbgq7b6am29477vypl0gfln2mfcg8lpzfiszy
+  subdir:
+    lib/cli
+    lib/core
+    lib/core-integration
+    lib/dbvar
+    lib/launcher
+    lib/numeric
+    lib/shelley
+    lib/strict-non-empty-containers
+    lib/test-utils
+    lib/text-class
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/cardano-addresses
+    tag: b7273a5d3c21f1a003595ebf1e1f79c28cd72513
+    --sha256: 129r5kyiw10n2021bkdvnr270aiiwyq58h472d151ph0r7wpslgp
+    subdir:
+      command-line
+      core
+
+source-repository-package
+   type: git
+   location: https://github.com/input-output-hk/cardano-node
+   tag: 1.35.4-rc1
+   --sha256: 1f75j85fgj4y0n0fgnm4rkk728lz3azq02pnwa2nvn53andal8gx
+   subdir:
+     cardano-api
+     cardano-cli
+     cardano-client-demo
+     cardano-git-rev
+     cardano-node
+     cardano-node-capi
+     cardano-node-chairman
+     cardano-submit-api
+     cardano-testnet
+     cardano-tracer
+     bench/cardano-topology
+     bench/locli
+     bench/tx-generator
+     trace-dispatcher
+     trace-resources
+     trace-forward
+
 
 source-repository-package
   type: git
-  location: https://github.com/KtorZ/wai-routes
-  tag: d74b39683792649c01113f40bf57724dcf95c96a
-  --sha256: 117gkhcq2spmphp21nx8am6mk80wha1yvsny9y0hlkv381jjavii
+  location: https://github.com/input-output-hk/moo
+  tag: 8c487714fbfdea66188fcb85053e7e292e0cc348
+  --sha256: 1mdj218hgh7s5a6b9k14vg9i06zxah0wa42ycdgh245izs8nfv0x
+
+-- Open PR upstream, maintainer unresponsive, hopefully short-lived fork.
+-- TODO (mpj): release into CHaP as a patched version and delete
+source-repository-package
+  type: git
+  location: https://github.com/vshabanov/ekg-json
+  tag: 00ebe7211c981686e65730b7144fbf5350462608
+  --sha256: 1zvjm3pb38w0ijig5wk5mdkzcszpmlp5d4zxvks2jk1rkypi8gsm
+
+source-repository-package
+  type: git
+  location: https://github.com/denisshevchenko/threepenny-gui
+  tag: 4ec92ded05ccf59ba4a874be4b404ac1b6d666b6
+  --sha256: 00fvvaf4ir4hskq4a6gggbh2wmdvy8j8kn6s4m1p1vlh8m8mq514
+
+-- Direct dependencies of plutus-apps
+
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/servant-purescript
+  tag: 44e7cacf109f84984cd99cd3faf185d161826963
+  --sha256: 10pb0yfp80jhb9ryn65a4rha2lxzsn2vlhcc6xphrrkf4x5lhzqc
+
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/purescript-bridge
+  tag: 47a1f11825a0f9445e0f98792f79172efef66c00
+  --sha256: 0da1vn2l6iyfxcjk58qal1l4755v92zi6yppmjmqvxf1gacyf9px
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/quickcheck-dynamic
+    tag: c272906361471d684440f76c297e29ab760f6a1e
+    --sha256: 1b9ppgavqad78a2z1zxv7v4jasjz6zz0mxkr0zx0bbcd0i00jajf

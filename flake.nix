@@ -23,21 +23,6 @@
       url = "github:input-output-hk/cardano-haskell-packages/b074321c4c8cbf2c3789436ab11eaa43e1c441a7";
       flake = false;
     };
-
-    #     purescript-bridge = {
-    #       url =
-    #         "github:input-output-hk/purescript-bridge/47a1f11825a0f9445e0f98792f79172efef66c00";
-    #       flake = false;
-    #     };
-    #     quickcheck-dynamic = {
-    #       url = "github:input-output-hk/quickcheck-dynamic/c272906361471d684440f76c297e29ab760f6a1e";
-    #       flake = false;
-    #     };
-    #     servant-purescript = {
-    #       url =
-    #         "github:input-output-hk/servant-purescript/44e7cacf109f84984cd99cd3faf185d161826963";
-    #       flake = false;
-    #     };
   };
 
   outputs = { self, nixpkgs, haskell-nix, iohk-nix, CHaP, ... }@inputs:
