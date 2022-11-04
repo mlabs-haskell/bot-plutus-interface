@@ -77,6 +77,8 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (
   AsType,
+  BabbageEra,
+  CtxUTxO,
   FileError (FileError, FileIOError),
   HasTextEnvelope,
   Key (VerificationKey, getVerificationKey),
@@ -89,9 +91,11 @@ import Cardano.Api (
   TextEnvelope (TextEnvelope, teDescription, teRawCBOR, teType),
   TextEnvelopeDescr,
   TextEnvelopeError (TextEnvelopeAesonDecodeError),
+  TxOut,
   deserialiseFromTextEnvelope,
   getVerificationKey,
   serialiseToTextEnvelope,
+  toCtxUTxOTxOut,
   toScriptInAnyLang,
  )
 import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
@@ -152,6 +156,7 @@ import Ledger.Tx (
   TxOutRef (TxOutRef),
   ciTxOutAddress,
   ciTxOutValue,
+  getTxOut,
  )
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
@@ -811,6 +816,10 @@ mockSlotRange =
   where
     slotRange = Interval (lowerBound 47577202) (strictUpperBound 50255602)
 
+-- Pure as we know our own mock values are safe
+fromCardanoTxOutUtxo :: ChainIndexTxOut -> TxOut CtxUTxO BabbageEra
+fromCardanoTxOutUtxo txOut = toCtxUTxOTxOut . getTxOut . fromRight undefined $ Tx.toTxOut testingNetwork txOut
+
 mockQueryNode ::
   forall (w :: Type) (a :: Type).
   NodeQuery a ->
@@ -818,11 +827,11 @@ mockQueryNode ::
 mockQueryNode = \case
   UtxosAt _addr -> do
     state <- get @(MockContractState w)
-    return $ Right $ Map.fromList (state ^. utxos)
+    return . Right . fmap fromCardanoTxOutUtxo . Map.fromList $ state ^. utxos
   UtxosAtExcluding _addr excluded -> do
     state <- get @(MockContractState w)
     let filterNotExcluded = filter (not . (`Set.member` excluded) . fst)
-    return . Right . Map.fromList . filterNotExcluded $ (state ^. utxos)
+    return . Right . fmap fromCardanoTxOutUtxo . Map.fromList . filterNotExcluded $ state ^. utxos
   PParams -> do
     state <- get @(MockContractState w)
     case pcProtocolParams $ cePABConfig $ _contractEnv state of

@@ -132,7 +132,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       let unbalancedTx = unbalancedTx' & (Constraints.tx . Tx.outputs .~ updatedOuts)
           tx = unBalancedEmulatorTx unbalancedTx
 
-      (utxos, mcollateral) <-
+      (utxoIndex, mcollateral) <-
         newEitherT $
           utxosAndCollateralAtAddress
             @w
@@ -140,12 +140,6 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
             changeAddr
 
       privKeys <- firstEitherT WAPI.OtherError $ newEitherT $ Files.readPrivateKeys @w pabConf
-
-      -- utxoIndex :: Map TxOutRef TxOut
-      utxoIndex <-
-        hoistEither $
-          first WAPI.ToCardanoError $
-            fmap (<> unBalancedTxUtxoIndex unbalancedTx) $ traverse (Tx.toTxOut pabConf.pcNetwork) utxos
 
       let requiredSigs :: [PubKeyHash]
           requiredSigs =
@@ -242,6 +236,14 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
         then pure balancedTx
         else balanceTxLoop utxoIndex privKeys changeAddr balancedTx
 
+toCtxTxTxOut :: forall (era :: Type). CApi.TxOut CApi.CtxUTxO era -> CApi.TxOut CApi.CtxTx era
+toCtxTxTxOut (CApi.TxOut addr val d refS) =
+  let dat = case d of
+              CApi.TxOutDatumNone -> CApi.TxOutDatumNone
+              CApi.TxOutDatumHash s h -> CApi.TxOutDatumHash s h
+              CApi.TxOutDatumInline s sd -> CApi.TxOutDatumInline s sd
+  in CApi.TxOut addr val dat refS
+
 -- `utxosAndCollateralAtAddress` returns all the utxos that can be used as an input of a `Tx`,
 -- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
 utxosAndCollateralAtAddress ::
@@ -249,7 +251,7 @@ utxosAndCollateralAtAddress ::
   (Member (PABEffect w) effs) =>
   Tx ->
   CApi.AddressInEra CApi.BabbageEra ->
-  Eff effs (Either WAPI.WalletAPIError (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
+  Eff effs (Either WAPI.WalletAPIError (Map TxOutRef TxOut, Maybe CollateralUtxo))
 utxosAndCollateralAtAddress tx changeAddr =
   runEitherT $ do
     inMemCollateral <- lift $ getInMemCollateral @w
@@ -261,6 +263,8 @@ utxosAndCollateralAtAddress tx changeAddr =
 
     utxos <- firstEitherT (WAPI.OtherError . Text.pack . show) $ newEitherT $ queryNode @w nodeQuery
 
+    let utxos' = (TxOut . toCtxTxTxOut) <$> utxos
+
     -- check if transaction requires a collateral, if it does, search for
     -- collateral UTxO in the environment, error on missing input
     if txUsesScripts tx
@@ -271,9 +275,9 @@ utxosAndCollateralAtAddress tx changeAddr =
                 "The given transaction uses script, but there's no collateral provided."
                   <> "This usually means that, we failed to create Tx and update our ContractEnvironment."
           )
-          (const $ pure (utxos, inMemCollateral))
+          (const $ pure (utxos', inMemCollateral))
           inMemCollateral
-      else pure (utxos, Nothing)
+      else pure (utxos', Nothing)
 
 hasChangeUTxO :: CApi.AddressInEra CApi.BabbageEra -> Tx -> Bool
 hasChangeUTxO changeAddr tx =

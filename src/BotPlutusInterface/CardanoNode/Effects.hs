@@ -14,6 +14,7 @@ module BotPlutusInterface.CardanoNode.Effects (
   handleNodeQuery,
   runNodeQuery,
   NodeQuery (..),
+  TxOutUtxo,
 ) where
 
 import BotPlutusInterface.CardanoNode.Query (
@@ -22,40 +23,39 @@ import BotPlutusInterface.CardanoNode.Query (
   QueryConstraint,
   connectionInfo,
   queryBabbageEra,
-  toQueryError,
  )
 
 import BotPlutusInterface.CardanoAPI (
   addressInEraToAny,
-  fromCardanoTxOut,
  )
 
 import BotPlutusInterface.Types (PABConfig)
-import Cardano.Api (AddressInEra, BabbageEra)
+import Cardano.Api (AddressInEra, BabbageEra, TxOut)
 import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley qualified as CApi.S
-import Control.Lens (folded, to, (^..))
 import Control.Monad.Freer (Eff, Members, interpret, runM, send, type (~>))
 import Control.Monad.Freer.Reader (Reader, runReader)
-import Control.Monad.Trans.Either (firstEitherT, hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (newEitherT, runEitherT)
+import Data.Bifunctor (first)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Ledger.Tx (ChainIndexTxOut (..), TxOutRef)
+import Ledger.Tx (TxOutRef)
 import Ledger.Tx.CardanoAPI qualified as TxApi
-import Plutus.V2.Ledger.Tx qualified as V2
 import Prelude
+
+type TxOutUtxo = TxOut CApi.S.CtxUTxO BabbageEra
 
 {- | 'NodeQuery' effect is used to query local node,
      this is achieved by using 'Cardano.Api'.
 -}
 data NodeQuery a where
   -- | 'UtxosAt' queries local node to get all the utxos at particular address.
-  UtxosAt :: AddressInEra BabbageEra -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
+  UtxosAt :: AddressInEra BabbageEra -> NodeQuery (Either NodeQueryError (Map TxOutRef TxOutUtxo))
   -- | 'UtxosAtExcluding' queries local node to get all the utxos at particular address
   -- excluding `TxOutRefs`'s specified in `Set`.
-  UtxosAtExcluding :: AddressInEra BabbageEra -> Set TxOutRef -> NodeQuery (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
+  UtxosAtExcluding :: AddressInEra BabbageEra -> Set TxOutRef -> NodeQuery (Either NodeQueryError (Map TxOutRef TxOutUtxo))
   -- | 'PParams' queries local node to get it's 'ProtocolParameters'.
   PParams :: NodeQuery (Either NodeQueryError CApi.S.ProtocolParameters)
 
@@ -63,7 +63,7 @@ utxosAt ::
   forall effs.
   Members '[NodeQuery] effs =>
   AddressInEra BabbageEra ->
-  Eff effs (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
+  Eff effs (Either NodeQueryError (Map TxOutRef TxOutUtxo))
 utxosAt = send . UtxosAt
 
 pparams ::
@@ -88,23 +88,14 @@ handleUtxosAt ::
   forall effs.
   QueryConstraint effs =>
   AddressInEra BabbageEra ->
-  Eff effs (Either NodeQueryError (Map V2.TxOutRef ChainIndexTxOut))
+  Eff effs (Either NodeQueryError (Map TxOutRef TxOutUtxo))
 handleUtxosAt addr = runEitherT $ do
   let query :: CApi.QueryInShelleyBasedEra era (CApi.UTxO era)
       query = CApi.QueryUTxO $ CApi.QueryUTxOByAddress $ Set.singleton $ addressInEraToAny addr
 
   (CApi.UTxO result) <- newEitherT $ queryBabbageEra query
 
-  chainIndexTxOuts <-
-    firstEitherT toQueryError $
-      hoistEither $
-        sequenceA $
-          result ^.. folded . to fromCardanoTxOut
-
-  let txOutRefs :: [V2.TxOutRef]
-      txOutRefs = TxApi.fromCardanoTxIn <$> Map.keys result
-
-  return $ Map.fromList $ zip txOutRefs chainIndexTxOuts
+  return $ Map.fromList $ fmap (first $ TxApi.fromCardanoTxIn) $ Map.toList result
 
 -- | 'runNodeQuery' runs executes the 'NodeQuery' effects.
 runNodeQuery :: PABConfig -> Eff '[NodeQuery, Reader NodeConn, IO] ~> IO

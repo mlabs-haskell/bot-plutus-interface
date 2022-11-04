@@ -48,6 +48,8 @@ import Cardano.Api (
   AsType (..),
   EraInMode (..),
   Tx (Tx),
+  TxOut (TxOut),
+  txOutValueToValue,
  )
 import Cardano.Prelude (liftA2)
 import Control.Lens (preview, (.~), (^.))
@@ -80,6 +82,7 @@ import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
 import Ledger.Slot (Slot (Slot))
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
 import Ledger.Tx qualified as Tx
+import Ledger.Tx.CardanoAPI.Internal (fromCardanoValue)
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
 import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
 import Plutus.Contract.Checkpoint (Checkpoint (..))
@@ -582,12 +585,13 @@ findCollateralAtOwnPKH cEnv =
       r <-
         firstEitherT (WAPI.OtherError . Text.pack . show) $
           newEitherT $ queryNode @w (UtxosAt changeAddr)
-      let refsAndValues = Map.toList $ Tx._ciTxOutValue <$> r
+      let refsAndValues = Map.toList $ txOutvalue <$> r
       hoistEither $ case filter check refsAndValues of
         [] -> Left $ WAPI.OtherError "Couldn't find collateral UTxO"
         ((oref, _) : _) -> Right oref
   where
-    check (_, v) = v == collateralValue (cePABConfig cEnv)
+    check (_, v) = fromCardanoValue v == collateralValue (cePABConfig cEnv)
+    txOutvalue (TxOut _ v _ _) = txOutValueToValue v
 
 {- | Construct a 'NonEmpty' list from a single element.
  Should be replaced by NonEmpty.singleton after updating to base 4.15
