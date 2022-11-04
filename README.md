@@ -167,3 +167,11 @@ The fake PAB consists of the following modules:
   - adding collaterals,
   - modifying tx outs to contain the minimum amount of lovelaces
   - balancing non ada outputs
+
+## Collateral handling
+
+Current version handles collateral under the hood.
+
+Before contract being executed, single transaction submitted to create collateral UTxO at "own" address. Default amount for collateral UTxO is 10 Ada. It also can be set via config.
+
+BPI identifies collateral UTxO by its value. If "own" address already has UTxO with amount set in config, this UTxO will be used as collateral. UTxO that was picked as collateral is stored in memory, so each time BPI will use same UTxO for collateral. Also, collateral is not returned among other UTxOs inside `Contract` monad, e.g. from eDSL functions like `utxosAt`. So it is safe to use such functions without the risk of consuming collateral by accident.
