@@ -164,6 +164,12 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       -- and default network of testnet magic 1
       -- This is likely a breaking issue, the constraint interface no longer provides a way to see the original POSIXTime
       -- We may need to reimplement mkTx, and mkSomeTx so we can pass in the initial constraint state, and use reasonable Params
+      -- https://gist.github.com/TotallyNotChase/b5357c774444170ed3c21085593b7f1f
+
+      -- Correct solution:
+      -- Provide a BPI constraint that does the job of MustValidateIn but does conversions correctly - 
+      -- call to the plutus contract PosixTimeRangeToContainedSlotRangeReq effect
+      -- If a user uses the mkTx one, error out
       unless (validateRange $ txValidRange tx) $ throwE $ WAPI.OtherError "Invalid validity range on tx"
 
       -- Adds required collaterals in the `Tx`
