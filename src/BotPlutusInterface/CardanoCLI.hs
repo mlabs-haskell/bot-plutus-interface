@@ -90,7 +90,7 @@ import Ledger.Tx (
   TxOutRef (TxOutRef),
   txId,
  )
-import Ledger.Tx.CardanoAPI (toCardanoValue, fromCardanoScriptInAnyLang)
+import Ledger.Tx.CardanoAPI (fromCardanoScriptInAnyLang, toCardanoValue)
 import Ledger.Value qualified as Value
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
@@ -372,7 +372,7 @@ txOutOpts pabConf datums =
               -- no way to know if minting/validator without reading the UPLC, so lets give these a new naming scheme
               -- This script can be simplev1/v2 or plutusv1/v2 (we'll not handle simple)
               -- As such, helper function in Files will give name by script hash, prefixed with `reference` to avoid clash (though a clash is actually fine)
-              ReferenceScript _ (fromCardanoScriptInAnyLang -> Just vScript) -> 
+              ReferenceScript _ (fromCardanoScriptInAnyLang -> Just vScript) ->
                 ["--tx-out-reference-script-file", referenceScriptFilePath pabConf $ ScriptUtils.scriptHash vScript]
               _ -> []
           ]

@@ -50,7 +50,7 @@ maybe this isn't worth it, being explicit, although a hack, might simply be bett
 
   or even a specific BPI contract that forces an input to be inline by removing its datum from txData, alongside some extra logic that says
     if you're spending an input, dont provide a datum, and havent explicitly stated the input has inline datum, error out
-    
+
   seems like more strain on the user, more esoteric behaviour of BPI
   the "right" solution is for BPI to work it all out, but that could take a while
 
@@ -62,7 +62,7 @@ we can lift all the queries above the effect
       first maybe = is there a datum
       inner maybe = is it inlined
     For TxOutDatum, given we have CtxUTxO, only the 3 obvious constructors are usable
-  
+
   this can be build now on top of the existing ChainIndexQuery effect (no new effect)
   as for the other data - era, start, blah
 
@@ -113,10 +113,11 @@ buildAndEstimateBudget ::
   Map PubKeyHash DummyPrivKey ->
   Tx ->
   Eff effs (Either Text ExBudget)
-buildAndEstimateBudget pabConf privKeys tx = runEitherT $
-  buildDraftTxBody
-    >> estimateBudgetByDraftBody (Text.unpack $ txFilePath pabConf "raw" (txId tx))
-    >>= buildBodyUsingEstimatedBudget
+buildAndEstimateBudget pabConf privKeys tx =
+  runEitherT $
+    buildDraftTxBody
+      >> estimateBudgetByDraftBody (Text.unpack $ txFilePath pabConf "raw" (txId tx))
+      >>= buildBodyUsingEstimatedBudget
   where
     buildDraftTxBody = newEitherT $ CardanoCLI.buildTx @w pabConf privKeys mempty tx
 

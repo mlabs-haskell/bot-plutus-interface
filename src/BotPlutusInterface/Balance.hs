@@ -161,7 +161,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       -- https://gist.github.com/TotallyNotChase/b5357c774444170ed3c21085593b7f1f
 
       -- Correct solution:
-      -- Provide a BPI constraint that does the job of MustValidateIn but does conversions correctly - 
+      -- Provide a BPI constraint that does the job of MustValidateIn but does conversions correctly -
       -- call to the plutus contract PosixTimeRangeToContainedSlotRangeReq effect
       -- If a user uses the mkTx one, error out
       unless (validateRange $ txValidRange tx) $ throwE $ WAPI.OtherError "Invalid validity range on tx"
@@ -239,10 +239,10 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
 toCtxTxTxOut :: forall (era :: Type). CApi.TxOut CApi.CtxUTxO era -> CApi.TxOut CApi.CtxTx era
 toCtxTxTxOut (CApi.TxOut addr val d refS) =
   let dat = case d of
-              CApi.TxOutDatumNone -> CApi.TxOutDatumNone
-              CApi.TxOutDatumHash s h -> CApi.TxOutDatumHash s h
-              CApi.TxOutDatumInline s sd -> CApi.TxOutDatumInline s sd
-  in CApi.TxOut addr val dat refS
+        CApi.TxOutDatumNone -> CApi.TxOutDatumNone
+        CApi.TxOutDatumHash s h -> CApi.TxOutDatumHash s h
+        CApi.TxOutDatumInline s sd -> CApi.TxOutDatumInline s sd
+   in CApi.TxOut addr val dat refS
 
 -- `utxosAndCollateralAtAddress` returns all the utxos that can be used as an input of a `Tx`,
 -- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
