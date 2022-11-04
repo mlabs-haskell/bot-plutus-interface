@@ -75,9 +75,9 @@ we can lift all the queries above the effect
     should be faster
 
   steps:
-    - change the node utxos queries to return TxOut over ChainIndexTxOut, fix what that breaks
-    - implement a function that gets full utxo data from a set of txins via node
-    - implement additional node effects for the other pieces of data we need
+    - change the node utxos queries to return TxOut over ChainIndexTxOut, fix what that breaks - done
+    - implement a function that gets full utxo data from a set of txins via node - done
+    - implement additional node effects for the other pieces of data we need - done
     - implement another function that uses both above, and combines them into some data type
     - implement a helper function that takes above txEstInfo and a Set TxOutRef (of new refs) and adds them to the utxo mapping
     - move the lookup logic out of estimate, maybe also drop the node reader, pass the above data type into the effect
