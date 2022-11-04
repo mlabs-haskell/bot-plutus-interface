@@ -28,6 +28,7 @@ import BotPlutusInterface.Effects (
  )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
+import BotPlutusInterface.Helpers (addressTxOut, lovelaceValueOf)
 import BotPlutusInterface.Types (
   CollateralUtxo (collateralTxOutRef),
   LogLevel (Debug),
@@ -38,7 +39,7 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api qualified as CApi
-import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices), ReferenceScript (ReferenceScriptNone))
+import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
 import Control.Lens (folded, to, (&), (.~), (^.), (^..))
 import Control.Monad (foldM, unless, void)
 import Control.Monad.Freer (Eff, Member)
@@ -214,7 +215,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       Tx ->
       EitherT WAPI.WalletAPIError (Eff effs) Tx
     balanceTxLoop utxoIndex privKeys changeAddr tx = do
-      void $ lift $ Files.writeAll @w pabConf tx
+      void $ lift $ Files.writeAll @w pabConf tx -- TODO: Does this really need to happen in the loop?
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
@@ -371,12 +372,6 @@ txUsesScripts Tx {txInputs, txScripts} =
     txInputUsesRef (Ledger.TxScriptAddress _ (Right _) _) = True
     txInputUsesRef _ = False
 
-addressTxOut :: CApi.Value -> CApi.AddressInEra CApi.BabbageEra -> TxOut
-addressTxOut v addr = TxOut $ CApi.TxOut addr (CApi.TxOutValue CApi.MultiAssetInBabbageEra v) CApi.TxOutDatumNone ReferenceScriptNone
-
-lovelaceValueOf :: Integer -> CApi.Value
-lovelaceValueOf amt = CApi.valueFromList [(CApi.AdaAssetId, CApi.Quantity amt)]
-
 -- | Ensures all non ada change goes back to user
 handleNonAdaChange ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -404,8 +399,8 @@ handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
       newOutput :: TxOut
       newOutput =
         addressTxOut
-          (nonAdaChange <> lovelaceValueOf 1)
           changeAddr
+          (nonAdaChange <> lovelaceValueOf 1)
 
   newOutputWithMinAmt <-
     firstEitherT WAPI.OtherError $
@@ -465,8 +460,8 @@ addOutput changeAddr tx =
     let changeTxOut :: TxOut
         changeTxOut =
           addressTxOut
-            (lovelaceValueOf 1)
             changeAddr
+            (lovelaceValueOf 1)
 
     changeTxOutWithMinAmt <-
       newEitherT $

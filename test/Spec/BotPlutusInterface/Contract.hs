@@ -3,8 +3,7 @@
 
 module Spec.BotPlutusInterface.Contract (assertCommandHistory, assertContract, assertFiles, commandEqual, tests) where
 
-import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
-import Cardano.Api (NetworkId (Mainnet))
+import BotPlutusInterface.Helpers (unsafeSerialiseAddress)
 import Control.Lens (ix, (&), (.~), (<>~), (^.), (^?))
 import Data.Aeson (ToJSON)
 import Data.Aeson.Extras (encodeByteString)
@@ -72,6 +71,7 @@ import Spec.MockContract (
   pkhAddr1,
   runContractPure,
   signingKey1,
+  testingNetwork,
   theCollateralTxId,
   tip,
   toSigningKeyFile,
@@ -107,6 +107,9 @@ tests =
     , testCase "Use Writer in a contract" useWriter
     , testCase "Wait for next block" waitNextBlock
     ]
+
+toV1 :: forall (a :: Type). a -> ScriptUtils.Versioned a
+toV1 = flip ScriptUtils.Versioned ScriptUtils.PlutusV1
 
 sendAda :: Assertion
 sendAda = do
@@ -146,7 +149,7 @@ sendAda = do
           --tx-out-count 1
           --witness-count 1
           --protocol-params-file ./protocol.json
-          --mainnet
+          --testnet-magic 1097911063
           |]
         )
       , -- Steps 3 to 10 are near repeats of 1, 2 and 3, to ensure min utxo values are met, and change is dispursed
@@ -211,7 +214,7 @@ sendAdaStaking = do
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
       stakePkh3 = Address.StakePubKeyHash pkh3
-      addr2Staking = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 (Just stakePkh3))
+      addr2Staking = unsafeSerialiseAddress testingNetwork (Ledger.pubKeyHashAddress paymentPkh2 (Just stakePkh3))
 
       contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
@@ -242,7 +245,7 @@ sendAdaStaking = do
           --tx-out-count 1
           --witness-count 1
           --protocol-params-file ./protocol.json
-          --mainnet
+          --testnet-magic 1097911063
           |]
         )
       ,
@@ -387,8 +390,8 @@ sendTokens = do
         , [text|
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId1}#0
-          --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546F6B656E
-          --tx-out ${addr1}+48952370 + 95 ${curSymbol'}.74657374546F6B656E
+          --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546f6b656e
+          --tx-out ${addr1}+48952370 + 95 ${curSymbol'}.74657374546f6b656e
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -447,7 +450,7 @@ mintTokens = do
       mintingPolicy = Scripts.mkMintingPolicyScript $$(PlutusTx.compile [||(\_ _ -> ())||])
 
       curSymbol :: Ledger.CurrencySymbol
-      curSymbol = Ledger.scriptCurrencySymbol mintingPolicy
+      curSymbol = Ledger.scriptCurrencySymbol $ toV1 mintingPolicy
 
       curSymbol' :: Text
       curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
@@ -476,11 +479,11 @@ mintTokens = do
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${collateralTxId}#0
-          --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546F6B656E
+          --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546f6b656e
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --mint-execution-units (0,0)
-          --mint 5 ${curSymbol'}.74657374546F6B656E
+          --mint 5 ${curSymbol'}.74657374546f6b656e
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?
@@ -492,12 +495,12 @@ mintTokens = do
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-in-collateral ${collateralTxId}#0
-          --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546F6B656E
+          --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546f6b656e
           --tx-out ${addr1}+48952370
           --mint-script-file ./result-scripts/policy-${curSymbol'}.plutus
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --mint-execution-units (0,0)
-          --mint 5 ${curSymbol'}.74657374546F6B656E
+          --mint 5 ${curSymbol'}.74657374546f6b656e
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -527,13 +530,13 @@ spendToValidator = do
           $$(PlutusTx.compile [||(\_ _ _ -> ())||])
 
       valHash :: Ledger.ValidatorHash
-      valHash = Ledger.validatorHash validator
+      valHash = Ledger.validatorHash $ toV1 validator
 
       valAddr :: Ledger.Address
-      valAddr = scriptHashAddress $ validatorHash validator
+      valAddr = scriptHashAddress $ validatorHash $ toV1 validator
 
       valAddr' :: Text
-      valAddr' = unsafeSerialiseAddress Mainnet valAddr
+      valAddr' = unsafeSerialiseAddress testingNetwork valAddr
 
       valHash' :: Text
       valHash' =
@@ -558,7 +561,7 @@ spendToValidator = do
                 <> Constraints.otherData datum
                 <> Constraints.unspentOutputs utxos'
         let constraints =
-              Constraints.mustPayToOtherScript valHash datum (Ada.lovelaceValueOf 500)
+              Constraints.mustPayToOtherScriptWithDatumInTx valHash datum (Ada.lovelaceValueOf 500)
         Plutus.Contract.submitTxConstraintsWith @Void lookups constraints
 
   assertContract contract initState $ \state -> do
@@ -610,7 +613,7 @@ redeemFromValidator = do
           (Ada.lovelaceValueOf 1250)
           (datumHash, Nothing)
           Nothing
-          (validatorHash validator, Just validator)
+          (validatorHash validatorVersioned, Just validatorVersioned)
       initState = def & utxos <>~ [(txOutRef, txOut), (txOutRef', txOut')]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
       collateralTxId = encodeByteString $ fromBuiltin $ Tx.getTxId theCollateralTxId
@@ -620,11 +623,14 @@ redeemFromValidator = do
         Scripts.mkValidatorScript
           $$(PlutusTx.compile [||(\_ _ _ -> ())||])
 
+      validatorVersioned :: ScriptUtils.Versioned Scripts.Validator
+      validatorVersioned = toV1 validator
+
       valHash :: Scripts.ValidatorHash
-      valHash = Scripts.validatorHash validator
+      valHash = Scripts.validatorHash validatorVersioned
 
       valAddr :: Ledger.Address
-      valAddr = scriptHashAddress $ validatorHash validator
+      valAddr = scriptHashAddress $ validatorHash validatorVersioned
 
       valHash' :: Text
       valHash' =
@@ -817,7 +823,7 @@ waitNextBlock = do
         state
         [
           ( 0
-          , [text| cardano-cli query tip --mainnet |]
+          , [text| cardano-cli query tip --testnet-magic 1097911063 |]
           )
         ]
 

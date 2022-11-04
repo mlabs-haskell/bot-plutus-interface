@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.CardanoCLI (
   submitTx,
@@ -19,6 +20,7 @@ import BotPlutusInterface.Files (
   -- metadataFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
+  referenceScriptFilePath,
   signingKeyFilePath,
   txFilePath,
   validatorScriptFilePath,
@@ -37,7 +39,7 @@ import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley (
   NetworkId (Mainnet, Testnet),
   NetworkMagic (NetworkMagic),
-  ReferenceScript (ReferenceScript, ReferenceScriptNone),
+  ReferenceScript (ReferenceScript),
   serialiseAddress,
  )
 import Control.Monad (join)
@@ -77,6 +79,7 @@ import Ledger.Tx (
     txMint,
     txMintingScripts,
     txOutputs,
+    txReferenceInputs,
     txSignatures,
     txValidRange
   ),
@@ -87,7 +90,7 @@ import Ledger.Tx (
   TxOutRef (TxOutRef),
   txId,
  )
-import Ledger.Tx.CardanoAPI (toCardanoValue)
+import Ledger.Tx.CardanoAPI (toCardanoValue, fromCardanoScriptInAnyLang)
 import Ledger.Value qualified as Value
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
@@ -171,6 +174,7 @@ buildTx pabConf privKeys txBudget tx =
       mconcat
         [ ["transaction", "build-raw", "--babbage-era"]
         , ins
+        , txRefInputOpts (txReferenceInputs tx)
         , txInputCollateralOpts (txCollateral tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mints
@@ -230,53 +234,71 @@ submitTx pabConf tx =
 
 txInputOpts :: SpendBudgets -> PABConfig -> [TxInput] -> ([Text], ExBudget)
 txInputOpts spendIndex pabConf =
-  foldMap
-    ( \(TxInput txOutRef txInputType) ->
-        let (opts, exBudget) =
-              scriptInputs
-                txInputType
-                (Map.findWithDefault mempty txOutRef spendIndex)
-         in (,exBudget) $
-              mconcat
-                [ ["--tx-in", txOutRefToCliArg txOutRef]
-                , opts
-                ]
-    )
+  foldMap $
+    \(TxInput txOutRef txInputType) ->
+      let (opts, exBudget) =
+            scriptInputs
+              txInputType
+              (Map.findWithDefault mempty txOutRef spendIndex)
+       in (,exBudget) $
+            mconcat
+              [ ["--tx-in", txOutRefToCliArg txOutRef]
+              , opts
+              ]
   where
     scriptInputs :: TxInputType -> ExBudget -> ([Text], ExBudget)
     scriptInputs txInputType exBudget =
       case txInputType of
         TxScriptAddress redeemer eVHash dHash ->
-          (,exBudget) $
-            mconcat
-              [ case eVHash of
-                  Left vHash ->
-                    [ "--tx-in-script-file"
-                    , validatorScriptFilePath pabConf vHash
+          let (typeText, prefix) = getTxInTypeAndPrefix eVHash
+           in (,exBudget) $
+                mconcat
+                  [ typeText
+                  ,
+                    [ prefix <> "tx-in-datum-file"
+                    , datumJsonFilePath pabConf dHash
                     ]
-                  -- TODO: mention the reference input here that has the Script
-                  Right _scriptRef -> []
-              ,
-                [ "--tx-in-datum-file"
-                , datumJsonFilePath pabConf dHash
-                ]
-              ,
-                [ "--tx-in-redeemer-file"
-                , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
-                ]
-              ,
-                [ "--tx-in-execution-units"
-                , exBudgetToCliArg exBudget
-                ]
-              ]
+                  ,
+                    [ prefix <> "tx-in-redeemer-file"
+                    , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
+                    ]
+                  ,
+                    [ prefix <> "tx-in-execution-units"
+                    , exBudgetToCliArg exBudget
+                    ]
+                  ]
         _ -> mempty
+    getTxInTypeAndPrefix :: Either Scripts.ValidatorHash (ScriptUtils.Versioned TxOutRef) -> ([Text], Text)
+    getTxInTypeAndPrefix = \case
+      Left vHash ->
+        (
+          [ "--tx-in-script-file"
+          , validatorScriptFilePath pabConf vHash
+          ]
+        , "--"
+        )
+      Right versionedTxOutRef ->
+        ( [ "--spending-tx-in-reference"
+          , txOutRefToCliArg $ ScriptUtils.unversioned versionedTxOutRef
+          ]
+            ++ case ScriptUtils.version versionedTxOutRef of
+              ScriptUtils.PlutusV1 -> []
+              ScriptUtils.PlutusV2 -> ["--spending-plutus-script-v2"]
+        , "--spending-reference-"
+        )
+
+txRefInputOpts :: [TxInput] -> [Text]
+txRefInputOpts =
+  foldMap $
+    \(TxInput txOutRef _) ->
+      ["--read-only-tx-in-reference", txOutRefToCliArg txOutRef]
 
 txInputCollateralOpts :: [TxInput] -> [Text]
 txInputCollateralOpts =
   concatMap (\(TxInput txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef])
 
 isZero :: CApi.Value -> Bool
-isZero = not . any ((== 0) . snd) . CApi.valueToList
+isZero = all ((== 0) . snd) . CApi.valueToList
 
 -- Minting options
 mintOpts ::
@@ -350,8 +372,9 @@ txOutOpts pabConf datums =
               -- no way to know if minting/validator without reading the UPLC, so lets give these a new naming scheme
               -- This script can be simplev1/v2 or plutusv1/v2 (we'll not handle simple)
               -- As such, helper function in Files will give name by script hash, prefixed with `reference` to avoid clash (though a clash is actually fine)
-              ReferenceScript _ _ -> []
-              ReferenceScriptNone -> []
+              ReferenceScript _ (fromCardanoScriptInAnyLang -> Just vScript) -> 
+                ["--tx-out-reference-script-file", referenceScriptFilePath pabConf $ ScriptUtils.scriptHash vScript]
+              _ -> []
           ]
     )
   where
@@ -372,13 +395,14 @@ txOutRefToCliArg :: TxOutRef -> Text
 txOutRefToCliArg (TxOutRef (TxId tId) txIx) =
   encodeByteString (fromBuiltin tId) <> "#" <> showText txIx
 
--- TODO: This show logic probably isn't correct, unsure how the asset name and currency symbol are encoded in the bytestring.
--- Probably need Data.Bytestring.Base16.encodeBase16
 flatValueToCliArg :: (CApi.AssetId, CApi.Quantity) -> Text
 flatValueToCliArg (CApi.AdaAssetId, qty) = showText qty
 flatValueToCliArg (CApi.AssetId policyId assetName, qty)
-  | assetName == "" = showText qty <> " " <> showText policyId
-  | otherwise = showText qty <> " " <> showText policyId <> "." <> showText assetName
+  | assetName == "" = showText qty <> " " <> serialise policyId
+  | otherwise = showText qty <> " " <> serialise policyId <> "." <> serialise assetName
+  where
+    serialise :: forall (a :: Type). CApi.SerialiseAsRawBytes a => a -> Text
+    serialise = Text.toLower . CApi.serialiseToRawBytesHexText
 
 valueToCliArg :: CApi.Value -> Text
 valueToCliArg val =

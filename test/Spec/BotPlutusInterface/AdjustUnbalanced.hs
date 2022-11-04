@@ -14,6 +14,8 @@ import Ledger (
   Value,
   outputs,
   pubKeyHashAddress,
+  txOutAddress,
+  txOutValue,
  )
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints

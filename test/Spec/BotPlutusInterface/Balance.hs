@@ -1,17 +1,21 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Spec.BotPlutusInterface.Balance (tests) where
 
 import BotPlutusInterface.Balance (balanceTxIO, defaultBalanceConfig, withFee)
 import BotPlutusInterface.Balance qualified as Balance
 import BotPlutusInterface.Effects (PABEffect)
+import BotPlutusInterface.Helpers (addressTxOut, lovelaceValueOf, unsafeToCardanoAddressInEra, unsafeValueOf)
 import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
   PABConfig (pcOwnPubKeyHash),
  )
+import Cardano.Api (AddressInEra, BabbageEra)
 import Control.Lens ((&), (.~), (^.))
 import Data.Default (Default (def))
+import Data.Either.Combinators (fromRight)
 import Data.Function (on)
 import Data.List (delete, partition)
 import Data.Map qualified as Map
@@ -29,8 +33,8 @@ import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   ChainIndexTxOut (..),
   Tx (..),
-  TxIn (..),
-  TxInType (..),
+  TxInput (..),
+  TxInputType (..),
   TxOut (..),
   TxOutRef (..),
  )
@@ -50,6 +54,7 @@ import Spec.MockContract (
   pkh3,
   pkhAddr3,
   runPABEffectPure,
+  testingNetwork,
   utxos,
  )
 import Test.Tasty (TestTree, testGroup)
@@ -77,15 +82,17 @@ validator =
     $$(PlutusTx.compile [||(\_ _ _ -> ())||])
 
 valHash :: Ledger.ValidatorHash
-valHash = Scripts.validatorHash validator
+valHash = Scripts.validatorHash $ toV1 validator
 
 pkh1, pkh2 :: PubKeyHash
 pkh1 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 1
 pkh2 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 2
 
-addr1, addr2, valAddr :: Address
-addr1 = Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh1) Nothing
-addr2 = Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh2) Nothing
+addr1, addr2 :: AddressInEra BabbageEra
+addr1 = unsafeToCardanoAddressInEra testingNetwork $ Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh1) Nothing
+addr2 = unsafeToCardanoAddressInEra testingNetwork $ Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh2) Nothing
+
+valAddr :: Address
 valAddr = ScriptUtils.mkValidatorAddress validator
 
 txOutRef1, txOutRef2, txOutRef3, txOutRef4, txOutRef5, txOutRef6, txOutRef7 :: TxOutRef
@@ -97,17 +104,17 @@ txOutRef5 = TxOutRef "52a003b3f4956433429631afe4002f82a924a5a7a891db7ae1f6434797
 txOutRef6 = TxOutRef "52a003b3f4956433429631afe4002f82a924a5a7a891db7ae1f6434797a57dff" 3
 txOutRef7 = TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 1
 
-txIn1, txIn2, txIn3, txIn4 :: TxIn
-txIn1 = TxIn txOutRef1 (Just ConsumePublicKeyAddress)
-txIn2 = TxIn txOutRef2 (Just ConsumePublicKeyAddress)
-txIn3 = TxIn txOutRef3 (Just ConsumePublicKeyAddress)
-txIn4 = TxIn txOutRef4 (Just ConsumePublicKeyAddress)
+txInput1, txInput2, txInput3, txInput4 :: TxInput
+txInput1 = TxInput txOutRef1 TxConsumePublicKeyAddress
+txInput2 = TxInput txOutRef2 TxConsumePublicKeyAddress
+txInput3 = TxInput txOutRef3 TxConsumePublicKeyAddress
+txInput4 = TxInput txOutRef4 TxConsumePublicKeyAddress
 
 utxo1, utxo2, utxo3, utxo4 :: (TxOutRef, TxOut)
-utxo1 = (txOutRef1, TxOut addr1 (Ada.lovelaceValueOf 1_100_000) Nothing)
-utxo2 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 1_000_000) Nothing)
-utxo3 = (txOutRef3, TxOut addr1 (Ada.lovelaceValueOf 900_000) Nothing)
-utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton currencySymbol1 "Token" 200) Nothing)
+utxo1 = (txOutRef1, addressTxOut addr1 $ lovelaceValueOf 1_100_000)
+utxo2 = (txOutRef2, addressTxOut addr1 $ lovelaceValueOf 1_000_000)
+utxo3 = (txOutRef3, addressTxOut addr1 $ lovelaceValueOf 900_000)
+utxo4 = (txOutRef4, addressTxOut addr1 $ lovelaceValueOf 800_000 <> unsafeValueOf currencySymbol1 "Token" 200)
 
 -- Ada values set  to amount that covers min Ada so we don't need to deal with
 -- output's adjustments
@@ -130,9 +137,12 @@ lovelaceInValue = acValueOf (Value.assetClass Api.adaSymbol Api.adaToken)
 tokenAsset :: Value.AssetClass
 tokenAsset = Value.assetClass currencySymbol1 "Token"
 
+unsafeToTxOut :: ChainIndexTxOut -> TxOut
+unsafeToTxOut = fromRight undefined . Ledger.toTxOut testingNetwork
+
 addUtxosForFees :: Assertion
 addUtxosForFees = do
-  let txOut = TxOut addr2 (Ada.lovelaceValueOf 1_000_000) Nothing
+  let txOut = addressTxOut addr2 (lovelaceValueOf 1_000_000)
       tx = mempty {txOutputs = [txOut]} `withFee` 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
@@ -143,11 +153,11 @@ addUtxosForFees = do
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
-    Right balanceTx -> txInputs <$> balanceTx @?= Right [txIn1, txIn2]
+    Right balanceTx -> txInputs <$> balanceTx @?= Right [txInput1, txInput2]
 
 addUtxosForNativeTokens :: Assertion
 addUtxosForNativeTokens = do
-  let txOut = TxOut addr2 (Value.singleton currencySymbol1 "Token" 123) Nothing
+  let txOut = addressTxOut addr2 (unsafeValueOf currencySymbol1 "Token" 123)
       tx = mempty {txOutputs = [txOut]} `withFee` 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3, utxo4]
       ownAddr = addr1
@@ -158,11 +168,11 @@ addUtxosForNativeTokens = do
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
-    Right balancedTx -> txInputs <$> balancedTx @?= Right [txIn4]
+    Right balancedTx -> txInputs <$> balancedTx @?= Right [txInput4]
 
 addUtxosForChange :: Assertion
 addUtxosForChange = do
-  let txOut = TxOut addr2 (Ada.lovelaceValueOf 1_600_000) Nothing
+  let txOut = addressTxOut addr2 (lovelaceValueOf 1_600_000)
       tx = mempty {txOutputs = [txOut]} `withFee` 500_000
       utxoIndex = Map.fromList [utxo1, utxo2, utxo3]
       ownAddr = addr1
@@ -173,7 +183,7 @@ addUtxosForChange = do
 
   case ebalancedTx of
     Left e -> assertFailure (Text.unpack e)
-    Right balancedTx -> txInputs <$> balancedTx @?= Right [txIn1, txIn2]
+    Right balancedTx -> txInputs <$> balancedTx @?= Right [txInput1, txInput2]
 
 dontAddChangeToDatum :: Assertion
 dontAddChangeToDatum = do
@@ -240,9 +250,9 @@ dontAddChangeToDatum = do
   eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> show txt)
   trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> show txt)
   let scrTxOut'' = scrTxOut & Ledger.ciTxOutValue .~ payToScriptValue
-      scrTxOutExpected = Ledger.toTxOut scrTxOut''
+      scrTxOutExpected = unsafeToTxOut scrTxOut''
       isScrUtxo :: TxOut -> Bool
-      isScrUtxo utxo = txOutAddress utxo == txOutAddress scrTxOutExpected
+      isScrUtxo utxo = Ledger.txOutAddress utxo == Ledger.txOutAddress scrTxOutExpected
       (balScrUtxos, balOtherUtxos) = partition isScrUtxo (txOutputs trx)
   assertBool
     ( "Expected UTxO not in output Tx."
@@ -310,9 +320,9 @@ dontAddChangeToDatum2 = do
   eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> show txt)
   trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> show txt)
   let scrTxOut'' = scrTxOut & Ledger.ciTxOutValue .~ payToScrValue
-      scrTxOutExpected = Ledger.toTxOut scrTxOut''
+      scrTxOutExpected = unsafeToTxOut scrTxOut''
       isScrUtxo :: TxOut -> Bool
-      isScrUtxo utxo = txOutAddress utxo == txOutAddress scrTxOutExpected
+      isScrUtxo utxo = Ledger.txOutAddress utxo == Ledger.txOutAddress scrTxOutExpected
       (balScrUtxos, balOtherUtxos) = partition isScrUtxo (txOutputs trx)
   -- Check that the expected script UTxO
   -- is in the output.
@@ -331,15 +341,15 @@ dontAddChangeToDatum2 = do
   -- Check that the output has the remaining change
   let trxFee = txFee trx
       adaChange' :: Integer
-      adaChange' = ((-) `on` (lovelaceInValue . txOutValue)) (Ledger.toTxOut scrTxOut) scrTxOutExpected
+      adaChange' = ((-) `on` (lovelaceInValue . Ledger.txOutValue)) (unsafeToTxOut scrTxOut) scrTxOutExpected
       adaChange :: Integer
       adaChange = adaChange' - lovelaceInValue trxFee
       tokChange :: Integer
-      tokChange = ((-) `on` (acValueOf tokenAsset . txOutValue)) (Ledger.toTxOut scrTxOut) scrTxOutExpected
+      tokChange = ((-) `on` (acValueOf tokenAsset . Ledger.txOutValue)) (unsafeToTxOut scrTxOut) scrTxOutExpected
       remainingTxOuts :: [TxOut]
       remainingTxOuts = delete scrTxOutExpected (txOutputs trx)
       remainingValue :: Value.Value
-      remainingValue = foldMap txOutValue remainingTxOuts
+      remainingValue = foldMap Ledger.txOutValue remainingTxOuts
   -- Check for ADA change
   assertBool
     ( "Other UTxOs do not contain expected ADA change."
@@ -363,5 +373,8 @@ liftAssertFailure (Right rslt) _ = return rslt
 toHashAndDatum :: ScriptUtils.Datum -> (ScriptUtils.DatumHash, Maybe ScriptUtils.Datum)
 toHashAndDatum d = (ScriptUtils.datumHash d, Just d)
 
-toHashAndValidator :: Api.Validator -> (Api.ValidatorHash, Maybe Api.Validator)
-toHashAndValidator v = (Scripts.validatorHash v, Just v)
+toHashAndValidator :: Api.Validator -> (Api.ValidatorHash, Maybe (ScriptUtils.Versioned Api.Validator))
+toHashAndValidator (toV1 -> v) = (Scripts.validatorHash v, Just v)
+
+toV1 :: Api.Validator -> ScriptUtils.Versioned Api.Validator
+toV1 = flip ScriptUtils.Versioned ScriptUtils.PlutusV1

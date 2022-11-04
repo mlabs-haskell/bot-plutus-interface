@@ -4,6 +4,8 @@ module Spec.BotPlutusInterface.CoinSelection (tests) where
 
 import BotPlutusInterface.CoinSelection (selectTxIns, uniqueAssetClasses, valuesToVecs)
 import BotPlutusInterface.Effects (PABEffect)
+import BotPlutusInterface.Helpers (addressTxOut, lovelaceValueOf, unsafeToCardanoAddressInEra, unsafeValueOf)
+import Cardano.Api qualified as CApi
 import Control.Lens (filtered, foldOf, folded, to, (^..))
 import Data.Default (def)
 import Data.Either (isLeft)
@@ -16,17 +18,17 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
+import Ledger (txOutValue)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Address (Address (Address), PaymentPubKeyHash (PaymentPubKeyHash))
+import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PubKeyHash)
-import Ledger.Tx (TxIn (..), TxInType (..), TxOut (..), TxOutRef (..))
+import Ledger.Tx (TxInput (..), TxInputType (..), TxOut (..), TxOutRef (..))
 import Ledger.Value (AssetClass, Value, leq)
 import Ledger.Value qualified as Value
-import Plutus.V1.Ledger.Credential (Credential (PubKeyCredential, ScriptCredential))
-import Spec.MockContract (runPABEffectPure)
+import Spec.MockContract (runPABEffectPure, testingNetwork)
 import Spec.RandomLedger
 import Test.QuickCheck (Gen, Property, forAll, withMaxSuccess)
 import Test.Tasty (TestTree, testGroup)
@@ -48,8 +50,8 @@ tests =
 pkh1 :: PubKeyHash
 pkh1 = Address.unPaymentPubKeyHash . Wallet.paymentPubKeyHash $ Wallet.knownMockWallet 1
 
-addr1 :: Address
-addr1 = Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh1) Nothing
+addr1 :: CApi.AddressInEra CApi.BabbageEra
+addr1 = unsafeToCardanoAddressInEra testingNetwork $ Ledger.pubKeyHashAddress (PaymentPubKeyHash pkh1) Nothing
 
 txOutRef1, txOutRef2, txOutRef3, txOutRef4, txOutRef5 :: TxOutRef
 txOutRef1 = TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
@@ -58,35 +60,39 @@ txOutRef3 = TxOutRef "d8a5630a9d7e913f9d186c95e5138a239a4e79ece3414ac894dbf37280
 txOutRef4 = TxOutRef "d8a5630a9d7e913f9d186c95e5138a239a4e79ece3414ac894dbf37280944de3" 2
 txOutRef5 = TxOutRef "34d491e0596b3a04be6e3442ebf115b33900f26e5e415e5151f820778ba576ed" 0
 
-utxo1, utxo2, utxo3, utxo4, utxo5 :: (TxOutRef, TxOut)
-utxo1 = (txOutRef1, TxOut addr1 (Ada.lovelaceValueOf 1_400_000) Nothing)
-utxo2 = (txOutRef2, TxOut addr1 (Ada.lovelaceValueOf 1_200_000) Nothing)
-utxo3 = (txOutRef3, TxOut addr1 (Ada.lovelaceValueOf 900_000) Nothing)
-utxo4 = (txOutRef4, TxOut addr1 (Ada.lovelaceValueOf 800_000 <> Value.singleton "11223344" "Token1" 500) Nothing)
-utxo5 = (txOutRef5, TxOut addr1 (Ada.lovelaceValueOf 600_000 <> Value.singleton "44332211" "Token2" 500) Nothing)
+currencySymbol1, currencySymbol2 :: Ledger.CurrencySymbol
+currencySymbol1 = "11111111111111111111111111111111111111111111111111111111"
+currencySymbol2 = "22222222222222222222222222222222222222222222222222222222"
 
-txIn1, txIn2, txIn3, txIn4, txIn5 :: TxIn
-txIn1 = TxIn txOutRef1 (Just ConsumePublicKeyAddress)
-txIn2 = TxIn txOutRef2 (Just ConsumePublicKeyAddress)
-txIn3 = TxIn txOutRef3 (Just ConsumePublicKeyAddress)
-txIn4 = TxIn txOutRef4 (Just ConsumePublicKeyAddress)
-txIn5 = TxIn txOutRef5 (Just ConsumePublicKeyAddress)
+utxo1, utxo2, utxo3, utxo4, utxo5 :: (TxOutRef, TxOut)
+utxo1 = (txOutRef1, addressTxOut addr1 $ lovelaceValueOf 1_400_000)
+utxo2 = (txOutRef2, addressTxOut addr1 $ lovelaceValueOf 1_200_000)
+utxo3 = (txOutRef3, addressTxOut addr1 $ lovelaceValueOf 900_000)
+utxo4 = (txOutRef4, addressTxOut addr1 $ lovelaceValueOf 800_000 <> unsafeValueOf currencySymbol1 "Token1" 500)
+utxo5 = (txOutRef5, addressTxOut addr1 $ lovelaceValueOf 600_000 <> unsafeValueOf currencySymbol2 "Token2" 500)
+
+txInput1, txInput2, txInput3, txInput4, txInput5 :: TxInput
+txInput1 = TxInput txOutRef1 TxConsumePublicKeyAddress
+txInput2 = TxInput txOutRef2 TxConsumePublicKeyAddress
+txInput3 = TxInput txOutRef3 TxConsumePublicKeyAddress
+txInput4 = TxInput txOutRef4 TxConsumePublicKeyAddress
+txInput5 = TxInput txOutRef5 TxConsumePublicKeyAddress
 
 validAssetClasses :: Assertion
 validAssetClasses =
   uniqueAssetClasses (map (txOutValue . snd) [utxo1, utxo2, utxo3, utxo4, utxo5])
     @?= Set.fromList
       [ Value.assetClass Ada.adaSymbol Ada.adaToken
-      , Value.assetClass "44332211" "Token2"
-      , Value.assetClass "11223344" "Token1"
+      , Value.assetClass currencySymbol2 "Token2"
+      , Value.assetClass currencySymbol1 "Token1"
       ]
 
 testOutputValue1, testOutputValue2, testOutputValue3, testOutputValue4 :: Value
-testOutputValue1 = Ada.lovelaceValueOf 1_000_000 <> Value.singleton "11223344" "Token1" 100
+testOutputValue1 = Ada.lovelaceValueOf 1_000_000 <> Value.singleton currencySymbol1 "Token1" 100
 testOutputValue2 = Ada.lovelaceValueOf 1_000_000
 testOutputValue3 =
-  Ada.lovelaceValueOf 1_000_000 <> Value.singleton "11223344" "Token1" 100
-    <> Value.singleton "44332211" "Token2" 50
+  Ada.lovelaceValueOf 1_000_000 <> Value.singleton currencySymbol1 "Token1" 100
+    <> Value.singleton currencySymbol2 "Token2" 50
 testOutputValue4 = Ada.lovelaceValueOf 1_500_000
 
 greedyApprox :: Assertion
@@ -102,10 +108,10 @@ greedyApprox = do
       expectedResults =
         map
           (Right . Set.fromList)
-          [ [txIn2, txIn4]
-          , [txIn2]
-          , [txIn4, txIn5, txIn1]
-          , [txIn1, txIn2]
+          [ [txInput2, txInput4]
+          , [txInput2]
+          , [txInput4, txInput5, txInput1]
+          , [txInput1, txInput2]
           ]
 
   case eresult of
@@ -176,23 +182,22 @@ validateBalancing = withMaxSuccess 10000 (forAll balanceGen validate)
   where
     validate :: (TxOut, Map TxOutRef TxOut) -> Bool
     validate (txOutput, utxos) =
-      let result :: Either Text (Either WAPI.WalletAPIError (Set TxIn))
+      let result :: Either Text (Either WAPI.WalletAPIError (Set TxInput))
           result =
             fst $
               runPABEffectPure def $
                 selectTxIns @() @'[PABEffect ()] mempty utxos (txOutValue txOutput)
 
           isScriptOutput :: TxOut -> Bool
-          isScriptOutput TxOut {txOutAddress = Address {addressCredential = ScriptCredential _}} = True
-          isScriptOutput TxOut {txOutAddress = Address {addressCredential = PubKeyCredential _}} = False
+          isScriptOutput (TxOut (CApi.TxOut addr _ _ _)) = not $ CApi.isKeyAddress addr
 
           sufficientValue :: Bool
           sufficientValue =
             txOutValue txOutput
               `leq` foldOf (folded . filtered (not . isScriptOutput) . to txOutValue) utxos
 
-          toTxOut :: TxIn -> TxOut
-          toTxOut = fromJust . (`Map.lookup` utxos) . txInRef
+          toTxOut :: TxInput -> TxOut
+          toTxOut = fromJust . (`Map.lookup` utxos) . txInputRef
        in case result of
             Left _ -> False
             Right eselectedTxIns

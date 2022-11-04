@@ -116,11 +116,11 @@ testTxUsesCollateralCorrectly = do
             cardano-cli transaction build-raw --babbage-era
             --tx-in ${inTxId}#0
             --tx-in-collateral ${collateralTxId}#0
-            --tx-out ${addr2}+3000000 + 5 363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f.74657374546F6B656E
+            --tx-out ${addr2}+3000000 + 5 363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f.74657374546f6b656e
             --mint-script-file ./result-scripts/policy-363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f.plutus
             --mint-redeemer-file ./result-scripts/redeemer-923918e403bf43c34b4ef6b48eb2ee04babed17320d8d1b9ff9ad086e86f44ec.json
             --mint-execution-units (0,0)
-            --mint 5 363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f.74657374546F6B656E
+            --mint 5 363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f.74657374546f6b656e
             --required-signer ./signing-keys/signing-key-${pkh1'}.skey
             --fee 0 --protocol-params-file ./protocol.json
             --out-file ./txs/tx-?.raw
@@ -159,7 +159,7 @@ testTxCreatesCollateralCorrectly = do
     ]
 
 curSymbol :: Value.CurrencySymbol
-curSymbol = Ledger.scriptCurrencySymbol mintingPolicy
+curSymbol = Ledger.scriptCurrencySymbol $ Tx.Versioned mintingPolicy Tx.PlutusV1
 
 curSymbol' :: Text
 curSymbol' = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol

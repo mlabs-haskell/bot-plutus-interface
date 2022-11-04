@@ -15,6 +15,7 @@ module BotPlutusInterface.Files (
   writeAll,
   writePolicyScriptFile,
   redeemerJsonFilePath,
+  referenceScriptFilePath,
   mkDummyPrivateKey,
   writeRedeemerJsonFile,
   writeValidatorScriptFile,
@@ -35,6 +36,7 @@ import BotPlutusInterface.Effects (
 import BotPlutusInterface.Types (PABConfig)
 import Cardano.Api (
   AsType (AsPaymentKey, AsSigningKey, AsVerificationKey),
+  BabbageEra,
   FileError,
   HasTextEnvelope,
   Key (VerificationKey),
@@ -47,6 +49,7 @@ import Cardano.Api (
  )
 import Cardano.Api.Shelley (
   PlutusScript (PlutusScriptSerialised),
+  ReferenceScript (ReferenceScript),
   ScriptDataJsonSchema (ScriptDataJsonDetailedSchema),
   fromPlutusData,
   scriptDataToJson,
@@ -72,6 +75,7 @@ import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
 import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
 import Ledger.Tx qualified as Tx
+import Ledger.Tx.CardanoAPI (fromCardanoScriptInAnyLang)
 import Ledger.Value qualified as Value
 import Plutus.Script.Utils.Scripts (Versioned (Versioned))
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
@@ -104,6 +108,11 @@ validatorScriptFilePath :: PABConfig -> ValidatorHash -> Text
 validatorScriptFilePath pabConf (ValidatorHash valHash) =
   let h = encodeByteString $ fromBuiltin valHash
    in pabConf.pcScriptFileDir <> "/validator-" <> h <> ".plutus"
+
+referenceScriptFilePath :: PABConfig -> Ledger.ScriptHash -> Text
+referenceScriptFilePath pabConf scriptHash =
+  let h = encodeByteString $ fromBuiltin $ Ledger.getScriptHash scriptHash
+   in pabConf.pcScriptFileDir <> "/reference-script-" <> h <> ".plutus"
 
 datumJsonFilePath :: PABConfig -> DatumHash -> Text
 datumJsonFilePath pabConf (DatumHash datumHash) =
@@ -162,6 +171,16 @@ writeValidatorScriptFile pabConf validatorScript =
       filepath = validatorScriptFilePath pabConf (ScriptUtils.validatorHash validatorScript)
    in writeScriptEnvelope @w script filepath
 
+writeReferenceScriptFile ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  Versioned Script ->
+  Eff effs (Either (FileError ()) Text)
+writeReferenceScriptFile pabConf script =
+  let filepath = referenceScriptFilePath pabConf (ScriptUtils.scriptHash script)
+   in writeScriptEnvelope @w script filepath
+
 -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
 -- -- | Writes metadata file under the given folder
 -- writeMetadataFile ::
@@ -187,6 +206,13 @@ txValidatorInputs tx = mapMaybe (fromTxInputType . Tx.txInputType) $ Tx.txInputs
       pure (mValidator, r, datum)
     fromTxInputType _ = Nothing
 
+txReferenceScripts :: Tx.Tx -> [Versioned Script]
+txReferenceScripts tx = catMaybes $ (getVersionedScript . Tx.txOutReferenceScript) <$> Tx.txOutputs tx
+  where
+    getVersionedScript :: ReferenceScript BabbageEra -> Maybe (Versioned Script)
+    getVersionedScript (ReferenceScript _ s) = fromCardanoScriptInAnyLang s
+    getVersionedScript _ = Nothing
+
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -204,6 +230,7 @@ writeAll pabConf tx = do
       policyScripts = txMintingPolicies tx
       allDatums = datums <> Map.elems (Tx.txData tx)
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
+      allRefScripts = txReferenceScripts tx
 
   results <-
     sequence $
@@ -212,6 +239,7 @@ writeAll pabConf tx = do
         , map (writeValidatorScriptFile @w pabConf) validatorScripts
         , map (writeDatumJsonFile @w pabConf) allDatums
         , map (writeRedeemerJsonFile @w pabConf) allRedeemers
+        , map (writeReferenceScriptFile @w pabConf) allRefScripts
         -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
         -- , map (writeMetadataFile @w pabConf) (maybeToList $ Tx.txMetadata tx)
         ]

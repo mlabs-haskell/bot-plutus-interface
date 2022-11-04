@@ -51,6 +51,7 @@ module Spec.MockContract (
   nonExistingTxId,
   theCollateralUtxo,
   theCollateralTxId,
+  testingNetwork,
 ) where
 
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt, UtxosAtExcluding))
@@ -60,6 +61,7 @@ import BotPlutusInterface.Collateral (withCollateralHandling)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
 import BotPlutusInterface.Files qualified as Files
+import BotPlutusInterface.Helpers (unsafeSerialiseAddress)
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
   BudgetEstimationError,
@@ -78,7 +80,8 @@ import Cardano.Api (
   FileError (FileError, FileIOError),
   HasTextEnvelope,
   Key (VerificationKey, getVerificationKey),
-  NetworkId (Mainnet),
+  NetworkId (Testnet),
+  NetworkMagic (NetworkMagic),
   PaymentKey,
   PlutusScriptVersion (PlutusScriptV2),
   Script (PlutusScript),
@@ -175,6 +178,9 @@ import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 
+testingNetwork :: NetworkId
+testingNetwork = Testnet $ NetworkMagic 1097911063
+
 currencySymbol1 :: Ledger.CurrencySymbol
 currencySymbol1 = "363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f"
 
@@ -213,11 +219,10 @@ pkh1' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh1
 pkh2' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh2
 pkh3' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh3
 
--- serialiseAddress . toAddressAny
 addr1, addr2, addr3 :: Text
-addr1 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh1 Nothing)
-addr2 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 Nothing)
-addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Nothing)
+addr1 = unsafeSerialiseAddress testingNetwork (Ledger.pubKeyHashAddress paymentPkh1 Nothing)
+addr2 = unsafeSerialiseAddress testingNetwork (Ledger.pubKeyHashAddress paymentPkh2 Nothing)
+addr3 = unsafeSerialiseAddress testingNetwork (Ledger.pubKeyHashAddress paymentPkh3 Nothing)
 
 nonExistingTxId :: TxId
 nonExistingTxId = TxId "ff"
@@ -304,7 +309,7 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
+      { cePABConfig = def {pcNetwork = testingNetwork, pcOwnPubKeyHash = pkh1}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
@@ -736,7 +741,7 @@ convertMaybeDatum = \case
   Just (dh, Nothing) -> OutputDatumHash dh
   Just (_dh, Just d) -> OutputDatum d
 
-convertRefScript :: Maybe V1.Script -> ReferenceScript
+convertRefScript :: Maybe (Tx.Versioned V1.Script) -> ReferenceScript
 convertRefScript =
   \case
     Nothing -> ReferenceScriptNone
