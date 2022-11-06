@@ -287,7 +287,7 @@ txInputOpts spendIndex pabConf utxos =
     handleTxInDatum :: Text -> TxOutRef -> DatumHash -> [Text]
     handleTxInDatum prefix txOutRef dHash =
       if fromMaybe False $ txOutDatumIsInline <$> Map.lookup txOutRef utxos
-        then [ prefix <> "tx-in-inline-datum-present" ]
+        then [prefix <> "tx-in-inline-datum-present"]
         else
           [ prefix <> "tx-in-datum-file"
           , datumJsonFilePath pabConf dHash
