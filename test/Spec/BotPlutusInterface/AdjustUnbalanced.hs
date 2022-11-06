@@ -1,10 +1,9 @@
 module Spec.BotPlutusInterface.AdjustUnbalanced (tests) where
 
 import BotPlutusInterface.Types (
-  ContractEnvironment (cePABConfig),
-  PABConfig (pcOwnPubKeyHash, pcProtocolParams),
+  PABConfig (pcOwnPubKeyHash),
  )
-import Control.Lens ((&), (.~), (^.))
+import Control.Lens ((%~), (&), (.~), (^.))
 import Data.Default (def)
 import Data.Text (Text)
 import Ledger (
@@ -32,6 +31,7 @@ import Spec.MockContract (
   paymentPkh3,
   pkhAddr1,
   runContractPure,
+  updatePabConfig,
   utxos,
  )
 import Test.Tasty (TestTree)
@@ -52,9 +52,9 @@ testOutsGetAdjusted = do
       txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing Nothing
       initState =
         def & utxos .~ [(txOutRef, txOut)]
-          & contractEnv .~ contractEnv'
-      pabConf = def {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1, pcProtocolParams = Just def}
-      contractEnv' = def {cePABConfig = pabConf}
+          & contractEnv
+            %~ updatePabConfig
+              (\pabConf -> pabConf {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1})
 
       smallValue = Ada.lovelaceValueOf 1
       bigEnoughValue = Ada.adaValueOf 777

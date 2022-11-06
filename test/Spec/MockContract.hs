@@ -52,9 +52,10 @@ module Spec.MockContract (
   theCollateralUtxo,
   theCollateralTxId,
   testingNetwork,
+  updatePabConfig,
 ) where
 
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt, UtxosAtExcluding))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, QueryEraHistory, QuerySystemStart, UtxosAt, UtxosAtExcluding, UtxosFromTxOutRefs))
 import BotPlutusInterface.CardanoNode.Query (toQueryError)
 
 import BotPlutusInterface.Collateral (withCollateralHandling)
@@ -69,6 +70,7 @@ import BotPlutusInterface.Types (
   CollateralVar (CollateralVar),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
+  EstimationContext,
   LogContext,
   LogLevel (..),
   PABConfig (..),
@@ -101,6 +103,7 @@ import Cardano.Api (
 import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
+import Cardano.Slotting.Time (SystemStart (..))
 import Codec.Serialise (serialise)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
@@ -111,7 +114,7 @@ import Control.Monad.Freer (Eff, reinterpret2, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
-import Data.Aeson (Result (Success), ToJSON)
+import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Bool (bool)
@@ -142,6 +145,7 @@ import Ledger (
   POSIXTimeRange,
   SlotRange,
   UpperBound (UpperBound),
+  emulatorEraHistory,
   lowerBound,
   strictUpperBound,
  )
@@ -150,6 +154,7 @@ import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
 import Ledger.Scripts (Datum (Datum), DatumHash (DatumHash))
 import Ledger.Slot (Slot (getSlot))
+import Ledger.TimeSlot (posixTimeToUTCTime)
 import Ledger.Tx (
   ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
   TxId (TxId),
@@ -314,7 +319,7 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = testingNetwork, pcOwnPubKeyHash = pkh1}
+      { cePABConfig = def {pcNetwork = testingNetwork, pcOwnPubKeyHash = pkh1, pcProtocolParams = Just def}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
@@ -326,6 +331,9 @@ instance Monoid w => Default (ContractState w) where
   def = ContractState {csActivity = Active, csObservableState = mempty}
 
 type MockContract w a = Eff '[Error Text, State (MockContractState w)] a
+
+updatePabConfig :: forall (w :: Type). (PABConfig -> PABConfig) -> ContractEnvironment w -> ContractEnvironment w
+updatePabConfig f env = env {cePABConfig = f $ cePABConfig env}
 
 {- | Run the contract monad in a pure mock runner, and return a tuple of the contract result and
  the contract state
@@ -387,7 +395,7 @@ runPABEffectPure initState req =
         mCollateral
         mockQueryChainIndex
         query
-    go (EstimateBudget file) = mockExBudget file
+    go (EstimateBudget eCtx file) = mockExBudget eCtx file
     go (SaveBudget txId budget) = mockSaveBudget txId budget
     go (SlotToPOSIXTime _) = pure $ Right 1506203091
     go (POSIXTimeToSlot _) = pure $ Right 1
@@ -760,33 +768,15 @@ convertRefScript =
         . serialise
         $ v
 
+-- Stubbed to return no budgets, as given optimisations, its not possible to know which inputs are used from txfile
+-- Ideal solution is to store a mapping from txfile to boolean of "uses scripts" written in cardano-cli transaction build-raw
 mockExBudget ::
   forall (w :: Type).
+  EstimationContext ->
   TxFile ->
   MockContract w (Either BudgetEstimationError TxBudget)
-mockExBudget _ = pure . Right $ TxBudget inBudgets policyBudgets
-  where
-    inBudgets = Map.singleton (TxOutRef txId 1) someBudget
-    policyBudgets = Map.singleton policy someBudget
+mockExBudget _ _ = pure . Right $ TxBudget Map.empty Map.empty
 
-    someBudget = Ledger.ExBudget (Ledger.ExCPU 500000) (Ledger.ExMemory 2000)
-
-    txId =
-      let txId' =
-            JSON.fromJSON $
-              JSON.object
-                ["getTxId" JSON..= ("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" :: Text)]
-       in case txId' of
-            Success tid -> tid
-            _ -> error "Could not parse TxId"
-
-    policy =
-      let policy' =
-            JSON.fromJSON . JSON.String $
-              "648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198"
-       in case policy' of
-            Success p -> p
-            _ -> error "Could not parse MintingPolicyHash"
 dummyTxRawFile :: TextEnvelope
 dummyTxRawFile =
   TextEnvelope
@@ -837,3 +827,6 @@ mockQueryNode = \case
     case pcProtocolParams $ cePABConfig $ _contractEnv state of
       Nothing -> return $ Left $ toQueryError @String "Not able to get protocol parameters."
       (Just pparams) -> return $ Right pparams
+  UtxosFromTxOutRefs _txOutRefs -> pure $ Right Map.empty
+  QuerySystemStart -> pure $ Right $ SystemStart $ posixTimeToUTCTime 0
+  QueryEraHistory -> pure $ Right $ emulatorEraHistory def

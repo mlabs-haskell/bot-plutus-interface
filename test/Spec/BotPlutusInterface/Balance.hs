@@ -13,7 +13,8 @@ import BotPlutusInterface.Types (
   PABConfig (pcOwnPubKeyHash),
  )
 import Cardano.Api (AddressInEra, BabbageEra)
-import Control.Lens ((&), (.~), (^.))
+import Control.Lens (views, (%~), (&), (.~), (^.))
+import Control.Monad.Trans.Either (runEitherT)
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight)
 import Data.Function (on)
@@ -55,6 +56,7 @@ import Spec.MockContract (
   pkhAddr3,
   runPABEffectPure,
   testingNetwork,
+  updatePabConfig,
   utxos,
  )
 import Test.Tasty (TestTree, testGroup)
@@ -205,11 +207,10 @@ dontAddChangeToDatum = do
       initState :: MockContractState ()
       initState =
         def & utxos .~ [(txOutRef6, scrTxOut), (txOutRef7, usrTxOut)]
-          & contractEnv .~ contractEnv'
-      pabConf :: PABConfig
-      pabConf = def {pcOwnPubKeyHash = pkh3}
-      contractEnv' :: ContractEnvironment ()
-      contractEnv' = def {cePABConfig = pabConf}
+          & contractEnv
+            %~ updatePabConfig
+              (\conf -> conf {pcOwnPubKeyHash = pkh3})
+      pabConf = views contractEnv cePABConfig initState
 
       -- Input UTxOs:
       -- UTxO 1:
@@ -246,7 +247,7 @@ dontAddChangeToDatum = do
       eunbalancedTx = Constraints.mkTx @Void scrLkups txConsts
 
   unbalancedTx <- liftAssertFailure eunbalancedTx (\err -> "MkTx Error: " <> show err)
-  let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
+  let (eRslt, _finalState) = runPABEffectPure initState (runEitherT $ balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
   eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> show txt)
   trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> show txt)
   let scrTxOut'' = scrTxOut & Ledger.ciTxOutValue .~ payToScriptValue
@@ -282,11 +283,10 @@ dontAddChangeToDatum2 = do
       initState :: MockContractState ()
       initState =
         def & utxos .~ [(txOutRef6, scrTxOut)]
-          & contractEnv .~ contractEnv'
-      pabConf :: PABConfig
-      pabConf = def {pcOwnPubKeyHash = pkh3}
-      contractEnv' :: ContractEnvironment ()
-      contractEnv' = def {cePABConfig = pabConf}
+          & contractEnv
+            %~ updatePabConfig
+              (\conf -> conf {pcOwnPubKeyHash = pkh3})
+      pabConf = views contractEnv cePABConfig initState
 
       -- Input UTxO :
       -- - 3.5 ADA
@@ -316,7 +316,7 @@ dontAddChangeToDatum2 = do
       eunbalancedTx = Constraints.mkTx @Void scrLkups txConsts
 
   unbalancedTx <- liftAssertFailure eunbalancedTx (\err -> "MkTx Error: " <> show err)
-  let (eRslt, _finalState) = runPABEffectPure initState (balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
+  let (eRslt, _finalState) = runPABEffectPure initState (runEitherT $ balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
   eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> show txt)
   trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> show txt)
   let scrTxOut'' = scrTxOut & Ledger.ciTxOutValue .~ payToScrValue

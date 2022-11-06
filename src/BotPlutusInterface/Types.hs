@@ -40,7 +40,7 @@ module BotPlutusInterface.Types (
 ) where
 
 import Cardano.Api (AddressInEra, BabbageEra, EraHistory, NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex, TxOut)
-import Cardano.Api.Shelley (ProtocolParameters, CtxUTxO, CardanoMode)
+import Cardano.Api.Shelley (CardanoMode, CtxUTxO, ProtocolParameters)
 import Cardano.Slotting.Time (SystemStart)
 import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)

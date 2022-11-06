@@ -121,8 +121,9 @@ handleUtxosAt ::
   QueryConstraint effs =>
   AddressInEra BabbageEra ->
   Eff effs (Either NodeQueryError (Map TxOutRef TxOutUtxo))
-handleUtxosAt addr = runEitherT $
-  handleUtxoQuery $ CApi.QueryUTxO $ CApi.QueryUTxOByAddress $ Set.singleton $ addressInEraToAny addr
+handleUtxosAt addr =
+  runEitherT $
+    handleUtxoQuery $ CApi.QueryUTxO $ CApi.QueryUTxOByAddress $ Set.singleton $ addressInEraToAny addr
 
 -- | 'runNodeQuery' runs executes the 'NodeQuery' effects.
 runNodeQuery :: PABConfig -> Eff '[NodeQuery, Reader NodeConn, IO] ~> IO

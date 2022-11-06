@@ -235,10 +235,10 @@ txInputOpts :: SpendBudgets -> PABConfig -> [TxInput] -> [Text]
 txInputOpts spendIndex pabConf =
   foldMap $
     \(TxInput txOutRef txInputType) ->
-        mconcat
-          [ ["--tx-in", txOutRefToCliArg txOutRef]
-          , scriptInputs txInputType (Map.findWithDefault mempty txOutRef spendIndex)
-          ]
+      mconcat
+        [ ["--tx-in", txOutRefToCliArg txOutRef]
+        , scriptInputs txInputType (Map.findWithDefault mempty txOutRef spendIndex)
+        ]
   where
     scriptInputs :: TxInputType -> ExBudget -> [Text]
     scriptInputs txInputType exBudget =

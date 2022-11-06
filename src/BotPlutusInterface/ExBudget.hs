@@ -7,10 +7,10 @@ import BotPlutusInterface.Helpers (traverseKeys)
 import BotPlutusInterface.Types (
   BudgetEstimationError (..),
   EstimationContext (..),
-  SystemContext (..),
   MintBudgets,
   PABConfig,
   SpendBudgets,
+  SystemContext (..),
   TxBudget (TxBudget),
   TxFile (..),
  )
@@ -124,7 +124,8 @@ getExUnits ::
 getExUnits (EstimationContext (SystemContext pparams sysStart eraHistory) utxo') txBody = do
   utxo <- CApi.UTxO <$> traverseKeys (left toBudgetError . toCardanoTxIn) utxo'
   left toBudgetError $
-    CApi.evaluateTransactionExecutionUnits CApi.BabbageEraInCardanoMode
+    CApi.evaluateTransactionExecutionUnits
+      CApi.BabbageEraInCardanoMode
       sysStart
       eraHistory
       pparams

@@ -13,9 +13,9 @@ import BotPlutusInterface.Files (
   txFilePath,
  )
 import BotPlutusInterface.Types (EstimationContext, PABConfig, TxBudget, TxFile (Raw))
-import Control.Monad.Trans.Either (EitherT, firstEitherT, newEitherT, mapEitherT)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Freer.State (State, evalState, get)
+import Control.Monad.Trans.Either (EitherT, firstEitherT, mapEitherT, newEitherT)
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Set qualified as Set
@@ -100,10 +100,6 @@ data EstimationContext = EstimationContext CardanoInfo (Map TxOutRef TxOut)
 getEstimationContext :: Set TxOutRef -> Eff effs EstimationContext
 
 unionEstimationContext :: Set TxOutRef -> EstimationContext -> Eff effs EstimationContext
-
-
-
-
 
 this aint right
 buildAndEstimateBudget is called from balance multiple times, we don't want to reeval the state each loop

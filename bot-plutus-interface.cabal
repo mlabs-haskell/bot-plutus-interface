@@ -201,6 +201,7 @@ test-suite bot-plutus-interface-test
     , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto-class
+    , cardano-slotting
     , containers
     , data-default
     , data-default-class
@@ -242,6 +243,7 @@ test-suite bot-plutus-interface-test
     , tasty-quickcheck
     , temporary
     , text                       ^>=1.2.4.0
+    , transformers-either
     , utf8-string
     , uuid
     , vector

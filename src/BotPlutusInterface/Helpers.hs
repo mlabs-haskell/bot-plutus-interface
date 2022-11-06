@@ -67,4 +67,4 @@ traverseKeys ::
   (k1 -> m k2) ->
   Map.Map k1 a ->
   m (Map.Map k2 a)
-traverseKeys f = fmap Map.fromList . traverse (\(k, v) -> (, v) <$> f k) . Map.toList
+traverseKeys f = fmap Map.fromList . traverse (\(k, v) -> (,v) <$> f k) . Map.toList

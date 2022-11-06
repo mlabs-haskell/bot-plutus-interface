@@ -675,7 +675,7 @@ redeemFromValidator = do
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --tx-in-execution-units (500000,2000)
+          --tx-in-execution-units (0,0)
           --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+857690
           --required-signer ./signing-keys/signing-key-${pkh1'}.skey
@@ -691,7 +691,7 @@ redeemFromValidator = do
           --tx-in-script-file ./result-scripts/validator-${valHash'}.plutus
           --tx-in-datum-file ./result-scripts/datum-${datumHash'}.json
           --tx-in-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
-          --tx-in-execution-units (500000,2000)
+          --tx-in-execution-units (0,0)
           --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+857690
           --tx-out ${addr1}+49143160
