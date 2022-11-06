@@ -26,6 +26,7 @@ import BotPlutusInterface.Files (
   validatorScriptFilePath,
  )
 import BotPlutusInterface.Types (
+  EstimationContext (ecUtxos),
   MintBudgets,
   PABConfig,
   SpendBudgets,
@@ -44,6 +45,7 @@ import Cardano.Api.Shelley (
  )
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, Member)
+import Control.Monad.Freer.State (State, get)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
@@ -142,16 +144,19 @@ calculateMinFee pabConf tx =
 -- | Build a tx body and write it to disk
 buildTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
+  ( Member (PABEffect w) effs
+  , Member (State EstimationContext) effs
+  ) =>
   PABConfig ->
   Map PubKeyHash DummyPrivKey ->
   TxBudget ->
   Tx ->
   Eff effs (Either Text ())
-buildTx pabConf privKeys txBudget tx =
+buildTx pabConf privKeys txBudget tx = do
+  utxos <- ecUtxos <$> get
   case toCardanoValue $ txMint tx of
     Right mintValue -> do
-      let ins = txInputOpts (spendBudgets txBudget) pabConf (txInputs tx)
+      let ins = txInputOpts (spendBudgets txBudget) pabConf utxos (txInputs tx)
           mints = mintOpts (mintBudgets txBudget) pabConf (txMintingScripts tx) mintValue
       callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const ())
     Left err -> pure $ Left $ showText err
@@ -231,26 +236,23 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInputOpts :: SpendBudgets -> PABConfig -> [TxInput] -> [Text]
-txInputOpts spendIndex pabConf =
+txInputOpts :: SpendBudgets -> PABConfig -> Map TxOutRef (CApi.TxOut CApi.CtxUTxO CApi.BabbageEra) -> [TxInput] -> [Text]
+txInputOpts spendIndex pabConf utxos =
   foldMap $
     \(TxInput txOutRef txInputType) ->
       mconcat
         [ ["--tx-in", txOutRefToCliArg txOutRef]
-        , scriptInputs txInputType (Map.findWithDefault mempty txOutRef spendIndex)
+        , scriptInputs txInputType txOutRef (Map.findWithDefault mempty txOutRef spendIndex)
         ]
   where
-    scriptInputs :: TxInputType -> ExBudget -> [Text]
-    scriptInputs txInputType exBudget =
+    scriptInputs :: TxInputType -> TxOutRef -> ExBudget -> [Text]
+    scriptInputs txInputType txOutRef exBudget =
       case txInputType of
         TxScriptAddress redeemer eVHash dHash ->
           let (typeText, prefix) = getTxInTypeAndPrefix eVHash
            in mconcat
                 [ typeText
-                ,
-                  [ prefix <> "tx-in-datum-file"
-                  , datumJsonFilePath pabConf dHash
-                  ]
+                , handleTxInDatum prefix txOutRef dHash
                 ,
                   [ prefix <> "tx-in-redeemer-file"
                   , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
@@ -279,6 +281,17 @@ txInputOpts spendIndex pabConf =
               ScriptUtils.PlutusV2 -> ["--spending-plutus-script-v2"]
         , "--spending-reference-"
         )
+    txOutDatumIsInline :: CApi.TxOut CApi.CtxUTxO CApi.BabbageEra -> Bool
+    txOutDatumIsInline (CApi.TxOut _ _ (CApi.TxOutDatumInline _ _) _) = True
+    txOutDatumIsInline _ = False
+    handleTxInDatum :: Text -> TxOutRef -> DatumHash -> [Text]
+    handleTxInDatum prefix txOutRef dHash =
+      if fromMaybe False $ txOutDatumIsInline <$> Map.lookup txOutRef utxos
+        then [ prefix <> "tx-in-inline-datum-present" ]
+        else
+          [ prefix <> "tx-in-datum-file"
+          , datumJsonFilePath pabConf dHash
+          ]
 
 txRefInputOpts :: [TxInput] -> [Text]
 txRefInputOpts =
