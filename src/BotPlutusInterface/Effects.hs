@@ -34,9 +34,12 @@ module BotPlutusInterface.Effects (
   queryNode,
   minUtxo,
   calcMinUtxo,
+  getEstimationContext,
+  unionEstimationContext,
 ) where
 
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery, runNodeQuery)
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (..), runNodeQuery)
+import BotPlutusInterface.CardanoNode.Query (NodeQueryError)
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.Collateral (withCollateralHandling)
 import BotPlutusInterface.Collateral qualified as Collateral
@@ -48,12 +51,14 @@ import BotPlutusInterface.Types (
   CollateralUtxo,
   ContractEnvironment (..),
   ContractState (ContractState),
+  EstimationContext (..),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
   LogLine (..),
-  LogType (..),
   LogsList (LogsList),
+  LogType (..),
   PABConfig (..),
+  SystemContext (..),
   TxBudget,
   TxFile,
   addBudget,
@@ -79,7 +84,9 @@ import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
 import Data.Kind (Type)
+import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
+import Data.Set qualified as Set
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -132,7 +139,7 @@ data PABEffect (w :: Type) (r :: Type) where
   UploadDir :: Text -> PABEffect w ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
   QueryNode :: NodeQuery a -> PABEffect w a
-  EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
+  EstimateBudget :: EstimationContext -> TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
   SaveBudget :: Ledger.TxId -> TxBudget -> PABEffect w ()
   SlotToPOSIXTime ::
     Ledger.Slot ->
@@ -199,8 +206,8 @@ handlePABEffect contractEnv =
             (handleChainIndexReq contractEnv)
             query
         QueryNode query -> runNodeQuery contractEnv.cePABConfig (send query)
-        EstimateBudget txPath ->
-          ExBudget.estimateBudget contractEnv.cePABConfig txPath
+        EstimateBudget eCtx txPath ->
+          ExBudget.estimateBudget contractEnv.cePABConfig eCtx txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
         SlotToPOSIXTime slot ->
           TimeSlot.slotToPOSIXTimeIO contractEnv.cePABConfig slot
@@ -320,9 +327,10 @@ callCommand = send @(PABEffect w) . CallCommand
 estimateBudget ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
+  EstimationContext ->
   TxFile ->
   Eff effs (Either BudgetEstimationError TxBudget)
-estimateBudget = send @(PABEffect w) . EstimateBudget
+estimateBudget eCtx path = send @(PABEffect w) $ EstimateBudget eCtx path
 
 createDirectoryIfMissing ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -479,3 +487,26 @@ minUtxo ::
   Ledger.TxOut ->
   Eff effs (Either Text Ledger.TxOut)
 minUtxo = send @(PABEffect w) . MinUtxo
+
+getEstimationContext ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Set.Set Ledger.TxOutRef ->
+  Eff effs (Either NodeQueryError EstimationContext)
+getEstimationContext txOutRefs = do
+  params <- queryNode @w PParams
+  systemStart <- queryNode @w QuerySystemStart
+  eraHistory <- queryNode @w QueryEraHistory
+  utxos <- queryNode @w $ UtxosFromTxOutRefs txOutRefs
+  pure $ EstimationContext <$> (SystemContext <$> params <*> systemStart <*> eraHistory) <*> utxos
+
+unionEstimationContext ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Set.Set Ledger.TxOutRef ->
+  EstimationContext ->
+  Eff effs (Either NodeQueryError EstimationContext)
+unionEstimationContext newTxOutRefs (EstimationContext systemContext utxos) = do
+  let missingTxOutRefs = Set.filter (flip Map.member utxos) newTxOutRefs
+  newUtxos <- queryNode @w $ UtxosFromTxOutRefs missingTxOutRefs
+  pure $ EstimationContext systemContext . Map.union utxos <$> newUtxos

@@ -29,15 +29,19 @@ module BotPlutusInterface.Types (
   LogsList (..),
   CollateralUtxo (..),
   CollateralVar (..),
+  SystemContext (..),
+  EstimationContext (..),
   addBudget,
   readCollateralUtxo,
   collateralValue,
   sufficientLogLevel,
   ownAddress,
+  toExBudget,
 ) where
 
-import Cardano.Api (AddressInEra, BabbageEra, NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
-import Cardano.Api.Shelley (ProtocolParameters)
+import Cardano.Api (AddressInEra, BabbageEra, EraHistory, NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex, TxOut)
+import Cardano.Api.Shelley (ProtocolParameters, CtxUTxO, CardanoMode)
+import Cardano.Slotting.Time (SystemStart)
 import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
@@ -178,6 +182,9 @@ instance Monoid TxBudget where
 type SpendBudgets = Map TxOutRef ExBudget
 
 type MintBudgets = Map MintingPolicyHash ExBudget
+
+toExBudget :: TxBudget -> ExBudget
+toExBudget (TxBudget spends mints) = mconcat $ Map.elems spends <> Map.elems mints
 
 {- | Collection of stats that could be collected py `bpi`
    about contract it runs
@@ -372,3 +379,14 @@ data RawTx = RawTx
 -- type is a reserved keyword in haskell and can not be used as a field name
 -- when converting this to JSON we drop the _ prefix from each field
 deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx
+
+data SystemContext = SystemContext
+  { scParams :: ProtocolParameters
+  , scSystemStart :: SystemStart
+  , scEraHistory :: EraHistory CardanoMode
+  }
+
+data EstimationContext = EstimationContext
+  { ecSystemContext :: SystemContext
+  , ecUtxos :: Map TxOutRef (TxOut CtxUTxO BabbageEra)
+  }

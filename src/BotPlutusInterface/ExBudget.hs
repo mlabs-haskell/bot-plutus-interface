@@ -3,14 +3,11 @@ module BotPlutusInterface.ExBudget (
   estimateBudget,
 ) where
 
-import BotPlutusInterface.CardanoNode.Query (
-  QueryConstraint,
-  connectionInfo,
-  queryBabbageEra,
-  queryInCardanoMode,
- )
+import BotPlutusInterface.Helpers (traverseKeys)
 import BotPlutusInterface.Types (
   BudgetEstimationError (..),
+  EstimationContext (..),
+  SystemContext (..),
   MintBudgets,
   PABConfig,
   SpendBudgets,
@@ -21,17 +18,14 @@ import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamMaxTxExUnits))
 import Cardano.Prelude (maybeToEither)
 import Control.Arrow (left)
-import Control.Monad.Freer (Eff, runM)
-import Control.Monad.Freer.Reader (runReader)
 import Data.Either (rights)
 import Data.List (sort)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Set qualified as Set
 import Data.Text qualified as Text
 import GHC.Natural (Natural)
 import Ledger (ExBudget (ExBudget), ExCPU (ExCPU), ExMemory (ExMemory), MintingPolicyHash, TxOutRef)
-import Ledger.Tx.CardanoAPI (fromCardanoPolicyId, fromCardanoTxIn)
+import Ledger.Tx.CardanoAPI (fromCardanoPolicyId, fromCardanoTxIn, toCardanoTxIn)
 import Prelude
 
 {- | Estimate budget of transaction.
@@ -39,26 +33,17 @@ import Prelude
  Spending budgets mapped to `TxOutRef`s,
  minting to `MintingPolicyHash`'es
 -}
-estimateBudget :: PABConfig -> TxFile -> IO (Either BudgetEstimationError TxBudget)
-estimateBudget pabConf txFile = do
+estimateBudget :: PABConfig -> EstimationContext -> TxFile -> IO (Either BudgetEstimationError TxBudget)
+estimateBudget pabConf eCtx txFile = do
   txBody <- case txFile of
     Raw rp -> deserialiseRaw rp
     Signed sp -> fmap CApi.getTxBody <$> deserialiseSigned sp
 
-  budgetRes <-
-    either
-      (pure . Left)
-      (getExUnits pabConf)
-      txBody
-
   pure $
     do
       body <- txBody
-      budget <- budgetRes
-      pparams <-
-        maybeToEither
-          (BudgetEstimationError "No protocol params found")
-          pabConf.pcProtocolParams
+      budget <- getExUnits eCtx body
+      let pparams = eCtx.ecSystemContext.scParams
       maxUnits <-
         maybeToEither (BudgetEstimationError "Missing max units in parameters") $
           protocolParamMaxTxExUnits pparams
@@ -133,39 +118,18 @@ type ExUnitsMap =
 
 -- | Calculate execution units using `Cardano.Api``
 getExUnits ::
-  PABConfig ->
+  EstimationContext ->
   CApi.TxBody CApi.BabbageEra ->
-  IO (Either BudgetEstimationError ExUnitsMap)
-getExUnits pabConf txBody = do
-  conn <- connectionInfo pabConf
-  runM $ runReader conn (getExUnits' txBody)
-
-getExUnits' ::
-  QueryConstraint effs =>
-  CApi.TxBody CApi.BabbageEra ->
-  Eff effs (Either BudgetEstimationError ExUnitsMap)
-getExUnits' txBody = do
-  sysStart <- queryInCardanoMode CApi.QuerySystemStart
-  eraHistory <- queryInCardanoMode (CApi.QueryEraHistory CApi.CardanoModeIsMultiEra)
-  pparams <- queryBabbageEra CApi.QueryProtocolParameters
-  utxo <- queryBabbageEra $ CApi.QueryUTxO (CApi.QueryUTxOByTxIn $ Set.fromList capiIns)
-  pure $
-    flattenEvalResult $
-      CApi.evaluateTransactionExecutionUnits CApi.BabbageEraInCardanoMode
-        <$> sysStart
-        <*> eraHistory
-        <*> pparams
-        <*> utxo
-        <*> pure txBody
-  where
-    capiIns :: [CApi.TxIn]
-    capiIns =
-      let (CApi.TxBody txbc) = txBody
-       in fst <$> CApi.txIns txbc
-
-    flattenEvalResult = \case
-      Right (Right res) -> Right res
-      err -> Left $ toBudgetError err
+  Either BudgetEstimationError ExUnitsMap
+getExUnits (EstimationContext (SystemContext pparams sysStart eraHistory) utxo') txBody = do
+  utxo <- CApi.UTxO <$> traverseKeys (left toBudgetError . toCardanoTxIn) utxo'
+  left toBudgetError $
+    CApi.evaluateTransactionExecutionUnits CApi.BabbageEraInCardanoMode
+      sysStart
+      eraHistory
+      pparams
+      utxo
+      txBody
 
 {- | Converts `ExecutionUnits` returned by `Cardano.Api` to `ExBudget`
   and maps each budget to corresponding spending input or minting policy

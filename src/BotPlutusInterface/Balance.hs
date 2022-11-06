@@ -16,7 +16,6 @@ import BotPlutusInterface.BodyBuilder qualified as BodyBuilder
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt, UtxosAtExcluding))
 import BotPlutusInterface.CoinSelection (selectTxIns)
-
 import BotPlutusInterface.Effects (
   PABEffect,
   addValue,
@@ -31,11 +30,13 @@ import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Helpers (addressTxOut, lovelaceValueOf)
 import BotPlutusInterface.Types (
   CollateralUtxo (collateralTxOutRef),
+  EstimationContext (..),
   LogLevel (Debug),
   LogType (TxBalancingLog),
   PABConfig,
   collateralTxOutRef,
   ownAddress,
+  toExBudget,
  )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api qualified as CApi
@@ -44,8 +45,9 @@ import Control.Lens (folded, to, (&), (.~), (^.), (^..))
 import Control.Monad (foldM, unless, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Either (EitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
+import Control.Monad.Trans.Either (EitherT, bimapEitherT, firstEitherT, hoistEither, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
+import Control.Monad.Freer.State (State, modify)
 import Data.Bifunctor (first)
 import Data.Coerce (coerce)
 import Data.Either (fromRight)
@@ -107,7 +109,7 @@ balanceTxIO ::
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
-  Eff effs (Either WAPI.WalletAPIError Tx)
+  EitherT WAPI.WalletAPIError (Eff effs) Tx
 balanceTxIO = balanceTxIO' @w defaultBalanceConfig
 
 -- | `balanceTxIO'` is more flexible version of `balanceTxIO`, this lets us specify custom `BalanceConfig`.
@@ -118,95 +120,107 @@ balanceTxIO' ::
   PABConfig ->
   PubKeyHash ->
   UnbalancedTx ->
-  Eff effs (Either WAPI.WalletAPIError Tx)
-balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
-  runEitherT $
-    do
-      updatedOuts <-
-        firstEitherT WAPI.OtherError $
-          newEitherT $
-            sequence <$> traverse (minUtxo @w) (unbalancedTx' ^. Constraints.tx . Tx.outputs)
+  EitherT WAPI.WalletAPIError (Eff effs) Tx
+balanceTxIO' balanceCfg pabConf pkh unbalancedTx =
+  BodyBuilder.runInEstimationEffect @w (unBalancedEmulatorTx unbalancedTx) WAPI.OtherError $
+    balanceTxIOEstimationContext @w balanceCfg pabConf pkh unbalancedTx
 
-      changeAddr <- hoistEither $ first WAPI.ToCardanoError $ ownAddress pabConf
+balanceTxIOEstimationContext ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  ( Member (PABEffect w) effs
+  , Member (State EstimationContext) effs
+  ) =>
+  BalanceConfig ->
+  PABConfig ->
+  PubKeyHash ->
+  UnbalancedTx ->
+  EitherT WAPI.WalletAPIError (Eff effs) Tx
+balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
+  updatedOuts <-
+    firstEitherT WAPI.OtherError $
+      newEitherT $
+        sequence <$> traverse (minUtxo @w) (unbalancedTx' ^. Constraints.tx . Tx.outputs)
 
-      let unbalancedTx = unbalancedTx' & (Constraints.tx . Tx.outputs .~ updatedOuts)
-          tx = unBalancedEmulatorTx unbalancedTx
+  changeAddr <- hoistEither $ first WAPI.ToCardanoError $ ownAddress pabConf
 
-      (utxoIndex, mcollateral) <-
-        newEitherT $
-          utxosAndCollateralAtAddress
-            @w
-            tx
-            changeAddr
+  let unbalancedTx = unbalancedTx' & (Constraints.tx . Tx.outputs .~ updatedOuts)
+      tx = unBalancedEmulatorTx unbalancedTx
 
-      privKeys <- firstEitherT WAPI.OtherError $ newEitherT $ Files.readPrivateKeys @w pabConf
+  (utxoIndex, mcollateral) <-
+    newEitherT $
+      utxosAndCollateralAtAddress
+        @w
+        tx
+        changeAddr
 
-      let requiredSigs :: [PubKeyHash]
-          requiredSigs =
-            unBalancedTxRequiredSignatories unbalancedTx
-              ^.. folded . to Ledger.unPaymentPubKeyHash
+  privKeys <- firstEitherT WAPI.OtherError $ newEitherT $ Files.readPrivateKeys @w pabConf
 
-      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxoIndex
+  let requiredSigs :: [PubKeyHash]
+      requiredSigs =
+        unBalancedTxRequiredSignatories unbalancedTx
+          ^.. folded . to Ledger.unPaymentPubKeyHash
 
-      -- We need this folder on the CLI machine, which may not be the local machine
-      lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
+  lift $ printBpiLog @w (Debug [TxBalancingLog]) $ viaShow utxoIndex
 
-      -- TODO:
-      -- Conversion from POSIXTime to Slot range now occurs in constraints unfortunately, using default params
-      -- These default params use default slot config of
-      -- SlotConfig{ scSlotLength = 1000, scSlotZeroTime :: POSIXTime, scSlotZeroTime = POSIXTime beginningOfTime }
-      -- and default network of testnet magic 1
-      -- This is likely a breaking issue, the constraint interface no longer provides a way to see the original POSIXTime
-      -- We may need to reimplement mkTx, and mkSomeTx so we can pass in the initial constraint state, and use reasonable Params
-      -- https://gist.github.com/TotallyNotChase/b5357c774444170ed3c21085593b7f1f
+  -- We need this folder on the CLI machine, which may not be the local machine
+  lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
 
-      -- Correct solution:
-      -- Provide a BPI constraint that does the job of MustValidateIn but does conversions correctly -
-      -- call to the plutus contract PosixTimeRangeToContainedSlotRangeReq effect
-      -- If a user uses the mkTx one, error out
-      unless (validateRange $ txValidRange tx) $ throwE $ WAPI.OtherError "Invalid validity range on tx"
+  -- TODO:
+  -- Conversion from POSIXTime to Slot range now occurs in constraints unfortunately, using default params
+  -- These default params use default slot config of
+  -- SlotConfig{ scSlotLength = 1000, scSlotZeroTime :: POSIXTime, scSlotZeroTime = POSIXTime beginningOfTime }
+  -- and default network of testnet magic 1
+  -- This is likely a breaking issue, the constraint interface no longer provides a way to see the original POSIXTime
+  -- We may need to reimplement mkTx, and mkSomeTx so we can pass in the initial constraint state, and use reasonable Params
+  -- https://gist.github.com/TotallyNotChase/b5357c774444170ed3c21085593b7f1f
 
-      -- Adds required collaterals in the `Tx`
-      -- is true. Also adds signatures for fee calculation
-      preBalancedTx <-
-        hoistEither $
-          addSignatories ownPkh privKeys requiredSigs $
-            maybe tx (flip addTxCollaterals tx) mcollateral
+  -- Correct solution:
+  -- Provide a BPI constraint that does the job of MustValidateIn but does conversions correctly -
+  -- call to the plutus contract PosixTimeRangeToContainedSlotRangeReq effect
+  -- If a user uses the mkTx one, error out
+  unless (validateRange $ txValidRange tx) $ throwE $ WAPI.OtherError "Invalid validity range on tx"
 
-      -- Balance the tx
-      balancedTx <- balanceTxLoop utxoIndex privKeys changeAddr preBalancedTx
-      changeTxOutWithMinAmt <- firstEitherT WAPI.OtherError $ newEitherT $ addOutput @w changeAddr balancedTx
+  -- Adds required collaterals in the `Tx`
+  -- is true. Also adds signatures for fee calculation
+  preBalancedTx <-
+    hoistEither $
+      addSignatories ownPkh privKeys requiredSigs $
+        maybe tx (flip addTxCollaterals tx) mcollateral
 
-      -- Get current Ada change
-      let adaChange = getAdaChange utxoIndex balancedTx
-          bTx = balanceTxLoop utxoIndex privKeys changeAddr changeTxOutWithMinAmt
+  -- Balance the tx
+  balancedTx <- balanceTxLoop utxoIndex privKeys changeAddr preBalancedTx
+  changeTxOutWithMinAmt <- firstEitherT WAPI.OtherError $ newEitherT $ addOutput @w changeAddr balancedTx
 
-      -- Checks if there's ada change left, if there is then we check
-      -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
-      -- the changeAddr.
-      balancedTxWithChange <-
-        case adaChange /= 0 of
-          True | bcSeparateChange balanceCfg || not (hasChangeUTxO changeAddr balancedTx) -> bTx
-          _ -> pure balancedTx
+  -- Get current Ada change
+  let adaChange = getAdaChange utxoIndex balancedTx
+      bTx = balanceTxLoop utxoIndex privKeys changeAddr changeTxOutWithMinAmt
 
-      -- Get the updated change, add it to the tx
-      let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
-          fullyBalancedTx = addAdaChange balanceCfg changeAddr finalAdaChange balancedTxWithChange
-          txInfoLog =
-            printBpiLog @w (Debug [TxBalancingLog]) $
-              "UnbalancedTx TxInputs: "
-                <+> pretty (length $ txInputs preBalancedTx)
-                <+> "UnbalancedTx TxOutputs: "
-                <+> pretty (length $ txOutputs preBalancedTx)
-                <+> "TxInputs: "
-                <+> pretty (length $ txInputs fullyBalancedTx)
-                <+> "TxOutputs: "
-                <+> pretty (length $ txOutputs fullyBalancedTx)
+  -- Checks if there's ada change left, if there is then we check
+  -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
+  -- the changeAddr.
+  balancedTxWithChange <-
+    case adaChange /= 0 of
+      True | bcSeparateChange balanceCfg || not (hasChangeUTxO changeAddr balancedTx) -> bTx
+      _ -> pure balancedTx
 
-      lift txInfoLog
+  -- Get the updated change, add it to the tx
+  let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
+      fullyBalancedTx = addAdaChange balanceCfg changeAddr finalAdaChange balancedTxWithChange
+      txInfoLog =
+        printBpiLog @w (Debug [TxBalancingLog]) $
+          "UnbalancedTx TxInputs: "
+            <+> pretty (length $ txInputs preBalancedTx)
+            <+> "UnbalancedTx TxOutputs: "
+            <+> pretty (length $ txOutputs preBalancedTx)
+            <+> "TxInputs: "
+            <+> pretty (length $ txInputs fullyBalancedTx)
+            <+> "TxOutputs: "
+            <+> pretty (length $ txOutputs fullyBalancedTx)
 
-      -- finally, we must update the signatories
-      hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
+  lift txInfoLog
+
+  -- finally, we must update the signatories
+  hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
   where
     balanceTxLoop ::
       Map TxOutRef TxOut ->
@@ -221,7 +235,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx' =
       txWithoutFees <-
         newEitherT $ balanceTxStep @w balanceCfg utxoIndex changeAddr $ tx `withFee` 0
 
-      exBudget <- firstEitherT WAPI.OtherError $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
+      exBudget <- bimapEitherT WAPI.OtherError toExBudget $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
 
       nonBudgettedFees <- firstEitherT WAPI.OtherError $ newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
@@ -246,9 +260,12 @@ toCtxTxTxOut (CApi.TxOut addr val d refS) =
 
 -- `utxosAndCollateralAtAddress` returns all the utxos that can be used as an input of a `Tx`,
 -- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
+-- Also adds any new utxos to the estimation context
 utxosAndCollateralAtAddress ::
   forall (w :: Type) (effs :: [Type -> Type]).
-  (Member (PABEffect w) effs) =>
+  ( Member (PABEffect w) effs
+  , Member (State EstimationContext) effs
+  ) =>
   Tx ->
   CApi.AddressInEra CApi.BabbageEra ->
   Eff effs (Either WAPI.WalletAPIError (Map TxOutRef TxOut, Maybe CollateralUtxo))
@@ -262,6 +279,8 @@ utxosAndCollateralAtAddress tx changeAddr =
             inMemCollateral
 
     utxos <- firstEitherT (WAPI.OtherError . Text.pack . show) $ newEitherT $ queryNode @w nodeQuery
+
+    lift $ modify $ \(EstimationContext systemContext curUtxos) -> EstimationContext systemContext $ Map.union curUtxos utxos
 
     let utxos' = (TxOut . toCtxTxTxOut) <$> utxos
 

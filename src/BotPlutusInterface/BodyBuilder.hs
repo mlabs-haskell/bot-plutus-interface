@@ -3,23 +3,25 @@
 {- | Module provides the way of building ".raw" transactions with execution budget
  estimated with `Cardano.Api` tools.
 -}
-module BotPlutusInterface.BodyBuilder (buildAndEstimateBudget) where
+module BotPlutusInterface.BodyBuilder (buildAndEstimateBudget, runInEstimationEffect) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (PABEffect, estimateBudget)
+import BotPlutusInterface.Effects (PABEffect, estimateBudget, getEstimationContext)
 
 import BotPlutusInterface.Files (
   DummyPrivKey,
   txFilePath,
  )
-import BotPlutusInterface.Types (PABConfig, TxFile (Raw))
+import BotPlutusInterface.Types (EstimationContext, PABConfig, TxBudget, TxFile (Raw))
+import Control.Monad.Trans.Either (EitherT, firstEitherT, newEitherT, mapEitherT)
 import Control.Monad.Freer (Eff, Member)
-import Control.Monad.Trans.Either (firstEitherT, newEitherT, runEitherT)
+import Control.Monad.Freer.State (State, evalState, get)
 import Data.Kind (Type)
 import Data.Map (Map)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger (ExBudget, Tx, txId)
+import Ledger (Tx (txInputs), TxInput (txInputRef), txId)
 import Ledger.Crypto (PubKeyHash)
 import Prelude
 
@@ -99,7 +101,60 @@ getEstimationContext :: Set TxOutRef -> Eff effs EstimationContext
 
 unionEstimationContext :: Set TxOutRef -> EstimationContext -> Eff effs EstimationContext
 
+
+
+
+
+this aint right
+buildAndEstimateBudget is called from balance multiple times, we don't want to reeval the state each loop
+instead balance should generate the state (and also use Error, why is it not??)
+so buildAndEstimateBudget shouldn't setup state, and instead have the Error and State constraints
+but, in submission, we need to call buildAndEstimateBudget outside of balance, so we need a way to set up state there
+so, balance adds a function like `runInEstimationEffect` which does the effect setup
+`runError . evalStateM (liftShowTextEitherM . getEstimationContext $ getTxOutRefsFromTxInputs tx)` we'll need to define getTxOutRefsFromTxInputs but thats ez
+it exports this
+then moved `balanceTxIO'` to `balanceTxIOEstimationContext` which has the above state constraints
+define balanceTxIO' = runInEstimationEffect $ balanceTxIOEstimationContext ...
+
+after this, balance needs to update the estimation context whenever it adds inputs. However, we have the full input context already from the collat lookup
+so no further lookup there, just a union
+
+finally, the initial utxo lookup from own address doesn't need to include anything we already looked up in Estimation context
+  however, turns out `Excluding` still looks up the utxos, as node gives us no choice, and simply filters out _after_
+  so any fancy logic here adds nothing
+
+  I would argue the Excluding effect is pointless, as it doesn't _abstract_ any fancy logic. The filter logic can exist within the effect system
+  BPI is a mess
+
+whats left:
+Fix tests - EstimateBudget changed, 3 new node effects, etc.
+  given ctx is only used for estimation, the 3 node effects can return def, the estimate can ignore the file
+  only diff is that utxos MUST include information about any inline inputs if we want to test that
+  but initial tests won't require it
+we now have state context at the callsite of buildTx
+we take that in, and determine the inline datums :)
+
+test it still works with examples
+
+build the new constraints wrapper interface
+
+maybe fix the time stuff
+
 -}
+
+textShow :: forall (a :: Type). Show a => a -> Text
+textShow = Text.pack . show
+
+runInEstimationEffect ::
+  forall (w :: Type) (a :: Type) (e :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Tx ->
+  (Text -> e) ->
+  EitherT e (Eff (State EstimationContext ': effs)) a ->
+  EitherT e (Eff effs) a
+runInEstimationEffect tx toErr comp = do
+  context <- firstEitherT (toErr . textShow) $ newEitherT $ getEstimationContext @w $ Set.fromList $ txInputRef <$> txInputs tx
+  mapEitherT (evalState context) comp
 
 {- | Build and save raw transaction (transaction body) with estimated execution budgets using `CardanoCLI`.
  It builds first transaction body with 0 budget for all spending inputs and minting policies,
@@ -108,28 +163,28 @@ unionEstimationContext :: Set TxOutRef -> EstimationContext -> Eff effs Estimati
 -}
 buildAndEstimateBudget ::
   forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
+  ( Member (PABEffect w) effs
+  , Member (State EstimationContext) effs
+  ) =>
   PABConfig ->
   Map PubKeyHash DummyPrivKey ->
   Tx ->
-  Eff effs (Either Text ExBudget)
+  EitherT Text (Eff effs) TxBudget
 buildAndEstimateBudget pabConf privKeys tx =
-  runEitherT $
-    buildDraftTxBody
-      >> estimateBudgetByDraftBody (Text.unpack $ txFilePath pabConf "raw" (txId tx))
-      >>= buildBodyUsingEstimatedBudget
+  buildDraftTxBody
+    >> estimateBudgetByDraftBody (Text.unpack $ txFilePath pabConf "raw" (txId tx))
+    >>= buildBodyUsingEstimatedBudget
   where
     buildDraftTxBody = newEitherT $ CardanoCLI.buildTx @w pabConf privKeys mempty tx
 
     estimateBudgetByDraftBody path =
-      firstEitherT toText . newEitherT $ estimateBudget @w (Raw path)
+      firstEitherT textShow . newEitherT $ get >>= flip (estimateBudget @w) (Raw path)
 
-    buildBodyUsingEstimatedBudget exBudget =
-      newEitherT $
-        CardanoCLI.buildTx @w
-          pabConf
-          privKeys
-          exBudget
-          tx
-
-    toText = Text.pack . show
+    buildBodyUsingEstimatedBudget txBudget =
+      fmap (const txBudget) $
+        newEitherT $
+          CardanoCLI.buildTx @w
+            pabConf
+            privKeys
+            txBudget
+            tx

@@ -47,7 +47,6 @@ import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
-import Data.Bifunctor (first)
 import Data.Bool (bool)
 import Data.ByteString.Lazy.Char8 qualified as Char8
 import Data.Either.Combinators (mapLeft)
@@ -148,13 +147,13 @@ buildTx ::
   Map PubKeyHash DummyPrivKey ->
   TxBudget ->
   Tx ->
-  Eff effs (Either Text ExBudget)
+  Eff effs (Either Text ())
 buildTx pabConf privKeys txBudget tx =
   case toCardanoValue $ txMint tx of
     Right mintValue -> do
-      let (ins, valBudget) = txInputOpts (spendBudgets txBudget) pabConf (txInputs tx)
-          (mints, mintBudget) = mintOpts (mintBudgets txBudget) pabConf (txMintingScripts tx) mintValue
-      callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const $ valBudget <> mintBudget)
+      let ins = txInputOpts (spendBudgets txBudget) pabConf (txInputs tx)
+          mints = mintOpts (mintBudgets txBudget) pabConf (txMintingScripts tx) mintValue
+      callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const ())
     Left err -> pure $ Left $ showText err
   where
     requiredSigners =
@@ -232,42 +231,36 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInputOpts :: SpendBudgets -> PABConfig -> [TxInput] -> ([Text], ExBudget)
+txInputOpts :: SpendBudgets -> PABConfig -> [TxInput] -> [Text]
 txInputOpts spendIndex pabConf =
   foldMap $
     \(TxInput txOutRef txInputType) ->
-      let (opts, exBudget) =
-            scriptInputs
-              txInputType
-              (Map.findWithDefault mempty txOutRef spendIndex)
-       in (,exBudget) $
-            mconcat
-              [ ["--tx-in", txOutRefToCliArg txOutRef]
-              , opts
-              ]
+        mconcat
+          [ ["--tx-in", txOutRefToCliArg txOutRef]
+          , scriptInputs txInputType (Map.findWithDefault mempty txOutRef spendIndex)
+          ]
   where
-    scriptInputs :: TxInputType -> ExBudget -> ([Text], ExBudget)
+    scriptInputs :: TxInputType -> ExBudget -> [Text]
     scriptInputs txInputType exBudget =
       case txInputType of
         TxScriptAddress redeemer eVHash dHash ->
           let (typeText, prefix) = getTxInTypeAndPrefix eVHash
-           in (,exBudget) $
-                mconcat
-                  [ typeText
-                  ,
-                    [ prefix <> "tx-in-datum-file"
-                    , datumJsonFilePath pabConf dHash
-                    ]
-                  ,
-                    [ prefix <> "tx-in-redeemer-file"
-                    , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
-                    ]
-                  ,
-                    [ prefix <> "tx-in-execution-units"
-                    , exBudgetToCliArg exBudget
-                    ]
+           in mconcat
+                [ typeText
+                ,
+                  [ prefix <> "tx-in-datum-file"
+                  , datumJsonFilePath pabConf dHash
                   ]
-        _ -> mempty
+                ,
+                  [ prefix <> "tx-in-redeemer-file"
+                  , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
+                  ]
+                ,
+                  [ prefix <> "tx-in-execution-units"
+                  , exBudgetToCliArg exBudget
+                  ]
+                ]
+        _ -> []
     getTxInTypeAndPrefix :: Either Scripts.ValidatorHash (ScriptUtils.Versioned TxOutRef) -> ([Text], Text)
     getTxInTypeAndPrefix = \case
       Left vHash ->
@@ -306,7 +299,7 @@ mintOpts ::
   PABConfig ->
   Map Scripts.MintingPolicyHash Ledger.Redeemer ->
   CApi.Value ->
-  ([Text], ExBudget)
+  [Text]
 mintOpts mintIndex pabConf redeemers mintValue =
   let scriptOpts =
         Map.foldMapWithKey
@@ -317,19 +310,18 @@ mintOpts mintIndex pabConf redeemers mintValue =
                       mempty
                       mph
                       mintIndex
-               in (,exBudget) $
-                    mconcat
-                      [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
-                      , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)]
-                      , ["--mint-execution-units", exBudgetToCliArg exBudget]
-                      ]
+               in mconcat
+                    [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
+                    , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)]
+                    , ["--mint-execution-units", exBudgetToCliArg exBudget]
+                    ]
           )
           redeemers
       mintOpt =
         if not (isZero mintValue)
           then ["--mint", valueToCliArg mintValue]
           else []
-   in first (<> mintOpt) scriptOpts
+   in scriptOpts <> mintOpt
 
 -- | This function does not check if the range is valid, for that see `PreBalance.validateRange`
 validRangeOpts :: SlotRange -> [Text]

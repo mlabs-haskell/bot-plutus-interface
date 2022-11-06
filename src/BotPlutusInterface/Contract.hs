@@ -14,7 +14,6 @@ import BotPlutusInterface.Effects (
   ShellArgs (..),
   callCommand,
   createDirectoryIfMissing,
-  estimateBudget,
   getInMemCollateral,
   handleContractLog,
   handlePABEffect,
@@ -40,7 +39,6 @@ import BotPlutusInterface.Types (
   LogLevel (Debug, Notice, Warn),
   LogType (CollateralLog, PABLog),
   Tip (block, slot),
-  TxFile (Signed),
   collateralValue,
   ownAddress,
  )
@@ -336,14 +334,11 @@ balanceTx contractEnv unbalancedTx@(UnbalancedEmulatorTx {}) = do
     Left e -> pure $ BalanceTxFailed e
     _ -> do
       uploadDir @w pabConf.pcSigningKeyFileDir
-      eitherBalancedTx <-
-        Balance.balanceTxIO' @w
-          Balance.defaultBalanceConfig
+      eitherT (pure . BalanceTxFailed) (pure . BalanceTxSuccess . EmulatorTx) $
+        Balance.balanceTxIO @w
           pabConf
           pabConf.pcOwnPubKeyHash
           unbalancedTx
-
-      pure $ either BalanceTxFailed (BalanceTxSuccess . EmulatorTx) eitherBalancedTx
 
 fromCardanoTx :: CardanoTx -> Tx.Tx
 fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
@@ -372,7 +367,7 @@ writeBalancedTx contractEnv cardanoTx = do
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
         signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-    void $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx'
+    txBudget <- BodyBuilder.runInEstimationEffect @w tx' id $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx'
 
     -- TODO: This whole part is hacky and we should remove it.
     let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx')
@@ -390,7 +385,7 @@ writeBalancedTx contractEnv cardanoTx = do
           ]
 
     when (pabConf.pcCollectStats && signable) $
-      collectBudgetStats (Tx.txId tx') pabConf
+      lift $ saveBudget @w (Tx.txId tx') txBudget
 
     when (not pabConf.pcDryRun && signable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx'
@@ -413,18 +408,6 @@ writeBalancedTx contractEnv cardanoTx = do
             , cmdArgs = [src, dst]
             , cmdOutParser = const ()
             }
-
-    collectBudgetStats txId pabConf = do
-      let path = Text.unpack (Files.txFilePath pabConf "signed" txId)
-      txBudget <-
-        firstEitherT toBudgetSaveError $
-          newEitherT $ estimateBudget @w (Signed path)
-      void $ newEitherT (Right <$> saveBudget @w txId txBudget)
-
-    toBudgetSaveError =
-      Text.pack
-        . ("Failed to save Tx budgets statistics: " ++)
-        . show
 
 pkhToText :: Ledger.PubKey -> Text
 pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
@@ -555,11 +538,11 @@ makeCollateral cEnv = runEitherT $ do
       hoistEither $ Collateral.mkCollateralTx pabConf
 
   balancedTx <-
-    newEitherT $
-      Balance.balanceTxIO' @w
-        Balance.defaultBalanceConfig {Balance.bcSeparateChange = True}
-        pabConf
-        pabConf.pcOwnPubKeyHash unbalancedTx
+    Balance.balanceTxIO' @w
+      Balance.defaultBalanceConfig {Balance.bcSeparateChange = True}
+      pabConf
+      pabConf.pcOwnPubKeyHash
+      unbalancedTx
 
   wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)
   case wbr of
