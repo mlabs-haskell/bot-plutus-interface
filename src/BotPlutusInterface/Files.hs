@@ -70,7 +70,7 @@ import Data.Map qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger qualified as Ledger
+import Ledger qualified
 import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
 import Ledger.Crypto qualified as Crypto
 import Ledger.Tx (Tx)
@@ -207,7 +207,7 @@ txValidatorInputs tx = mapMaybe (fromTxInputType . Tx.txInputType) $ Tx.txInputs
     fromTxInputType _ = Nothing
 
 txReferenceScripts :: Tx.Tx -> [Versioned Script]
-txReferenceScripts tx = catMaybes $ (getVersionedScript . Tx.txOutReferenceScript) <$> Tx.txOutputs tx
+txReferenceScripts tx = catMaybes $ getVersionedScript . Tx.txOutReferenceScript <$> Tx.txOutputs tx
   where
     getVersionedScript :: ReferenceScript BabbageEra -> Maybe (Versioned Script)
     getVersionedScript (ReferenceScript _ s) = fromCardanoScriptInAnyLang s

@@ -416,6 +416,7 @@
                 haskellPackages.cabal-fmt
                 haskellPackages.implicit-hie
                 haskellPackages.fourmolu
+                haskellPackages.apply-refact
                 hlint
                 jq
                 websocat

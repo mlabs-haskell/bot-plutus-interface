@@ -173,7 +173,7 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
   preBalancedTx <-
     hoistEither $
       addSignatories ownPkh privKeys requiredSigs $
-        maybe tx (flip addTxCollaterals tx) mcollateral
+        maybe tx (`addTxCollaterals` tx) mcollateral
 
   -- Balance the tx
   balancedTx <- balanceTxLoop utxoIndex privKeys changeAddr preBalancedTx
@@ -271,7 +271,7 @@ utxosAndCollateralAtAddress tx changeAddr =
 
     lift $ modify $ \(EstimationContext systemContext curUtxos) -> EstimationContext systemContext $ Map.union curUtxos utxos
 
-    let utxos' = (TxOut . toCtxTxTxOut) <$> utxos
+    let utxos' = TxOut . toCtxTxTxOut <$> utxos
 
     -- check if transaction requires a collateral, if it does, search for
     -- collateral UTxO in the environment, error on missing input

@@ -18,7 +18,7 @@ import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text, pack)
 import Ledger (POSIXTime, TxId)
-import Ledger qualified as Ledger
+import Ledger qualified
 import Ledger.Tx.CardanoAPI.Internal (toCardanoAddressInEra, toCardanoValue)
 import Plutus.Contract.Error (AsContractError, _OtherContractError)
 import Plutus.Contract.Request (RollbackState (Unknown), awaitTxStatusChange, currentNodeClientTimeRange, waitNSlots)

@@ -1,5 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
+
 {-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.CardanoCLI (
@@ -286,7 +286,7 @@ txInputOpts spendIndex pabConf utxos =
     txOutDatumIsInline _ = False
     handleTxInDatum :: Text -> TxOutRef -> DatumHash -> [Text]
     handleTxInDatum prefix txOutRef dHash =
-      if fromMaybe False $ txOutDatumIsInline <$> Map.lookup txOutRef utxos
+      if maybe False txOutDatumIsInline (Map.lookup txOutRef utxos)
         then [prefix <> "tx-in-inline-datum-present"]
         else
           [ prefix <> "tx-in-datum-file"

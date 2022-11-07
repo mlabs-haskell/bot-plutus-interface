@@ -324,8 +324,8 @@ balanceTx ::
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTx _ (UnbalancedCardanoTx {}) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
-balanceTx contractEnv unbalancedTx@(UnbalancedEmulatorTx {}) = do
+balanceTx _ UnbalancedCardanoTx {} = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
+balanceTx contractEnv unbalancedTx@UnbalancedEmulatorTx {} = do
   let pabConf = contractEnv.cePABConfig
 
   result <- handleCollateral @w contractEnv

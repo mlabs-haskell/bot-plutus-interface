@@ -38,7 +38,7 @@ genTokenName = do
   Value.tokenName . pack <$> replicateM len arbitrary
 
 instance Arbitrary AssetClass where
-  arbitrary = (\cs tn -> AssetClass (cs, tn)) <$> genCurrencySymbol <*> genTokenName
+  arbitrary = curry AssetClass <$> genCurrencySymbol <*> genTokenName
 
 randomAssetClasses :: Int -> Gen (Set AssetClass)
 randomAssetClasses n = Set.fromList <$> replicateM n (arbitrary @AssetClass)

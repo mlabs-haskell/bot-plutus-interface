@@ -507,6 +507,6 @@ unionEstimationContext ::
   EstimationContext ->
   Eff effs (Either NodeQueryError EstimationContext)
 unionEstimationContext newTxOutRefs (EstimationContext systemContext utxos) = do
-  let missingTxOutRefs = Set.filter (flip Map.member utxos) newTxOutRefs
+  let missingTxOutRefs = Set.filter (`Map.member` utxos) newTxOutRefs
   newUtxos <- queryNode @w $ UtxosFromTxOutRefs missingTxOutRefs
   pure $ EstimationContext systemContext . Map.union utxos <$> newUtxos

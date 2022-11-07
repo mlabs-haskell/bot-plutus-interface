@@ -105,7 +105,7 @@ handleUtxoQuery ::
   EitherT NodeQueryError (Eff effs) (Map TxOutRef TxOutUtxo)
 handleUtxoQuery query = do
   (CApi.UTxO result) <- newEitherT $ queryBabbageEra query
-  return $ Map.fromList $ fmap (first $ TxApi.fromCardanoTxIn) $ Map.toList result
+  return $ Map.fromList $ fmap (first TxApi.fromCardanoTxIn) $ Map.toList result
 
 handleUtxosFromTxOutRefs ::
   forall effs.

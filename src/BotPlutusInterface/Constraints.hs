@@ -30,10 +30,9 @@ flagBannedConstraints ::
   TxConstraints (RedeemerType a) (DatumType a) ->
   Contract w s e ()
 flagBannedConstraints _ constraints =
-  forM_ (txConstraints constraints) $ \constraint ->
-    case constraint of
-      MustValidateIn _ -> throwAsContractError "MustValidateIn from plutus-apps miscalculates slot ranges, use MustValidateInFixed from BpiConstraint instead."
-      _ -> pure ()
+  forM_ (txConstraints constraints) $ \case
+    MustValidateIn _ -> throwAsContractError "MustValidateIn from plutus-apps miscalculates slot ranges, use MustValidateInFixed from BpiConstraint instead."
+    _ -> pure ()
 
 throwAsContractError ::
   forall (a :: Type) (w :: Type) (s :: Row Type) (e :: Type).
