@@ -86,6 +86,7 @@ library
     BotPlutusInterface.CoinSelection
     BotPlutusInterface.Collateral
     BotPlutusInterface.Config
+    BotPlutusInterface.Constraints
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
     BotPlutusInterface.ExBudget
