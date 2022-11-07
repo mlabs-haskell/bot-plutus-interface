@@ -371,12 +371,6 @@ txOutOpts pabConf datums =
                 let datumHash = DatumHash $ toBuiltin $ CApi.serialiseToRawBytes $ CApi.hashScriptData scriptData
                  in ["--tx-out-inline-datum-file", datumJsonFilePath pabConf datumHash]
           , case refScript of
-              -- TODO: Writing a reference script.
-              -- Second arg is ScriptInAnyLang, takes path to the script.
-              -- Need to update Files.hs to write scripts from here.
-              -- no way to know if minting/validator without reading the UPLC, so lets give these a new naming scheme
-              -- This script can be simplev1/v2 or plutusv1/v2 (we'll not handle simple)
-              -- As such, helper function in Files will give name by script hash, prefixed with `reference` to avoid clash (though a clash is actually fine)
               ReferenceScript _ (fromCardanoScriptInAnyLang -> Just vScript) ->
                 ["--tx-out-reference-script-file", referenceScriptFilePath pabConf $ ScriptUtils.scriptHash vScript]
               _ -> []

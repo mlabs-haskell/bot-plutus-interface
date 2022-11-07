@@ -380,12 +380,18 @@ data RawTx = RawTx
 -- when converting this to JSON we drop the _ prefix from each field
 deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx
 
+{- | System context needed by estimation to calculate budgets on a given transaction
+  All fields here should be relatively static, and as such, don't need to be calculated often
+-}
 data SystemContext = SystemContext
   { scParams :: ProtocolParameters
   , scSystemStart :: SystemStart
   , scEraHistory :: EraHistory CardanoMode
   }
 
+{- | Full estimation context for budgetting
+  Includes system context above and more transaction dependent utxo context for estimation and buildTx in the CLI
+-}
 data EstimationContext = EstimationContext
   { ecSystemContext :: SystemContext
   , ecUtxos :: Map TxOutRef (TxOut CtxUTxO BabbageEra)

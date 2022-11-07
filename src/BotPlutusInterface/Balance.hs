@@ -125,6 +125,7 @@ balanceTxIO' balanceCfg pabConf pkh unbalancedTx =
   BodyBuilder.runInEstimationEffect @w (unBalancedEmulatorTx unbalancedTx) WAPI.OtherError $
     balanceTxIOEstimationContext @w balanceCfg pabConf pkh unbalancedTx
 
+-- | `balanceTxIOEstimationContext` runs within the estimation context effect defined in BotPlutusInterface.BodyBuilder, see there for more information
 balanceTxIOEstimationContext ::
   forall (w :: Type) (effs :: [Type -> Type]).
   ( Member (PABEffect w) effs
@@ -165,19 +166,6 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
   -- We need this folder on the CLI machine, which may not be the local machine
   lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
 
-  -- TODO:
-  -- Conversion from POSIXTime to Slot range now occurs in constraints unfortunately, using default params
-  -- These default params use default slot config of
-  -- SlotConfig{ scSlotLength = 1000, scSlotZeroTime :: POSIXTime, scSlotZeroTime = POSIXTime beginningOfTime }
-  -- and default network of testnet magic 1
-  -- This is likely a breaking issue, the constraint interface no longer provides a way to see the original POSIXTime
-  -- We may need to reimplement mkTx, and mkSomeTx so we can pass in the initial constraint state, and use reasonable Params
-  -- https://gist.github.com/TotallyNotChase/b5357c774444170ed3c21085593b7f1f
-
-  -- Correct solution:
-  -- Provide a BPI constraint that does the job of MustValidateIn but does conversions correctly -
-  -- call to the plutus contract PosixTimeRangeToContainedSlotRangeReq effect
-  -- If a user uses the mkTx one, error out
   unless (validateRange $ txValidRange tx) $ throwE $ WAPI.OtherError "Invalid validity range on tx"
 
   -- Adds required collaterals in the `Tx`
@@ -278,6 +266,7 @@ utxosAndCollateralAtAddress tx changeAddr =
             (UtxosAtExcluding changeAddr . Set.singleton . collateralTxOutRef)
             inMemCollateral
 
+    -- TODO: This may actually need to include the collateral utxo, waiting on Misha's response
     utxos <- firstEitherT (WAPI.OtherError . Text.pack . show) $ newEitherT $ queryNode @w nodeQuery
 
     lift $ modify $ \(EstimationContext systemContext curUtxos) -> EstimationContext systemContext $ Map.union curUtxos utxos
