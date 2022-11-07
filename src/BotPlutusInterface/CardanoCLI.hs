@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-
 {-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.CardanoCLI (
