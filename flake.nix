@@ -10,7 +10,7 @@
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
 
     iohk-nix = {
-      url = "github:input-output-hk/iohk-nix/cecab9c71d1064f05f1615eead56ac0b9196bc20";
+      url = "github:input-output-hk/iohk-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -20,7 +20,7 @@
     };
 
     CHaP = {
-      url = "github:input-output-hk/cardano-haskell-packages/b074321c4c8cbf2c3789436ab11eaa43e1c441a7";
+      url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
       flake = false;
     };
   };
