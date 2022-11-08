@@ -352,13 +352,13 @@ validRangeOpts (Interval lowerBound upperBound) =
 txOutOpts :: PABConfig -> Map DatumHash Datum -> [TxOut] -> [Text]
 txOutOpts pabConf datums =
   concatMap
-    ( \(TxOut (CApi.TxOut (CApi.AddressInEra _ addr) val datum refScript)) ->
+    ( \(TxOut (CApi.TxOut addr val datum refScript)) ->
         mconcat
           [
             [ "--tx-out"
             , Text.intercalate
                 "+"
-                [ serialiseAddress $ CApi.toAddressAny addr
+                [ serialiseAddress addr
                 , valueToCliArg $ CApi.txOutValueToValue val
                 ]
             ]
