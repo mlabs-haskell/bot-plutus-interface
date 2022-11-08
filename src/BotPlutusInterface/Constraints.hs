@@ -1,4 +1,4 @@
-module BotPlutusInterface.Constraints (submitBpiTxConstraintsWith, mustValidateInFixed) where
+module BotPlutusInterface.Constraints (submitBpiTxConstraintsWith, mustValidateInFixed, BpiConstraint) where
 
 import Control.Lens (re, (^.))
 import Control.Monad (foldM, forM_)

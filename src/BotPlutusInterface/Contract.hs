@@ -38,9 +38,12 @@ import BotPlutusInterface.Types (
   ContractEnvironment (..),
   LogLevel (Debug, Notice, Warn),
   LogType (CollateralLog, PABLog),
+  PABConfig (pcNetwork, pcProtocolParams),
   Tip (block, slot),
   collateralValue,
   ownAddress,
+  pcCollateralSize,
+  pcOwnPubKeyHash,
  )
 import Cardano.Api (
   AsType (..),
@@ -49,7 +52,7 @@ import Cardano.Api (
   TxOut (TxOut),
   txOutValueToValue,
  )
-import Cardano.Prelude (liftA2)
+import Cardano.Prelude (fromMaybe, liftA2)
 import Control.Lens (preview, (.~), (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
@@ -63,6 +66,7 @@ import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Bifunctor (first)
+import Data.Default (Default (def))
 import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Function (fix, (&))
 import Data.Kind (Type)
@@ -73,7 +77,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Vector qualified as V
-import Ledger (POSIXTime, getCardanoTxId)
+import Ledger (POSIXTime, Params (Params), getCardanoTxId)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
@@ -108,7 +112,27 @@ runContract ::
   Contract w s e a ->
   IO (Either e a)
 runContract contractEnv (Contract effs) = do
-  runM $ handlePABEffect @w contractEnv $ raiseEnd $ handleContract contractEnv effs
+  -- try to create collateral before any contract is executed
+  res <- crateCollateralUtxo
+  case res of
+    Left e -> error $ mkError e
+    Right () -> runUserContract
+  where
+    crateCollateralUtxo =
+      runM $ handlePABEffect @w contractEnv (handleCollateral contractEnv)
+
+    runUserContract =
+      runM $
+        handlePABEffect @w contractEnv $
+          raiseEnd $
+            handleContract contractEnv effs
+
+    mkError e =
+      let collateralAmt = pcCollateralSize $ cePABConfig contractEnv
+       in "Tried to create collateral UTxO with " <> show collateralAmt
+            <> " lovealces, but failed:\n"
+            <> show e
+            <> "\nContract execution aborted."
 
 handleContract ::
   forall (w :: Type) (e :: Type) (a :: Type).
@@ -193,6 +217,13 @@ handlePABReq contractEnv req = do
     ----------------------
     -- Handled requests --
     ----------------------
+    GetParamsReq ->
+      let pabConfig = cePABConfig contractEnv
+          pparams = fromMaybe (error "GetParamsReq: Must have ProtocolParamaneters in PABConfig") $ pcProtocolParams pabConfig
+          netId = pcNetwork pabConfig
+          -- FIXME: Compute SlotConfig properly
+          slotConfig = def
+       in return $ GetParamsResp $ Params slotConfig pparams netId
     OwnAddressesReq ->
       pure
         . OwnAddressesResp
@@ -217,6 +248,10 @@ handlePABReq contractEnv req = do
         <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w @effs unbalancedTx
+    CurrentNodeClientTimeRangeReq -> do
+      -- TODO: This needs rework, we need to get the current slotLength from the eraSummaries
+      t <- currentTime @w contractEnv
+      return $ CurrentNodeClientTimeRangeResp (t, t + 1_000)
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -226,7 +261,6 @@ handlePABReq contractEnv req = do
     ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
     YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
     CurrentChainIndexSlotReq -> error ("Unsupported PAB effect: " ++ show req)
-    CurrentNodeClientTimeRangeReq -> error ("Unsupported PAB effect: " ++ show req)
 
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
@@ -489,6 +523,7 @@ handleCollateral ::
   ContractEnvironment w ->
   Eff effs (Either WAPI.WalletAPIError ())
 handleCollateral cEnv = do
+  let ownPkh = pcOwnPubKeyHash $ cePABConfig cEnv
   result <- (fmap swapEither . runEitherT) $
     do
       let helperLog :: PP.Doc () -> ExceptT CollateralUtxo (Eff effs) ()
@@ -496,7 +531,7 @@ handleCollateral cEnv = do
 
       collateralNotInMem <-
         newEitherT $
-          maybeToLeft "Collateral UTxO not found in contract env."
+          maybeToLeft ("PKH: " <> pretty ownPkh <> ". Collateral UTxO not found in contract env.")
             <$> getInMemCollateral @w
 
       helperLog collateralNotInMem
@@ -504,22 +539,37 @@ handleCollateral cEnv = do
       collateralNotInWallet <- newEitherT $ swapEither <$> findCollateralAtOwnPKH cEnv
 
       helperLog
-        ("Collateral UTxO not found or failed to be found in wallet: " <> pretty collateralNotInWallet)
+        ( "PKH: " <> pretty ownPkh <> ". Collateral UTxO not found or failed to be found in wallet: "
+            <> pretty collateralNotInWallet
+        )
 
-      helperLog "Creating collateral UTxO."
+      helperLog ("PKH: " <> pretty ownPkh <> ". Creating collateral UTxO.")
 
       notCreatedCollateral <- newEitherT $ swapEither <$> makeCollateral @w cEnv
 
       helperLog
-        ("Failed to create collateral UTxO: " <> pretty notCreatedCollateral)
+        ( "PKH: " <> pretty ownPkh <> ". Failed to create collateral UTxO: "
+            <> pretty notCreatedCollateral
+        )
 
-      pure ("Failed to create collateral UTxO: " <> show notCreatedCollateral)
+      pure
+        ( "PKH: " <> show ownPkh <> ". Failed to create collateral UTxO: "
+            <> show notCreatedCollateral
+        )
 
   case result of
     Right collteralUtxo ->
       setInMemCollateral @w collteralUtxo
-        >> Right <$> printBpiLog @w (Debug [CollateralLog]) "successfully set the collateral utxo in env."
-    Left err -> pure $ Left $ WAPI.OtherError $ T.pack $ "Failed to make collateral: " <> show err
+        >> Right
+          <$> printBpiLog @w
+            (Debug [CollateralLog])
+            ("PKH: " <> pretty ownPkh <> ". Successfully set the collateral utxo in env.")
+    Left err ->
+      pure $
+        Left $
+          WAPI.OtherError $
+            T.pack $
+              "PKH: " <> show ownPkh <> ". Failed to make collateral: " <> show err
 
 {- | Create collateral UTxO by submitting Tx.
   Then try to find created UTxO at own PKH address.
@@ -533,10 +583,13 @@ makeCollateral cEnv = runEitherT $ do
   lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
   let pabConf = cEnv.cePABConfig
+
+  -- TODO: Enforce existence of pparams at the beggining
+  pparams <- maybe (error "Must have ProtocolParamaneters in PABConfig") return (pcProtocolParams pabConf)
+
   unbalancedTx <-
     firstEitherT (WAPI.OtherError . Text.pack . show) $
-      hoistEither $ Collateral.mkCollateralTx pabConf
-
+      hoistEither $ Collateral.mkCollateralTx pabConf (error "We should not use SlotConfig anywhere") pparams -- FIXME: SlotConfig shennanigans
   balancedTx <-
     Balance.balanceTxIO' @w
       Balance.defaultBalanceConfig {Balance.bcSeparateChange = True}

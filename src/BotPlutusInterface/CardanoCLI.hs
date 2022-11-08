@@ -58,7 +58,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger (Slot (Slot), SlotRange)
+import Ledger (Slot (Slot), SlotRange, Tx (txCollateralInputs, txMintingWitnesses))
 import Ledger qualified
 import Ledger.Ada (fromValue, getLovelace)
 import Ledger.Crypto (PubKey, PubKeyHash (getPubKeyHash))
@@ -72,12 +72,10 @@ import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   Tx (
-    txCollateral,
     txData,
     txFee,
     txInputs,
     txMint,
-    txMintingScripts,
     txOutputs,
     txReferenceInputs,
     txSignatures,
@@ -156,7 +154,7 @@ buildTx pabConf privKeys txBudget tx = do
   case toCardanoValue $ txMint tx of
     Right mintValue -> do
       let ins = txInputOpts (spendBudgets txBudget) pabConf utxos (txInputs tx)
-          mints = mintOpts (mintBudgets txBudget) pabConf (txMintingScripts tx) mintValue
+          mints = mintOpts (mintBudgets txBudget) pabConf (fst <$> txMintingWitnesses tx) mintValue
       callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const ())
     Left err -> pure $ Left $ showText err
   where
@@ -178,7 +176,7 @@ buildTx pabConf privKeys txBudget tx = do
         [ ["transaction", "build-raw", "--babbage-era"]
         , ins
         , txRefInputOpts (txReferenceInputs tx)
-        , txInputCollateralOpts (txCollateral tx)
+        , txInputCollateralOpts (txCollateralInputs tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mints
         , validRangeOpts (txValidRange tx)
@@ -283,14 +281,15 @@ txInputOpts spendIndex pabConf utxos =
     txOutDatumIsInline :: CApi.TxOut CApi.CtxUTxO CApi.BabbageEra -> Bool
     txOutDatumIsInline (CApi.TxOut _ _ (CApi.TxOutDatumInline _ _) _) = True
     txOutDatumIsInline _ = False
-    handleTxInDatum :: Text -> TxOutRef -> DatumHash -> [Text]
-    handleTxInDatum prefix txOutRef dHash =
+    handleTxInDatum :: Text -> TxOutRef -> Maybe DatumHash -> [Text]
+    handleTxInDatum prefix txOutRef (Just dHash) =
       if maybe False txOutDatumIsInline (Map.lookup txOutRef utxos)
         then [prefix <> "tx-in-inline-datum-present"]
         else
           [ prefix <> "tx-in-datum-file"
           , datumJsonFilePath pabConf dHash
           ]
+    handleTxInDatum _ _ Nothing = []
 
 txRefInputOpts :: [TxInput] -> [Text]
 txRefInputOpts =
@@ -352,13 +351,13 @@ validRangeOpts (Interval lowerBound upperBound) =
 txOutOpts :: PABConfig -> Map DatumHash Datum -> [TxOut] -> [Text]
 txOutOpts pabConf datums =
   concatMap
-    ( \(TxOut (CApi.TxOut (CApi.AddressInEra _ addr) val datum refScript)) ->
+    ( \(TxOut (CApi.TxOut addr val datum refScript)) ->
         mconcat
           [
             [ "--tx-out"
             , Text.intercalate
                 "+"
-                [ serialiseAddress $ CApi.toAddressAny addr
+                [ serialiseAddress addr
                 , valueToCliArg $ CApi.txOutValueToValue val
                 ]
             ]
