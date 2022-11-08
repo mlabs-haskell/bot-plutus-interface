@@ -379,7 +379,7 @@ balanceTxIns utxos tx = do
 
 -- | Set collateral
 addTxCollaterals :: CollateralUtxo -> Tx -> Tx
-addTxCollaterals cOut tx = tx {txCollateral = [Tx.pubKeyTxInput (collateralTxOutRef cOut)]}
+addTxCollaterals cOut tx = tx {txCollateralInputs = [Tx.pubKeyTxInput (collateralTxOutRef cOut)]}
 
 txUsesScripts :: Tx -> Bool
 txUsesScripts Tx {txInputs, txScripts} =

@@ -8,17 +8,19 @@ module BotPlutusInterface.Collateral (
 import BotPlutusInterface.Types (
   CollateralUtxo (CollateralUtxo),
   ContractEnvironment (ceCollateral),
-  PABConfig (pcOwnPubKeyHash),
+  PABConfig (pcNetwork, pcOwnPubKeyHash),
   collateralValue,
   pcOwnStakePubKeyHash,
   unCollateralVar,
  )
+import Cardano.Api.Shelley (ProtocolParameters)
 import Cardano.Prelude (Void)
 import Control.Concurrent.STM (atomically, readTVarIO, writeTVar)
 import Control.Monad (unless)
 import Data.Kind (Type)
-import Ledger (PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
+import Ledger (Params (Params), PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
 import Ledger.Constraints qualified as Constraints
+import Ledger.TimeSlot (SlotConfig)
 import Plutus.ChainIndex (Page (pageItems))
 import Plutus.ChainIndex.Api (
   IsUtxoResponse (IsUtxoResponse),
@@ -51,8 +53,13 @@ setInMemCollateral cEnv txOutRef = do
   let cVar = unCollateralVar $ ceCollateral cEnv
   atomically $ writeTVar cVar (Just txOutRef)
 
-mkCollateralTx :: PABConfig -> Either Constraints.MkTxError Constraints.UnbalancedTx
-mkCollateralTx pabConf = Constraints.mkTx @Void mempty txc
+-- NOTE: Hading over pparams explicitly because PABConfig has it as a Maybe
+mkCollateralTx :: PABConfig -> SlotConfig -> ProtocolParameters -> Either Constraints.MkTxError Constraints.UnbalancedTx
+mkCollateralTx pabConf slotConfig pparams =
+  Constraints.mkTxWithParams @Void
+    (Params slotConfig pparams (pcNetwork pabConf))
+    mempty
+    txc
   where
     txc :: Constraints.TxConstraints Void Void
     txc =

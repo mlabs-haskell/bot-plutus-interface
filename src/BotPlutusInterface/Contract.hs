@@ -38,9 +38,11 @@ import BotPlutusInterface.Types (
   ContractEnvironment (..),
   LogLevel (Debug, Notice, Warn),
   LogType (CollateralLog, PABLog),
+  PABConfig (pcNetwork, pcProtocolParams),
   Tip (block, slot),
   collateralValue,
   ownAddress,
+  pcProtocolParams,
  )
 import Cardano.Api (
   AsType (..),
@@ -49,7 +51,7 @@ import Cardano.Api (
   TxOut (TxOut),
   txOutValueToValue,
  )
-import Cardano.Prelude (liftA2)
+import Cardano.Prelude (fromMaybe, liftA2)
 import Control.Lens (preview, (.~), (^.))
 import Control.Monad (join, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
@@ -63,6 +65,7 @@ import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Bifunctor (first)
+import Data.Default (Default (def))
 import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Function (fix, (&))
 import Data.Kind (Type)
@@ -73,7 +76,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Vector qualified as V
-import Ledger (POSIXTime, getCardanoTxId)
+import Ledger (POSIXTime, Params (Params), getCardanoTxId)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
@@ -193,6 +196,13 @@ handlePABReq contractEnv req = do
     ----------------------
     -- Handled requests --
     ----------------------
+    GetParamsReq ->
+      let pabConfig = cePABConfig contractEnv
+          pparams = fromMaybe (error "GetParamsReq: Must have ProtocolParamaneters in PABConfig") $ pcProtocolParams pabConfig
+          netId = pcNetwork pabConfig
+          -- FIXME: Compute SlotConfig properly
+          slotConfig = def
+       in return $ GetParamsResp $ Params slotConfig pparams netId
     OwnAddressesReq ->
       pure
         . OwnAddressesResp
@@ -217,6 +227,10 @@ handlePABReq contractEnv req = do
         <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w @effs unbalancedTx
+    CurrentNodeClientTimeRangeReq -> do
+      -- TODO: This needs rework, we need to get the current slotLength from the eraSummaries
+      t <- currentTime @w contractEnv
+      return $ CurrentNodeClientTimeRangeResp (t, t + 1_000)
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -226,7 +240,6 @@ handlePABReq contractEnv req = do
     ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
     YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
     CurrentChainIndexSlotReq -> error ("Unsupported PAB effect: " ++ show req)
-    CurrentNodeClientTimeRangeReq -> error ("Unsupported PAB effect: " ++ show req)
 
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
@@ -533,10 +546,13 @@ makeCollateral cEnv = runEitherT $ do
   lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
   let pabConf = cEnv.cePABConfig
+
+  -- TODO: Enforce existence of pparams at the beggining
+  pparams <- maybe (error "Must have ProtocolParamaneters in PABConfig") return (pcProtocolParams pabConf)
+
   unbalancedTx <-
     firstEitherT (WAPI.OtherError . Text.pack . show) $
-      hoistEither $ Collateral.mkCollateralTx pabConf
-
+      hoistEither $ Collateral.mkCollateralTx pabConf (error "We should not use SlotConfig anywhere") pparams -- FIXME: SlotConfig shennanigans
   balancedTx <-
     Balance.balanceTxIO' @w
       Balance.defaultBalanceConfig {Balance.bcSeparateChange = True}

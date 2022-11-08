@@ -38,6 +38,8 @@ import Prelude
 handleChainIndexReq :: forall (w :: Type). ContractEnvironment w -> ChainIndexQuery -> IO ChainIndexResponse
 handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
   \case
+    -- TODO: Implement DatumsAtAddress
+    DatumsAtAddress _ _ -> error "Not implemented ChainIndex.DatumsAtAddress"
     DatumFromHash datumHash ->
       DatumHashResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getDatum datumHash)
     ValidatorFromHash validatorHash ->

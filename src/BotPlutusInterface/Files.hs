@@ -194,15 +194,16 @@ writeReferenceScriptFile pabConf script =
 --    in const filepath <<$>> writeFileRaw @w (Text.unpack filepath) metadata
 
 txMintingPolicies :: Tx.Tx -> [Versioned MintingPolicy]
-txMintingPolicies tx = mapMaybe (Ledger.lookupMintingPolicy $ Tx.txScripts tx) $ Map.keys $ Tx.txMintingScripts tx
+txMintingPolicies tx = mapMaybe (Ledger.lookupMintingPolicy $ Tx.txScripts tx) $ Map.keys $ Tx.txMintingWitnesses tx
 
 txValidatorInputs :: Tx.Tx -> [(Maybe (Versioned Validator), Redeemer, Datum)]
 txValidatorInputs tx = mapMaybe (fromTxInputType . Tx.txInputType) $ Tx.txInputs tx <> Tx.txReferenceInputs tx
   where
     fromTxInputType :: Tx.TxInputType -> Maybe (Maybe (Versioned Validator), Redeemer, Datum)
-    fromTxInputType (Tx.TxScriptAddress r eVHash dHash) = do
+    fromTxInputType (Tx.TxScriptAddress r eVHash mayDatHash) = do
       mValidator <- either (Just <$> Tx.lookupValidator (Tx.txScripts tx)) (const $ pure Nothing) eVHash
-      datum <- Tx.lookupDatum tx dHash
+      datHash <- mayDatHash
+      datum <- Tx.lookupDatum tx datHash
       pure (mValidator, r, datum)
     fromTxInputType _ = Nothing
 
