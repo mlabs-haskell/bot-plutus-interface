@@ -75,9 +75,8 @@ common common-lang
 library
   import:          common-lang
   exposed-modules: 
-    SomeDebugContract
-    TimeDebugContract
     TestRun
+    LockSpendMint
     Tools
 
   build-depends:
