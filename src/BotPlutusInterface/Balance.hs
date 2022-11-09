@@ -147,7 +147,7 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
   let unbalancedTx = unbalancedTx' & (Constraints.tx . Tx.outputs .~ updatedOuts)
       tx = unBalancedEmulatorTx unbalancedTx
 
-  (utxoIndex, mcollateral) <-
+  (ownAddressUtxo, mcollateral) <-
     newEitherT $
       utxosAndCollateralAtAddress
         @w
@@ -156,7 +156,8 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
 
   privKeys <- firstEitherT WAPI.OtherError $ newEitherT $ Files.readPrivateKeys @w pabConf
 
-  let requiredSigs :: [PubKeyHash]
+  let utxoIndex = ownAddressUtxo <> unBalancedTxUtxoIndex unbalancedTx'
+      requiredSigs :: [PubKeyHash]
       requiredSigs =
         unBalancedTxRequiredSignatories unbalancedTx
           ^.. folded . to Ledger.unPaymentPubKeyHash
