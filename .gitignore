@@ -64,6 +64,6 @@ geth-node/chaindata/history
 *.~undo-tree~
 
 # debug configs
-examples/debug/
+# examples/debug/
 
 visualization/

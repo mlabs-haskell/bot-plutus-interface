@@ -23,3 +23,6 @@ cradle:
 
     - path: "./examples/plutus-transfer/app/Main.hs"
       component: "plutus-transfer:exe:plutus-transfer-pab"
+
+    - path: "./examples/debug/app/Main.hs"
+      component: "debug:exe:debug-pab"
