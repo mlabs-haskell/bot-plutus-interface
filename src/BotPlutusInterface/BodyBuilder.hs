@@ -21,7 +21,7 @@ import Data.Map (Map)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger (Tx (txInputs), TxInput (txInputRef), txId)
+import Ledger (Tx (txInputs, txReferenceInputs), TxInput (txInputRef), txId)
 import Ledger.Crypto (PubKeyHash)
 import Prelude
 
@@ -41,7 +41,7 @@ runInEstimationEffect ::
   EitherT e (Eff (State EstimationContext ': effs)) a ->
   EitherT e (Eff effs) a
 runInEstimationEffect tx toErr comp = do
-  context <- firstEitherT (toErr . textShow) $ newEitherT $ getEstimationContext @w $ Set.fromList $ txInputRef <$> txInputs tx
+  context <- firstEitherT (toErr . textShow) $ newEitherT $ getEstimationContext @w $ Set.fromList $ txInputRef <$> (txInputs tx <> txReferenceInputs tx)
   mapEitherT (evalState context) comp
 
 {- | Build and save raw transaction (transaction body) with estimated execution budgets using `CardanoCLI`.
