@@ -89,6 +89,7 @@ import Ledger.Constraints.OffChain qualified as Constraints
 import Prettyprinter (pretty, viaShow, (<+>))
 import Wallet.API qualified as WAPI
 import Prelude
+import Debug.Trace (traceM, trace)
 
 -- Config for balancing a `Tx`.
 data BalanceConfig = BalanceConfig
@@ -147,7 +148,7 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
   let unbalancedTx = unbalancedTx' & (Constraints.tx . Tx.outputs .~ updatedOuts)
       tx = unBalancedEmulatorTx unbalancedTx
 
-  (utxoIndex, mcollateral) <-
+  (utxoIndex', mcollateral) <-
     newEitherT $
       utxosAndCollateralAtAddress
         @w
@@ -156,7 +157,8 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
 
   privKeys <- firstEitherT WAPI.OtherError $ newEitherT $ Files.readPrivateKeys @w pabConf
 
-  let requiredSigs :: [PubKeyHash]
+  let utxoIndex = utxoIndex' <> unBalancedTxUtxoIndex unbalancedTx'
+      requiredSigs :: [PubKeyHash]
       requiredSigs =
         unBalancedTxRequiredSignatories unbalancedTx
           ^.. folded . to Ledger.unPaymentPubKeyHash
@@ -182,7 +184,14 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
   -- Get current Ada change
   let adaChange = getAdaChange utxoIndex balancedTx
       bTx = balanceTxLoop utxoIndex privKeys changeAddr changeTxOutWithMinAmt
-
+  
+  -- bTx' <- bTx
+  
+  traceM $ "ADA change: " ++ show adaChange
+  let dTx = unBalancedEmulatorTx  unbalancedTx'
+  traceM $ "Unbalanced Ins: " ++ show (pretty <$> txInputs dTx)
+  traceM $ "Unbalanced Index: " ++ show (pretty <$> Map.keys $ unBalancedTxUtxoIndex unbalancedTx')
+  
   -- Checks if there's ada change left, if there is then we check
   -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
   -- the changeAddr.
@@ -190,6 +199,8 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
     case adaChange /= 0 of
       True | bcSeparateChange balanceCfg || not (hasChangeUTxO changeAddr balancedTx) -> bTx
       _ -> pure balancedTx
+
+  -- traceM $ "bTx:\n" <> show (pretty balancedTxWithChange)
 
   -- Get the updated change, add it to the tx
   let finalAdaChange = getAdaChange utxoIndex balancedTxWithChange
@@ -327,15 +338,22 @@ balanceTxStep balanceCfg utxos changeAddr tx =
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
 getChange :: Map TxOutRef TxOut -> Tx -> CApi.Value
-getChange utxos tx =
+getChange utxosIndex tx =
   let fees = ledgerLovelaceValue $ txFee tx
       txInputRefs = map Tx.txInputRef $ txInputs tx
-      inputValue = mconcat $ map txOutValue $ mapMaybe (`Map.lookup` utxos) txInputRefs
+      inputValue = mconcat $ map txOutValue $ mapMaybe (`Map.lookup` utxosIndex) txInputRefs
       outputValue = mconcat $ map txOutValue $ txOutputs tx
       mintedValue = fromRight mempty $ toCardanoValue $ txMint tx
       nonMintedOutputValue = outputValue `minus` mintedValue
       change = (inputValue `minus` nonMintedOutputValue) `minus` lovelaceValueOf fees
-   in change
+   in 
+    trace ("\n*********************************") $
+    trace ("\nchange: input value: " <> show inputValue) $
+    trace ("\nchange: utxos index:\n  size:" <> show (Map.size utxosIndex) 
+             <> "\n--> map:\n" <> show utxosIndex) $
+    trace ("\nchange: txInputRefs:\n  size:" <> show (length txInputRefs) 
+            <> "\n--> refs:\n"<> show txInputRefs) $
+    change
 
 ledgerLovelaceValue :: Value -> Integer
 ledgerLovelaceValue v = Value.valueOf v "" ""
@@ -344,7 +362,7 @@ lovelaceValue :: CApi.Value -> Integer
 lovelaceValue = (\(CApi.Quantity i) -> i) . flip CApi.selectAsset CApi.AdaAssetId
 
 getAdaChange :: Map TxOutRef TxOut -> Tx -> Integer
-getAdaChange utxos = lovelaceValue . getChange utxos
+getAdaChange utxosIndex = lovelaceValue . getChange utxosIndex
 
 getNonAdaChange :: Map TxOutRef TxOut -> Tx -> CApi.Value
 getNonAdaChange utxos = CApi.filterValue (/= CApi.AdaAssetId) . getChange utxos

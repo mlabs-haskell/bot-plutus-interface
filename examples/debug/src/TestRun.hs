@@ -20,10 +20,11 @@ import System.Directory (listDirectory)
 import System.Environment (getArgs, getEnv, setEnv)
 import System.FilePath ((</>))
 import System.Random (Random (randomR), newStdGen, randomRIO)
-import TimeDebugContract qualified
 import Tools
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
+import LockSpendMint qualified
+import BotPlutusInterface.Types (LogType(CollateralLog))
 
 testnetRun :: IO ()
 testnetRun = do
@@ -44,34 +45,15 @@ testnetRun = do
   where
     runMyContract cEnv operation = do
       res <- case operation of
-        "light" -> do
-          putStrLn "Running loght debug"
-          BPI.runContract cEnv TimeDebugContract.timeDebugLight
-        "split" -> do
-          putStrLn "Splitting whatever first utxo"
-          fmap show <$> BPI.runContract cEnv TimeDebugContract.splitUtxo
-        "lock" -> do
-          putStrLn "Locking"
-          BPI.runContract cEnv TimeDebugContract.lockAtScript
-        "unlock" -> do
-          putStrLn "Spending"
-          BPI.runContract cEnv TimeDebugContract.unlockWithTimeCheck
-        "lock-unlock" -> do
-          putStrLn "Lock -> Unlock"
-          BPI.runContract cEnv TimeDebugContract.lockUnlock
-        "viaPay" -> do
-          putStrLn "Debug range validation and mempool. Specify interval:"
-          int <- read <$> getLine
-          BPI.runContract cEnv (TimeDebugContract.timeDebugViaPay int)
-        other -> error $ "Unsupported operation: " ++ other
+        _ -> BPI.runContract cEnv LockSpendMint.lockThenSpend
 
       case res of
         -- Right r -> "=== OK ===\n" ++ show r >> runMyContract
         Right r -> do
           putStrLn ("=== OK ===\n" ++ show r)
-          randomDelay
-          runMyContract cEnv operation
-        Left e -> putStrLn ("=== FAILED ===\n" ++ show e) >> return (show e)
+          -- randomDelay
+          -- runMyContract cEnv operation
+        Left e -> error ("=== FAILED ===\n" ++ show e)
 
     randomDelay :: IO ()
     randomDelay = do
@@ -90,6 +72,7 @@ mkContractEnv netMagic bpiDir = do
   contractState <- newTVarIO (ContractState Active mempty)
   contractStats <- newTVarIO (ContractStats mempty)
   contractLogs <- newTVarIO (LogsList mempty)
+  collateral <- CollateralVar <$> newTVarIO Nothing
   pkhs <- getPkhs bpiDir
   return $
     ContractEnvironment
@@ -98,6 +81,7 @@ mkContractEnv netMagic bpiDir = do
       , ceContractInstanceId = contractInstanceID
       , ceContractStats = contractStats
       , ceContractLogs = contractLogs
+      , ceCollateral = collateral
       }
 
 mkPabConf :: NetMagic -> ProtocolParameters -> Text -> FilePath -> PubKeyHash -> PABConfig
@@ -107,7 +91,7 @@ mkPabConf netMagic pparams pparamsFile bpiDir ownPkh =
     , pcNetwork = netId
     , pcChainIndexUrl = BaseUrl Http "localhost" 9083 ""
     , pcPort = 9080
-    , pcProtocolParams = pparams
+    , pcProtocolParams = Just pparams
     , pcTipPollingInterval = 1_000_000
     , pcOwnPubKeyHash = ownPkh
     , pcOwnStakePubKeyHash = Nothing
@@ -115,7 +99,7 @@ mkPabConf netMagic pparams pparamsFile bpiDir ownPkh =
     , pcSigningKeyFileDir = Text.pack $ bpiDir </> "signing-keys"
     , pcTxFileDir = Text.pack $ bpiDir </> "txs"
     , pcDryRun = False
-    , pcLogLevel = Notice
+    , pcLogLevel = Error [AnyLog]
     , pcProtocolParamsFile = pparamsFile
     , pcEnableTxEndpoint = False
     , pcCollectStats = False
@@ -123,6 +107,7 @@ mkPabConf netMagic pparams pparamsFile bpiDir ownPkh =
     , pcBudgetMultiplier = 1
     , pcMetadataDir = Text.pack $ bpiDir </> "metadata"
     , pcTxStatusPolling = TxStatusPolling 500_000 5
+    , pcCollateralSize = 10_000_000
     }
   where
     netId = case netMagic of

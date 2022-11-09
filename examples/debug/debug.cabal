@@ -103,6 +103,9 @@ library
     , plutus-pab
     , plutus-contract
     , random
+    , plutus-script-utils
+    , cardano-crypto
+    , prettyprinter
 
   hs-source-dirs:  src
 

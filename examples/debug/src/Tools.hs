@@ -7,7 +7,6 @@ import GHC.Natural (Natural)
 import Ledger (Address (Address), PubKeyHash)
 import Plutus.V1.Ledger.Api (Credential (PubKeyCredential))
 import Prelude
-import Ledger.Tx.CardanoAPI (toCardanoAddress)
 import Data.Text (Text)
 
 pkhFromHash :: String -> PubKeyHash
@@ -20,14 +19,14 @@ pkhFromHash key =
 pkToAddr :: PubKeyHash -> Address
 pkToAddr = flip Address Nothing . PubKeyCredential
 
-addrToCapiAddr :: Natural -> Address -> Text
-addrToCapiAddr nId addr =
-  let networkId = getNetId nId
-      capiAddr = toCardanoAddress networkId addr
-  in 
-    CAPI.serialiseAddress
-    . either (error . show) id
-    $ capiAddr
+-- addrToCapiAddr :: Natural -> Address -> Text
+-- addrToCapiAddr nId addr =
+--   let networkId = getNetId nId
+--       capiAddr = toCardanoAddress networkId addr
+--   in 
+--     CAPI.serialiseAddress
+--     . either (error . show) id
+--     $ capiAddr
 
 getNetId :: Natural -> CAPI.NetworkId
 getNetId = \case

@@ -1,4 +1,4 @@
-module Spec.TestContract.LockSpendMint (lockThenSpend) where
+module LockSpendMint (lockThenSpend) where
 
 import BotPlutusInterface.Constraints (submitBpiTxConstraintsWith)
 import Control.Monad (void)
