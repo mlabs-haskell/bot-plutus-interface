@@ -44,6 +44,8 @@ import Cardano.Api (
   PlutusScriptV1,
   PlutusScriptV2,
   SigningKey,
+  TxOut (TxOut),
+  TxOutDatum (TxOutDatumHash, TxOutDatumInTx, TxOutDatumInline, TxOutDatumNone),
   getVerificationKey,
   serialiseToRawBytes,
  )
@@ -53,6 +55,7 @@ import Cardano.Api.Shelley (
   ScriptDataJsonSchema (ScriptDataJsonDetailedSchema),
   fromPlutusData,
   scriptDataToJson,
+  toPlutusData,
  )
 import Cardano.Crypto.Wallet qualified as Crypto
 import Codec.Serialise qualified as Codec
@@ -64,7 +67,7 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
-import Data.List (isPrefixOf, sortOn)
+import Data.List (isPrefixOf, nub, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
@@ -73,7 +76,7 @@ import Data.Text qualified as Text
 import Ledger qualified
 import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
 import Ledger.Crypto qualified as Crypto
-import Ledger.Tx (Tx)
+import Ledger.Tx (Tx, TxOut (getTxOut))
 import Ledger.Tx qualified as Tx
 import Ledger.Tx.CardanoAPI (fromCardanoScriptInAnyLang)
 import Ledger.Value qualified as Value
@@ -92,7 +95,7 @@ import Plutus.V1.Ledger.Api (
   ValidatorHash (..),
   toBuiltin,
  )
-import PlutusTx (ToData, toData)
+import PlutusTx (ToData, dataToBuiltinData, toData)
 import PlutusTx.Builtins (fromBuiltin)
 import System.FilePath (takeExtension, (</>))
 import Prelude
@@ -214,6 +217,15 @@ txReferenceScripts tx = catMaybes $ getVersionedScript . Tx.txOutReferenceScript
     getVersionedScript (ReferenceScript _ s) = fromCardanoScriptInAnyLang s
     getVersionedScript _ = Nothing
 
+txOutpuDatums :: Tx.Tx -> [Datum]
+txOutpuDatums tx = do
+  TxOut _ _ dat _ <- getTxOut <$> Tx.txOutputs tx
+  case dat of
+    TxOutDatumNone -> []
+    TxOutDatumHash _ sdHash -> maybe [] return $ Tx.lookupDatum tx (DatumHash . toBuiltin . serialiseToRawBytes $ sdHash)
+    TxOutDatumInline _ sd -> return . Ledger.Datum . dataToBuiltinData . toPlutusData $ sd
+    TxOutDatumInTx _ sd -> return . Ledger.Datum . dataToBuiltinData . toPlutusData $ sd
+
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -229,7 +241,7 @@ writeAll pabConf tx = do
   let (mValidatorScripts, redeemers, datums) = unzip3 $ txValidatorInputs tx
       validatorScripts = catMaybes mValidatorScripts
       policyScripts = txMintingPolicies tx
-      allDatums = datums <> Map.elems (Tx.txData tx)
+      allDatums = nub $ datums <> Map.elems (Tx.txData tx) <> txOutpuDatums tx
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
       allRefScripts = txReferenceScripts tx
 
