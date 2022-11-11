@@ -2,6 +2,7 @@
 
 module BotPlutusInterface.Server (
   app,
+  getTxFromFile,
   initState,
   WebSocketEndpoint,
   ActivateContractEndpoint,
@@ -295,27 +296,26 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
       broadcastContractResult @w state contractInstanceID maybeError
   pure contractInstanceID
 
+getTxFromFile :: PABConfig -> TxId -> Text -> IO (Maybe RawTx)
+getTxFromFile config txId ext = do
+  -- Absolute path to pcTxFileDir that is specified in the config
+  txFolderPath <- makeAbsolute (unpack config.pcTxFileDir)
+
+  -- Create full path
+  let path :: FilePath
+      path = txFolderPath </> unpack (txFileName txId ext)
+
+  -- ensure file exists
+  fileExists <- doesFileExist path
+  if not fileExists
+    then pure Nothing
+    else JSON.decode <$> LBS.readFile path
+
 -- | This handler will allow to retrieve raw transactions from the pcTxFileDir if pcEnableTxEndpoint is True
 rawTxHandler :: PABConfig -> TxIdCapture -> Handler RawTx
 rawTxHandler config (TxIdCapture txId) = do
   -- Check that endpoint is enabled
-  assert config.pcEnableTxEndpoint
-  -- Absolute path to pcTxFileDir that is specified in the config
-  txFolderPath <- liftIO $ makeAbsolute (unpack config.pcTxFileDir)
+  unless config.pcEnableTxEndpoint $ throwError err404
 
-  -- Create full path
-  let path :: FilePath
-      path = txFolderPath </> unpack (txFileName txId "raw")
-
-  -- ensure file exists
-  fileExists <- liftIO $ doesFileExist path
-  assert fileExists
-
-  contents <- liftIO $ LBS.readFile path
-  case JSON.decode contents of
-    Just rawTx -> pure rawTx
-    Nothing -> throwError err404
-  where
-    assert :: Bool -> Handler ()
-    assert True = pure ()
-    assert False = throwError err404
+  mRawTx <- liftIO $ getTxFromFile config txId "raw"
+  maybe (throwError err404) pure mRawTx

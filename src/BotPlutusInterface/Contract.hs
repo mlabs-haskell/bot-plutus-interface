@@ -70,6 +70,7 @@ import Data.Default (Default (def))
 import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Function (fix, (&))
 import Data.Kind (Type)
+import Data.List (partition)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map qualified as Map
 import Data.Row (Row)
@@ -399,7 +400,7 @@ writeBalancedTx contractEnv cardanoTx = do
 
     let requiredSigners = Map.keys $ tx' ^. Tx.signatures
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
-        signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
+        (presentPubKeys, missingPubKeys) = partition ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
     txBudget <- BodyBuilder.runInEstimationEffect @w tx' id $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx'
 
@@ -409,19 +410,26 @@ writeBalancedTx contractEnv cardanoTx = do
     babbageBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsBabbageEra) path
     let cardanoApiTx = Tx.SomeTx (Tx babbageBody []) BabbageEraInCardanoMode
 
-    if signable
-      then newEitherT $ CardanoCLI.signTx @w pabConf tx' requiredSigners
-      else
-        lift . printBpiLog @w (Warn [PABLog]) . PP.vsep $
-          [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-          , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx'))
-          , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
-          ]
+    newEitherT $ CardanoCLI.signTx @w pabConf tx' presentPubKeys
+    let fullySignable = null missingPubKeys
 
-    when (pabConf.pcCollectStats && signable) $
+    unless fullySignable $
+      lift . printBpiLog @w (Warn [PABLog]) . PP.vsep $
+        [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
+        , "Unsigned tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx'))
+        ]
+          ++ if not $ null presentPubKeys
+            then
+              [ "Some signatures were able to sign, partially signed tx available here:"
+              , "Partially signed tx file:" <+> pretty (Files.txFilePath pabConf "signed" (Tx.txId tx'))
+              ]
+            else
+              ["Missing Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText missingPubKeys))]
+
+    when (pabConf.pcCollectStats && fullySignable) $
       lift $ saveBudget @w (Tx.txId tx') txBudget
 
-    when (not pabConf.pcDryRun && signable) $ do
+    when (not pabConf.pcDryRun && fullySignable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx'
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
@@ -429,7 +437,7 @@ writeBalancedTx contractEnv cardanoTx = do
         signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx')
         signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
     mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx')) (Files.txFilePath pabConf "raw" cardanoTxId)
-    when signable $ mvFiles signedSrcPath signedDstPath
+    when fullySignable $ mvFiles signedSrcPath signedDstPath
 
     pure cardanoApiTx
   where
