@@ -42,6 +42,7 @@ import Cardano.Api.Shelley (
   ReferenceScript (ReferenceScript),
   serialiseAddress,
  )
+import Cardano.Prelude (note)
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Freer.State (State, get)
@@ -153,9 +154,9 @@ buildTx pabConf privKeys txBudget tx = do
   utxos <- ecUtxos <$> get
   case toCardanoValue $ txMint tx of
     Right mintValue -> do
-      let ins = txInputOpts (spendBudgets txBudget) pabConf utxos (txInputs tx)
+      let eIns = txInputOpts (spendBudgets txBudget) pabConf utxos (txInputs tx)
           mints = mintOpts (mintBudgets txBudget) pabConf (fst <$> txMintingWitnesses tx) mintValue
-      callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const ())
+      either (pure . Left) (\ins -> callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const ())) eIns
     Left err -> pure $ Left $ showText err
   where
     requiredSigners =
@@ -233,33 +234,36 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInputOpts :: SpendBudgets -> PABConfig -> Map TxOutRef (CApi.TxOut CApi.CtxUTxO CApi.BabbageEra) -> [TxInput] -> [Text]
+txInputOpts :: SpendBudgets -> PABConfig -> Map TxOutRef (CApi.TxOut CApi.CtxUTxO CApi.BabbageEra) -> [TxInput] -> Either Text [Text]
 txInputOpts spendIndex pabConf utxos =
-  foldMap $
-    \(TxInput txOutRef txInputType) ->
-      mconcat
+  fmap mconcat . traverse
+    (\(TxInput txOutRef txInputType) -> do
+      scriptInputs <- mkScriptInputs txInputType txOutRef (Map.findWithDefault mempty txOutRef spendIndex)
+      pure $ mconcat
         [ ["--tx-in", txOutRefToCliArg txOutRef]
-        , scriptInputs txInputType txOutRef (Map.findWithDefault mempty txOutRef spendIndex)
+        , scriptInputs 
         ]
+    )
   where
-    scriptInputs :: TxInputType -> TxOutRef -> ExBudget -> [Text]
-    scriptInputs txInputType txOutRef exBudget =
+    mkScriptInputs :: TxInputType -> TxOutRef -> ExBudget -> Either Text [Text]
+    mkScriptInputs txInputType txOutRef exBudget =
       case txInputType of
-        TxScriptAddress redeemer eVHash dHash ->
+        TxScriptAddress redeemer eVHash dHash -> do
           let (typeText, prefix) = getTxInTypeAndPrefix eVHash
-           in mconcat
-                [ typeText
-                , handleTxInDatum prefix txOutRef dHash
-                ,
-                  [ prefix <> "tx-in-redeemer-file"
-                  , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
-                  ]
-                ,
-                  [ prefix <> "tx-in-execution-units"
-                  , exBudgetToCliArg exBudget
-                  ]
-                ]
-        _ -> []
+          datumOpts <- handleTxInDatum prefix txOutRef dHash
+          pure $ mconcat
+            [ typeText
+            , datumOpts
+            ,
+              [ prefix <> "tx-in-redeemer-file"
+              , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
+              ]
+            ,
+              [ prefix <> "tx-in-execution-units"
+              , exBudgetToCliArg exBudget
+              ]
+            ]
+        _ -> pure []
     getTxInTypeAndPrefix :: Either Scripts.ValidatorHash (ScriptUtils.Versioned TxOutRef) -> ([Text], Text)
     getTxInTypeAndPrefix = \case
       Left vHash ->
@@ -281,15 +285,16 @@ txInputOpts spendIndex pabConf utxos =
     txOutDatumIsInline :: CApi.TxOut CApi.CtxUTxO CApi.BabbageEra -> Bool
     txOutDatumIsInline (CApi.TxOut _ _ (CApi.TxOutDatumInline _ _) _) = True
     txOutDatumIsInline _ = False
-    handleTxInDatum :: Text -> TxOutRef -> Maybe DatumHash -> [Text]
-    handleTxInDatum prefix txOutRef (Just dHash) =
+    handleTxInDatum :: Text -> TxOutRef -> Maybe DatumHash -> Either Text [Text]
+    handleTxInDatum prefix txOutRef mDHash =
       if maybe False txOutDatumIsInline (Map.lookup txOutRef utxos)
-        then [prefix <> "tx-in-inline-datum-present"]
-        else
-          [ prefix <> "tx-in-datum-file"
-          , datumJsonFilePath pabConf dHash
-          ]
-    handleTxInDatum _ _ Nothing = []
+        then pure [prefix <> "tx-in-inline-datum-present"]
+        else do
+          dHash <- note "CLI Cannot handle TxOutDatumNone" mDHash
+          pure
+            [ prefix <> "tx-in-datum-file"
+            , datumJsonFilePath pabConf dHash
+            ]
 
 txRefInputOpts :: [TxInput] -> [Text]
 txRefInputOpts =
