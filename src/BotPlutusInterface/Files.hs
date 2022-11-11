@@ -199,15 +199,14 @@ writeReferenceScriptFile pabConf script =
 txMintingPolicies :: Tx.Tx -> [Versioned MintingPolicy]
 txMintingPolicies tx = mapMaybe (Ledger.lookupMintingPolicy $ Tx.txScripts tx) $ Map.keys $ Tx.txMintingWitnesses tx
 
-txValidatorInputs :: Tx.Tx -> [(Maybe (Versioned Validator), Redeemer, Datum)]
+txValidatorInputs :: Tx.Tx -> [(Maybe (Versioned Validator), Redeemer, Maybe Datum)]
 txValidatorInputs tx = mapMaybe (fromTxInputType . Tx.txInputType) $ Tx.txInputs tx <> Tx.txReferenceInputs tx
   where
-    fromTxInputType :: Tx.TxInputType -> Maybe (Maybe (Versioned Validator), Redeemer, Datum)
+    fromTxInputType :: Tx.TxInputType -> Maybe (Maybe (Versioned Validator), Redeemer, Maybe Datum)
     fromTxInputType (Tx.TxScriptAddress r eVHash mayDatHash) = do
       mValidator <- either (Just <$> Tx.lookupValidator (Tx.txScripts tx)) (const $ pure Nothing) eVHash
-      datHash <- mayDatHash
-      datum <- Tx.lookupDatum tx datHash
-      pure (mValidator, r, datum)
+      let mDatum = mayDatHash >>= Tx.lookupDatum tx
+      pure (mValidator, r, mDatum)
     fromTxInputType _ = Nothing
 
 txReferenceScripts :: Tx.Tx -> [Versioned Script]
@@ -217,8 +216,8 @@ txReferenceScripts tx = catMaybes $ getVersionedScript . Tx.txOutReferenceScript
     getVersionedScript (ReferenceScript _ s) = fromCardanoScriptInAnyLang s
     getVersionedScript _ = Nothing
 
-txOutpuDatums :: Tx.Tx -> [Datum]
-txOutpuDatums tx = do
+txOutputDatums :: Tx.Tx -> [Datum]
+txOutputDatums tx = do
   TxOut _ _ dat _ <- getTxOut <$> Tx.txOutputs tx
   case dat of
     TxOutDatumNone -> []
@@ -238,10 +237,10 @@ writeAll pabConf tx = do
   -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
   -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
-  let (mValidatorScripts, redeemers, datums) = unzip3 $ txValidatorInputs tx
+  let (mValidatorScripts, redeemers, mDatums) = unzip3 $ txValidatorInputs tx
       validatorScripts = catMaybes mValidatorScripts
       policyScripts = txMintingPolicies tx
-      allDatums = nub $ datums <> Map.elems (Tx.txData tx) <> txOutpuDatums tx
+      allDatums = nub $ catMaybes mDatums <> Map.elems (Tx.txData tx) <> txOutputDatums tx
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
       allRefScripts = txReferenceScripts tx
 
