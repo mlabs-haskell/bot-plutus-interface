@@ -2,21 +2,23 @@
   description = "bot-plutus-interface";
 
   inputs = {
-    haskell-nix.url = "github:input-output-hk/haskell.nix";
-
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
-
-    iohk-nix.url = "github:input-output-hk/iohk-nix";
-    iohk-nix.flake = false; # Bad Nix code
-
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
+    hackage-nix = {
+      url = "github:input-output-hk/hackage.nix";
       flake = false;
+    };
+    haskell-nix = {
+      url = "github:input-output-hk/haskell.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.hackage.follows = "hackage-nix";
     };
 
     CHaP = {
       url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
       flake = false;
+    };
+    iohk-nix = {
+      url = "github:input-output-hk/iohk-nix";
     };
   };
 
@@ -28,7 +30,13 @@
 
       nixpkgsFor = system:
         import nixpkgs {
-          overlays = [ haskell-nix.overlay (import "${iohk-nix}/overlays/crypto") ];
+          overlays = [
+            haskell-nix.overlay
+            iohk-nix.overlays.haskell-nix-extra
+            iohk-nix.overlays.crypto
+            iohk-nix.overlays.cardano-lib
+            iohk-nix.overlays.utils
+          ];
           inherit (haskell-nix) config;
           inherit system;
         };
@@ -38,13 +46,15 @@
         ({ pkgs, ... }:
           {
             packages = {
-              marlowe.flags.defer-plugin-errors = true;
+              marconi.flags.defer-plugin-errors = true;
+              marconi-mamba.flags.defer-plugin-errors = true;
+              plutus-example.flags.defer-plugin-errors = true;
               plutus-use-cases.flags.defer-plugin-errors = true;
               plutus-ledger.flags.defer-plugin-errors = true;
               plutus-script-utils.flags.defer-plugin-errors = true;
               plutus-contract.flags.defer-plugin-errors = true;
               cardano-crypto-praos.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
-              cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+              cardano-crypto-class.components.library.pkgconfig = pkgs.lib.mkForce [ [ pkgs.libsodium-vrf pkgs.secp256k1 ] ];
               cardano-wallet-core.components.library.build-tools = [
                 pkgs.buildPackages.buildPackages.gitMinimal
               ];
