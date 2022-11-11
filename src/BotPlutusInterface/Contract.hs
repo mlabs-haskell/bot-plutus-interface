@@ -54,7 +54,7 @@ import Cardano.Api (
  )
 import Cardano.Prelude (fromMaybe, liftA2)
 import Control.Lens (preview, (.~), (^.))
-import Control.Monad (join, void, when)
+import Control.Monad (join, unless, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
@@ -423,8 +423,7 @@ writeBalancedTx contractEnv cardanoTx = do
               [ "Some signatures were able to sign, partially signed tx available here:"
               , "Partially signed tx file:" <+> pretty (Files.txFilePath pabConf "signed" (Tx.txId tx'))
               ]
-            else
-              ["Missing Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText missingPubKeys))]
+            else ["Missing Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText missingPubKeys))]
 
     when (pabConf.pcCollectStats && fullySignable) $
       lift $ saveBudget @w (Tx.txId tx') txBudget
