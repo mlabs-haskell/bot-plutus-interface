@@ -19,13 +19,9 @@
       flake = false;
     };
 
-    CHaP = {
-      url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, haskell-nix, iohk-nix, CHaP, ... }@inputs:
+  outputs = { self, nixpkgs, haskell-nix, iohk-nix, ... }@inputs:
     let
       defaultSystems = [ "x86_64-linux" "x86_64-darwin" ];
 
@@ -69,9 +65,7 @@
         in
         pkgs.haskell-nix.cabalProject {
           src = ./.;
-          inputMap = {
-            "https://input-output-hk.github.io/cardano-haskell-packages" = CHaP;
-          };
+          sha256map = import ./nix/sha256map.nix;
           name = "bot-plutus-interface";
           compiler-nix-name = "ghc8107";
           shell = {
