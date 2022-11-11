@@ -236,14 +236,16 @@ submitTx pabConf tx =
 
 txInputOpts :: SpendBudgets -> PABConfig -> Map TxOutRef (CApi.TxOut CApi.CtxUTxO CApi.BabbageEra) -> [TxInput] -> Either Text [Text]
 txInputOpts spendIndex pabConf utxos =
-  fmap mconcat . traverse
-    (\(TxInput txOutRef txInputType) -> do
-      scriptInputs <- mkScriptInputs txInputType txOutRef (Map.findWithDefault mempty txOutRef spendIndex)
-      pure $ mconcat
-        [ ["--tx-in", txOutRefToCliArg txOutRef]
-        , scriptInputs 
-        ]
-    )
+  fmap mconcat
+    . traverse
+      ( \(TxInput txOutRef txInputType) -> do
+          scriptInputs <- mkScriptInputs txInputType txOutRef (Map.findWithDefault mempty txOutRef spendIndex)
+          pure $
+            mconcat
+              [ ["--tx-in", txOutRefToCliArg txOutRef]
+              , scriptInputs
+              ]
+      )
   where
     mkScriptInputs :: TxInputType -> TxOutRef -> ExBudget -> Either Text [Text]
     mkScriptInputs txInputType txOutRef exBudget =
@@ -251,18 +253,19 @@ txInputOpts spendIndex pabConf utxos =
         TxScriptAddress redeemer eVHash dHash -> do
           let (typeText, prefix) = getTxInTypeAndPrefix eVHash
           datumOpts <- handleTxInDatum prefix txOutRef dHash
-          pure $ mconcat
-            [ typeText
-            , datumOpts
-            ,
-              [ prefix <> "tx-in-redeemer-file"
-              , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
+          pure $
+            mconcat
+              [ typeText
+              , datumOpts
+              ,
+                [ prefix <> "tx-in-redeemer-file"
+                , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
+                ]
+              ,
+                [ prefix <> "tx-in-execution-units"
+                , exBudgetToCliArg exBudget
+                ]
               ]
-            ,
-              [ prefix <> "tx-in-execution-units"
-              , exBudgetToCliArg exBudget
-              ]
-            ]
         _ -> pure []
     getTxInTypeAndPrefix :: Either Scripts.ValidatorHash (ScriptUtils.Versioned TxOutRef) -> ([Text], Text)
     getTxInTypeAndPrefix = \case
