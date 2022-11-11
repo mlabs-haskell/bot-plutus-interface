@@ -18,7 +18,10 @@ index-state:
   , hackage.haskell.org 2022-05-18T00:00:00Z
   , cardano-haskell-packages 2022-10-25T00:00:00Z
 
-packages: ./.
+packages: ./bot-plutus-interface.cabal
+          ./examples/plutus-game/plutus-game.cabal
+          ./examples/plutus-transfer/plutus-transfer.cabal
+          ./examples/plutus-nft/plutus-nft.cabal
 
 --
 -- The following section constrains the build plan to what we currently
