@@ -45,9 +45,9 @@ constraints:
   --
 
   -- plutus
-  , plutus-core                      == 1.0.0.1
+  , plutus-core                      == 1.0.0.0
   , plutus-ghc-stub                  == 8.6.5
-  , plutus-ledger-api                == 1.0.0.1
+  , plutus-ledger-api                == 1.0.0.0
   , plutus-tx                        == 1.0.0.0
   , plutus-tx-plugin                 == 1.0.0.0
 
