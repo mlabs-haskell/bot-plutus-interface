@@ -3,11 +3,11 @@
 
   inputs = {
     haskell-nix = {
-      url = "github:input-output-hk/haskell.nix";
+      url = "github:input-output-hk/haskell.nix?ref=31b4ff7b3cf1b6537da08ca7c20f4a7ab96fe397";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
     iohk-nix = {
       url = "github:input-output-hk/iohk-nix";
