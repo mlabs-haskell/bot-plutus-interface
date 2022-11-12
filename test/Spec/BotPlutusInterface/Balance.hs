@@ -10,7 +10,7 @@ import BotPlutusInterface.Effects (PABEffect)
 import BotPlutusInterface.Helpers (addressTxOut, lovelaceValueOf, unsafeToCardanoAddressInEra, unsafeValueOf)
 import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
-  PABConfig (pcOwnPubKeyHash),
+  PABConfig (pcNetwork, pcOwnPubKeyHash, pcProtocolParams),
  )
 import Cardano.Api (AddressInEra, BabbageEra)
 import Control.Lens (views, (%~), (&), (.~), (^.))
@@ -33,6 +33,7 @@ import Ledger.Crypto (PubKeyHash)
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   ChainIndexTxOut (..),
+  DatumFromQuery (DatumInline),
   Tx (..),
   TxInput (..),
   TxInputType (..),
@@ -41,6 +42,7 @@ import Ledger.Tx (
  )
 import Ledger.Value qualified as Value
 
+import Ledger.Params (Params (Params))
 import Ledger.Value (AssetClass, Value)
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.Script.Utils.V1.Address qualified as ScriptUtils
@@ -244,7 +246,13 @@ dontAddChangeToDatum = do
           <> Constraints.mustPayToPubKey paymentPkh3 payToUserValue
           <> Constraints.mustSpendScriptOutput txOutRef6 Ledger.unitRedeemer
           <> Constraints.mustSpendPubKeyOutput txOutRef7
-      eunbalancedTx = Constraints.mkTx @Void scrLkups txConsts
+
+  pparams <- maybe (assertFailure "Must have ProtocolParams set in PABConfig") return $ pcProtocolParams pabConf
+  let eunbalancedTx =
+        Constraints.mkTxWithParams @Void
+          (Params def pparams (pcNetwork pabConf))
+          scrLkups
+          txConsts
 
   unbalancedTx <- liftAssertFailure eunbalancedTx (\err -> "MkTx Error: " <> show err)
   let (eRslt, _finalState) = runPABEffectPure initState (runEitherT $ balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
@@ -313,7 +321,13 @@ dontAddChangeToDatum2 = do
         -- (The extra ada is used to cover fees etc...)
         Constraints.mustPayToOtherScript valHash scrDatum payToScrValue
           <> Constraints.mustSpendScriptOutput txOutRef6 Ledger.unitRedeemer
-      eunbalancedTx = Constraints.mkTx @Void scrLkups txConsts
+
+  pparams <- maybe (assertFailure "Must have ProtocolParams set in PABConfig") return $ pcProtocolParams pabConf
+  let eunbalancedTx =
+        Constraints.mkTxWithParams @Void
+          (Params def pparams (pcNetwork pabConf))
+          scrLkups
+          txConsts
 
   unbalancedTx <- liftAssertFailure eunbalancedTx (\err -> "MkTx Error: " <> show err)
   let (eRslt, _finalState) = runPABEffectPure initState (runEitherT $ balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
@@ -370,8 +384,8 @@ liftAssertFailure :: Either a b -> (a -> String) -> IO b
 liftAssertFailure (Left err) fstr = assertFailure (fstr err)
 liftAssertFailure (Right rslt) _ = return rslt
 
-toHashAndDatum :: ScriptUtils.Datum -> (ScriptUtils.DatumHash, Maybe ScriptUtils.Datum)
-toHashAndDatum d = (ScriptUtils.datumHash d, Just d)
+toHashAndDatum :: ScriptUtils.Datum -> (ScriptUtils.DatumHash, DatumFromQuery)
+toHashAndDatum d = (ScriptUtils.datumHash d, DatumInline d)
 
 toHashAndValidator :: Api.Validator -> (Api.ValidatorHash, Maybe (ScriptUtils.Versioned Api.Validator))
 toHashAndValidator (toV1 -> v) = (Scripts.validatorHash v, Just v)

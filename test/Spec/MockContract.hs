@@ -139,6 +139,7 @@ import Data.Tuple.Extra (first)
 import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
 import Ledger (
+  DatumFromQuery (DatumInBody, DatumInline, DatumUnknown),
   Extended (NegInf, PosInf),
   Interval (Interval),
   LowerBound (LowerBound),
@@ -152,7 +153,7 @@ import Ledger (
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
-import Ledger.Scripts (Datum (Datum), DatumHash (DatumHash))
+import Ledger.Scripts (DatumHash (DatumHash))
 import Ledger.Slot (Slot (getSlot))
 import Ledger.TimeSlot (posixTimeToUTCTime)
 import Ledger.Tx (
@@ -528,10 +529,12 @@ txOutToDatum :: ChainIndexTxOut -> Text
 txOutToDatum =
   \case
     PublicKeyChainIndexTxOut _ _ Nothing _ -> "TxOutDatumNone"
-    PublicKeyChainIndexTxOut _ _ (Just (dh, Nothing)) _ -> printDatumHash dh
-    PublicKeyChainIndexTxOut _ _ (Just (_, Just (Datum d))) _ -> printDatum d
-    ScriptChainIndexTxOut _ _ (dh, Nothing) _ _ -> printDatumHash dh
-    ScriptChainIndexTxOut _ _ (_, Just (Datum d)) _ _ -> printDatum d
+    PublicKeyChainIndexTxOut _ _ (Just (dh, DatumUnknown)) _ -> printDatumHash dh
+    PublicKeyChainIndexTxOut _ _ (Just (_, DatumInline d)) _ -> printDatum d
+    PublicKeyChainIndexTxOut _ _ (Just (_, DatumInBody d)) _ -> printDatum d
+    ScriptChainIndexTxOut _ _ (dh, DatumUnknown) _ _ -> printDatumHash dh
+    ScriptChainIndexTxOut _ _ (_, DatumInline d) _ _ -> printDatum d
+    ScriptChainIndexTxOut _ _ (_, DatumInBody d) _ _ -> printDatum d
   where
     printDatumHash (DatumHash dh) =
       "TxDatumHash ScriptDataInBabbageEra " <> encodeByteString (fromBuiltin dh)
@@ -638,6 +641,9 @@ mockUploadDir _ = pure ()
 
 mockQueryChainIndex :: forall (w :: Type). ChainIndexQuery -> MockContract w ChainIndexResponse
 mockQueryChainIndex = \case
+  DatumsAtAddress _ _ ->
+    -- pure $ DatumHashResponse Nothing
+    throwError @Text "DatumAtAddress is unimplemented"
   DatumFromHash _ ->
     -- pure $ DatumHashResponse Nothing
     throwError @Text "DatumFromHash is unimplemented"
@@ -744,15 +750,17 @@ convertCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
   CIT.ChainIndexTxOut addr val (convertMaybeDatum dat) (convertRefScript maybeRefSc)
 convertCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
   let datum = case eitherDatum of
-        (dh, Nothing) -> OutputDatumHash dh
-        (_, Just d) -> OutputDatum d
+        (dh, DatumUnknown) -> OutputDatumHash dh
+        (_, DatumInline d) -> OutputDatum d
+        (_, DatumInBody d) -> OutputDatum d
    in CIT.ChainIndexTxOut addr val datum (convertRefScript maybeRefSc)
 
-convertMaybeDatum :: Maybe (DatumHash, Maybe Datum) -> OutputDatum
+convertMaybeDatum :: Maybe (DatumHash, DatumFromQuery) -> OutputDatum
 convertMaybeDatum = \case
   Nothing -> NoOutputDatum
-  Just (dh, Nothing) -> OutputDatumHash dh
-  Just (_dh, Just d) -> OutputDatum d
+  Just (dh, DatumUnknown) -> OutputDatumHash dh
+  Just (_dh, DatumInline d) -> OutputDatum d
+  Just (_dh, DatumInBody d) -> OutputDatum d
 
 convertRefScript :: Maybe (Tx.Versioned V1.Script) -> ReferenceScript
 convertRefScript =

@@ -19,7 +19,7 @@ import Data.Row (Row)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
-import Ledger (validatorHash)
+import Ledger (DatumFromQuery (DatumUnknown), validatorHash)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (scriptHashAddress)
@@ -611,7 +611,7 @@ redeemFromValidator = do
         ScriptChainIndexTxOut
           valAddr
           (Ada.lovelaceValueOf 1250)
-          (datumHash, Nothing)
+          (datumHash, DatumUnknown)
           Nothing
           (validatorHash validatorVersioned, Just validatorVersioned)
       initState = def & utxos <>~ [(txOutRef, txOut), (txOutRef', txOut')]

@@ -1,13 +1,15 @@
 module Spec.BotPlutusInterface.AdjustUnbalanced (tests) where
 
 import BotPlutusInterface.Types (
-  PABConfig (pcOwnPubKeyHash),
+  ContractEnvironment (cePABConfig),
+  PABConfig (pcNetwork, pcOwnPubKeyHash, pcProtocolParams),
  )
 import Control.Lens ((%~), (&), (.~), (^.))
 import Data.Default (def)
 import Data.Text (Text)
 import Ledger (
   ChainIndexTxOut (PublicKeyChainIndexTxOut),
+  Params (Params),
   PaymentPubKeyHash (unPaymentPubKeyHash),
   TxOut (..),
   Value,
@@ -23,6 +25,7 @@ import Plutus.Contract (
   Contract (..),
   Endpoint,
   adjustUnbalancedTx,
+  throwError,
  )
 import Spec.MockContract (
   contractEnv,
@@ -54,7 +57,7 @@ testOutsGetAdjusted = do
         def & utxos .~ [(txOutRef, txOut)]
           & contractEnv
             %~ updatePabConfig
-              (\pabConf -> pabConf {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1})
+              (\pc -> pc {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1})
 
       smallValue = Ada.lovelaceValueOf 1
       bigEnoughValue = Ada.adaValueOf 777
@@ -62,10 +65,21 @@ testOutsGetAdjusted = do
       shouldBeAdjusted = (paymentPkh2, smallValue)
       shouldNotBeAdjusted = (paymentPkh3, bigEnoughValue)
 
+      pabConf = cePABConfig $ initState ^. contractEnv
       contract :: Contract () (Endpoint "SendAda" ()) Text [TxOut]
       contract = do
+        pparams <- maybe (throwError "Must have ProtocolParams set in PABConfig") return $ pcProtocolParams pabConf
+
         let constraints = foldMap toPayConstraint [shouldBeAdjusted, shouldNotBeAdjusted]
-            utx = either (error . show) id (Constraints.mkTx @Void mempty constraints)
+            utx =
+              either
+                (error . show)
+                id
+                ( Constraints.mkTxWithParams @Void
+                    (Params def pparams (pcNetwork pabConf))
+                    mempty
+                    constraints
+                )
         adjustedUtx <- adjustUnbalancedTx utx
         return (adjustedUtx ^. tx . outputs)
 
