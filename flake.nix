@@ -7,7 +7,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nixpkgs.follows = "haskell-nix/nixpkgs";
+    nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
 
     iohk-nix = {
       url = "github:input-output-hk/iohk-nix";
