@@ -276,7 +276,7 @@ adjustUnbalancedTx' contractEnv unbalancedTx = pure $ do
           missingLovelace = max 0 (Ada.lovelaceOf minTxOut - Ada.fromValue (txOutValue txOut))
       -- pure $ txOut {txOutValue = txOutValue txOut <> Ada.toValue missingLovelace}
       newVal <- CardanoAPI.toCardanoValue (txOutValue txOut <> Ada.toValue missingLovelace)
-      pure $ txOut & Tx.outValue .~ (C.TxOutValue C.MultiAssetInBabbageEra newVal)
+      pure $ txOut & Tx.outValue .~ C.TxOutValue C.MultiAssetInBabbageEra newVal
 
     asBabbageBased f = f ShelleyBasedEraBabbage
 
@@ -360,7 +360,7 @@ balanceTx ::
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTx _ (UnbalancedCardanoTx _ _ _) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
+balanceTx _ UnbalancedCardanoTx {} = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
 balanceTx contractEnv unbalancedTx@(UnbalancedEmulatorTx tx' _ _) = do
   let pabConf = contractEnv.cePABConfig
 

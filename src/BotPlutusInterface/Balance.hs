@@ -388,7 +388,7 @@ addAdaChange balanceCfg changeAddr change tx
 addValueToTxOut :: Value -> TxOut -> TxOut
 addValueToTxOut val txOut =
   let newVal = fromRight (error "Couldn't convert value") $ CardanoAPI.toCardanoValue (Tx.txOutValue txOut <> val)
-   in txOut & Tx.outValue .~ (C.TxOutValue C.MultiAssetInBabbageEra newVal)
+   in txOut & Tx.outValue .~ C.TxOutValue C.MultiAssetInBabbageEra newVal
 
 -- | Adds a 1 lovelace output to a transaction
 addOutput :: C.NetworkId -> Address -> Tx -> Tx
@@ -472,7 +472,7 @@ consJust (Just x) = (x :)
 consJust _ = id
 
 chainIndexTxOutToTxOut :: C.NetworkId -> ChainIndexTxOut -> TxOut
-chainIndexTxOutToTxOut networkId (ChainIndexTxOut {citoAddress, citoValue, citoDatum, citoRefScript}) =
+chainIndexTxOutToTxOut networkId ChainIndexTxOut {citoAddress, citoValue, citoDatum, citoRefScript} =
   mkTxOut networkId citoAddress citoValue citoDatum citoRefScript
 
 mkTxOut :: C.NetworkId -> Address -> Value -> OutputDatum -> ReferenceScript -> TxOut

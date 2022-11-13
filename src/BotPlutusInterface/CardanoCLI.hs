@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.CardanoCLI (
   submitTx,
