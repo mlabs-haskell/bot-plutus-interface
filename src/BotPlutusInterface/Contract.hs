@@ -100,7 +100,7 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
-import Prettyprinter (Pretty (pretty), (<+>))
+import Prettyprinter (Pretty (pretty), viaShow, (<+>))
 import Prettyprinter qualified as PP
 import Wallet.API qualified as WAPI
 import Wallet.Emulator.Error (WalletAPIError (..))
@@ -410,8 +410,14 @@ writeBalancedTx contractEnv cardanoTx = do
     babbageBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsBabbageEra) path
     let cardanoApiTx = Tx.SomeTx (Tx babbageBody []) BabbageEraInCardanoMode
 
+    lift . printBpiLog @w (Debug [PABLog]) $ viaShow presentPubKeys
+    lift . printBpiLog @w (Debug [PABLog]) $ viaShow missingPubKeys
+    lift . printBpiLog @w (Debug [PABLog]) $ viaShow requiredSigners
+
     newEitherT $ CardanoCLI.signTx @w pabConf tx' presentPubKeys
+
     let fullySignable = null missingPubKeys
+        cardanoTxId = Ledger.getCardanoTxId $ Tx.CardanoApiTx cardanoApiTx
 
     unless fullySignable $
       lift . printBpiLog @w (Warn [PABLog]) . PP.vsep $
@@ -421,7 +427,7 @@ writeBalancedTx contractEnv cardanoTx = do
           ++ if not $ null presentPubKeys
             then
               [ "Some signatures were able to sign, partially signed tx available here:"
-              , "Partially signed tx file:" <+> pretty (Files.txFilePath pabConf "signed" (Tx.txId tx'))
+              , "Partially signed tx file:" <+> pretty (Files.txFilePath pabConf "signed" cardanoTxId)
               ]
             else ["Missing Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText missingPubKeys))]
 
@@ -432,11 +438,8 @@ writeBalancedTx contractEnv cardanoTx = do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx'
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
-    let cardanoTxId = Ledger.getCardanoTxId $ Tx.CardanoApiTx cardanoApiTx
-        signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx')
-        signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
     mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx')) (Files.txFilePath pabConf "raw" cardanoTxId)
-    when fullySignable $ mvFiles signedSrcPath signedDstPath
+    cpFiles (Files.txFilePath pabConf "signed" (Tx.txId tx')) (Files.txFilePath pabConf "signed" cardanoTxId)
 
     pure cardanoApiTx
   where
@@ -446,6 +449,15 @@ writeBalancedTx contractEnv cardanoTx = do
         callCommand @w
           ShellArgs
             { cmdName = "mv"
+            , cmdArgs = [src, dst]
+            , cmdOutParser = const ()
+            }
+    cpFiles :: Text -> Text -> EitherT Text (Eff effs) ()
+    cpFiles src dst =
+      newEitherT $
+        callCommand @w
+          ShellArgs
+            { cmdName = "cp"
             , cmdArgs = [src, dst]
             , cmdOutParser = const ()
             }

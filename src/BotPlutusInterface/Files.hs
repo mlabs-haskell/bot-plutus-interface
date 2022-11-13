@@ -23,8 +23,10 @@ module BotPlutusInterface.Files (
   skeyToDummyPrivKey,
   vkeyToDummyPrivKey,
   writeDatumJsonFile,
+  dummyXPrv,
 ) where
 
+import Basement.String qualified as Base
 import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissing,
@@ -57,6 +59,7 @@ import Cardano.Api.Shelley (
   scriptDataToJson,
   toPlutusData,
  )
+import Cardano.Crypto.Wallet (generate)
 import Cardano.Crypto.Wallet qualified as Crypto
 import Codec.Serialise qualified as Codec
 import Control.Monad.Freer (Eff, Member)
@@ -310,6 +313,10 @@ data DummyPrivKey
 unDummyPrivateKey :: DummyPrivKey -> Crypto.XPrv
 unDummyPrivateKey (FromSKey key) = key
 unDummyPrivateKey (FromVKey key) = key
+
+-- | Used as a signing keys for foreign signers BPI has no access to (ie. multisig schemes)
+dummyXPrv :: Crypto.XPrv
+dummyXPrv = generate ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" :: Base.String) ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" :: Base.String)
 
 readSigningKey ::
   forall (w :: Type) (effs :: [Type -> Type]).

@@ -152,44 +152,43 @@ buildTx ::
   Eff effs (Either Text ())
 buildTx pabConf privKeys txBudget tx = do
   utxos <- ecUtxos <$> get
+  let requiredSigners =
+        concatMap
+          ( \pubKey ->
+              let pkh = Ledger.pubKeyHash pubKey
+               in case Map.lookup pkh privKeys of
+                    Just (FromSKey _) ->
+                      ["--required-signer", signingKeyFilePath pabConf pkh]
+                    Just (FromVKey _) ->
+                      ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
+                    Nothing ->
+                      []
+          )
+          (Map.keys (Ledger.txSignatures tx))
+      opts ins mints =
+        mconcat
+          [ ["transaction", "build-raw", "--babbage-era"]
+          , ins
+          , txRefInputOpts (txReferenceInputs tx)
+          , txInputCollateralOpts (txCollateralInputs tx)
+          , txOutOpts pabConf (txData tx) (txOutputs tx)
+          , mints
+          , validRangeOpts (txValidRange tx)
+          , -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
+            -- , metadataOpts pabConf (txMetadata tx)
+            requiredSigners
+          , ["--fee", showText . getLovelace . fromValue $ txFee tx]
+          , mconcat
+              [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+              , ["--out-file", txFilePath pabConf "raw" (txId tx)]
+              ]
+          ]
   case toCardanoValue $ txMint tx of
     Right mintValue -> do
       let eIns = txInputOpts (spendBudgets txBudget) pabConf utxos (txInputs tx)
           mints = mintOpts (mintBudgets txBudget) pabConf (fst <$> txMintingWitnesses tx) mintValue
       either (pure . Left) (\ins -> callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const ())) eIns
     Left err -> pure $ Left $ showText err
-  where
-    requiredSigners =
-      concatMap
-        ( \pubKey ->
-            let pkh = Ledger.pubKeyHash pubKey
-             in case Map.lookup pkh privKeys of
-                  Just (FromSKey _) ->
-                    ["--required-signer", signingKeyFilePath pabConf pkh]
-                  Just (FromVKey _) ->
-                    ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
-                  Nothing ->
-                    []
-        )
-        (Map.keys (Ledger.txSignatures tx))
-    opts ins mints =
-      mconcat
-        [ ["transaction", "build-raw", "--babbage-era"]
-        , ins
-        , txRefInputOpts (txReferenceInputs tx)
-        , txInputCollateralOpts (txCollateralInputs tx)
-        , txOutOpts pabConf (txData tx) (txOutputs tx)
-        , mints
-        , validRangeOpts (txValidRange tx)
-        , -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-          -- , metadataOpts pabConf (txMetadata tx)
-          requiredSigners
-        , ["--fee", showText . getLovelace . fromValue $ txFee tx]
-        , mconcat
-            [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            , ["--out-file", txFilePath pabConf "raw" (txId tx)]
-            ]
-        ]
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
 signTx ::

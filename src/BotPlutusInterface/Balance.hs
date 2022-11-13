@@ -25,7 +25,7 @@ import BotPlutusInterface.Effects (
   printBpiLog,
   queryNode,
  )
-import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
+import BotPlutusInterface.Files (DummyPrivKey, dummyXPrv, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Helpers (addressTxOut, lovelaceValueOf)
 import BotPlutusInterface.Types (
@@ -41,8 +41,8 @@ import BotPlutusInterface.Types (
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
 import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
-import Control.Lens (folded, to, (&), (.~), (^.), (^..))
-import Control.Monad (foldM, unless, void)
+import Control.Lens (At (at), folded, to, (&), (.~), (?~), (^.), (^..))
+import Control.Monad (unless, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Freer.State (State, modify)
 import Control.Monad.Trans.Class (lift)
@@ -62,7 +62,6 @@ import Data.Text qualified as Text
 import GHC.Real (Ratio ((:%)))
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..))
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Interval (
@@ -75,6 +74,8 @@ import Ledger.Tx (
   Tx (..),
   TxOut (..),
   TxOutRef (..),
+  signatures,
+  txId,
  )
 import Ledger.Tx qualified as Tx
 import Ledger.Tx.CardanoAPI.Internal (toCardanoValue)
@@ -82,9 +83,12 @@ import Ledger.Value (Value)
 import Ledger.Value qualified as Value
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
+  LedgerBytes (LedgerBytes),
   TokenName (..),
  )
 
+import Data.Foldable (Foldable (foldr'))
+import Ledger (PubKey (PubKey), PubKeyHash (PubKeyHash), signTx')
 import Ledger.Constraints.OffChain qualified as Constraints
 import Prettyprinter (pretty, viaShow, (<+>))
 import Wallet.API qualified as WAPI
@@ -171,18 +175,17 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
 
   -- Adds required collaterals in the `Tx`
   -- is true. Also adds signatures for fee calculation
-  preBalancedTx <-
-    hoistEither $
-      addSignatories ownPkh privKeys requiredSigs $
-        maybe tx (`addTxCollaterals` tx) mcollateral
+  let preBalancedTx =
+        addSignatories ownPkh privKeys requiredSigs $
+          maybe tx (`addTxCollaterals` tx) mcollateral
 
   -- Balance the tx
-  balancedTx <- balanceTxLoop utxoIndex privKeys changeAddr preBalancedTx
+  balancedTx <- balanceTxLoop @w balanceCfg pabConf utxoIndex privKeys changeAddr preBalancedTx
   changeTxOutWithMinAmt <- firstEitherT WAPI.OtherError $ newEitherT $ addOutput @w changeAddr balancedTx
 
   -- Get current Ada change
   let adaChange = getAdaChange utxoIndex balancedTx
-      bTx = balanceTxLoop utxoIndex privKeys changeAddr changeTxOutWithMinAmt
+      bTx = balanceTxLoop @w balanceCfg pabConf utxoIndex privKeys changeAddr changeTxOutWithMinAmt
 
   -- Checks if there's ada change left, if there is then we check
   -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
@@ -209,35 +212,41 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
   lift txInfoLog
 
   -- finally, we must update the signatories
-  hoistEither $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
-  where
-    balanceTxLoop ::
-      Map TxOutRef TxOut ->
-      Map PubKeyHash DummyPrivKey ->
-      CApi.AddressInEra CApi.BabbageEra ->
-      Tx ->
-      EitherT WAPI.WalletAPIError (Eff effs) Tx
-    balanceTxLoop utxoIndex privKeys changeAddr tx = do
-      void $ lift $ Files.writeAll @w pabConf tx -- TODO: Does this really need to happen in the loop?
+  return $ addSignatories ownPkh privKeys requiredSigs fullyBalancedTx
 
-      -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
-      txWithoutFees <-
-        newEitherT $ balanceTxStep @w balanceCfg utxoIndex changeAddr $ tx `withFee` 0
+balanceTxLoop ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  ( Member (PABEffect w) effs
+  , Member (State EstimationContext) effs
+  ) =>
+  BalanceConfig ->
+  PABConfig ->
+  Map TxOutRef TxOut ->
+  Map PubKeyHash DummyPrivKey ->
+  CApi.AddressInEra CApi.BabbageEra ->
+  Tx ->
+  EitherT WAPI.WalletAPIError (Eff effs) Tx
+balanceTxLoop balanceCfg pabConf utxoIx privKeys changeAddr tx = do
+  void $ lift $ Files.writeAll @w pabConf tx -- TODO: Does this really need to happen in the loop?
 
-      exBudget <- bimapEitherT WAPI.OtherError toExBudget $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
+  -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
+  txWithoutFees <-
+    newEitherT $ balanceTxStep @w balanceCfg utxoIx changeAddr $ tx `withFee` 0
 
-      nonBudgettedFees <- firstEitherT WAPI.OtherError $ newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
+  exBudget <- bimapEitherT WAPI.OtherError toExBudget $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
 
-      let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
+  nonBudgettedFees <- firstEitherT WAPI.OtherError $ newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
-      lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Fees:" <+> pretty fees
+  let fees = nonBudgettedFees + getBudgetPrice (getExecutionUnitPrices pabConf) exBudget
 
-      -- Rebalance the initial tx with the above fees
-      balancedTx <- newEitherT $ balanceTxStep @w balanceCfg utxoIndex changeAddr $ tx `withFee` fees
+  lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Fees:" <+> pretty fees
 
-      if balancedTx == tx
-        then pure balancedTx
-        else balanceTxLoop utxoIndex privKeys changeAddr balancedTx
+  -- Rebalance the initial tx with the above fees
+  balancedTx <- newEitherT $ balanceTxStep @w balanceCfg utxoIx changeAddr $ tx `withFee` fees
+
+  if balancedTx == tx
+    then pure balancedTx
+    else balanceTxLoop @w balanceCfg pabConf utxoIx privKeys changeAddr balancedTx
 
 toCtxTxTxOut :: forall (era :: Type). CApi.TxOut CApi.CtxUTxO era -> CApi.TxOut CApi.CtxTx era
 toCtxTxTxOut (CApi.TxOut addr val d refS) =
@@ -489,15 +498,20 @@ addOutput changeAddr tx =
     return $ tx {txOutputs = txOutputs tx ++ [changeTxOutWithMinAmt]}
 
 {- | Add the required signatories to the transaction. Be aware the the signature itself is invalid,
- and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
+ and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk if there's one.
+Otherwise, signing key used is a dummy one to support multi-sig schemes.
+WARN: This is brittle and should break in unexpected ways down the line.
 -}
-addSignatories :: PubKeyHash -> Map PubKeyHash DummyPrivKey -> [PubKeyHash] -> Tx -> Either WAPI.WalletAPIError Tx
+addSignatories :: PubKeyHash -> Map PubKeyHash DummyPrivKey -> [PubKeyHash] -> Tx -> Tx
 addSignatories ownPkh privKeys pkhs tx =
-  foldM
-    ( \tx' pkh ->
+  foldr'
+    ( \pkh@(PubKeyHash pkhBs) tx' ->
         case Map.lookup pkh privKeys of
-          Just privKey -> Right $ Tx.addSignature' (unDummyPrivateKey privKey) tx'
-          Nothing -> Left $ WAPI.PaymentPrivateKeyNotFound $ PaymentPubKeyHash pkh
+          Just privKey -> Tx.addSignature' (unDummyPrivateKey privKey) tx'
+          Nothing ->
+            let sig = signTx' (txId tx) dummyXPrv
+                pkey = PubKey (LedgerBytes pkhBs)
+             in tx' & signatures . at pkey ?~ sig
     )
     tx
     (ownPkh : pkhs)

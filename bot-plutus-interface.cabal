@@ -27,7 +27,7 @@ common common-lang
     -Wall -Wcompat -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
     -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
-    -fplugin=RecordDotPreprocessor -Werror
+    -fplugin=RecordDotPreprocessor -Wwarn
 
   build-depends:
     , base
@@ -116,6 +116,7 @@ library
     , cardano-ledger-shelley
     , cardano-prelude
     , cardano-slotting
+    , cardano-crypto-wrapper
     , config-schema
     , config-value
     , containers
@@ -132,6 +133,7 @@ library
     , lens
     , memory
     , mtl
+    , cborg
     , ouroboros-consensus
     , playground-common
     , plutus-chain-index
@@ -172,6 +174,7 @@ library
     , wai
     , warp
     , websockets
+    , basement
 
   hs-source-dirs:  src
 
