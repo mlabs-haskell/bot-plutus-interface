@@ -59,7 +59,7 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
-import Data.List (sortOn, unzip4)
+import Data.List (sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, mapMaybe)
@@ -67,11 +67,10 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
 import Ledger.Crypto qualified as Crypto
-import Ledger.Tx (Tx)
+import Ledger.Tx (Tx, Versioned (unversioned))
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
-import Plutus.Script.Utils.V1.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),
@@ -141,10 +140,10 @@ writePolicyScriptFile ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
-  MintingPolicy ->
+  Versioned MintingPolicy ->
   Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
-  let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
+  let script = serialiseScript $ Ledger.unMintingPolicyScript $ unversioned mintingPolicy
       filepath = policyScriptFilePath pabConf (ScriptUtils.scriptCurrencySymbol mintingPolicy)
    in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
@@ -153,10 +152,10 @@ writeValidatorScriptFile ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
-  Validator ->
+  Versioned Validator ->
   Eff effs (Either (FileError ()) Text)
 writeValidatorScriptFile pabConf validatorScript =
-  let script = serialiseScript $ Ledger.unValidatorScript validatorScript
+  let script = serialiseScript $ Ledger.unValidatorScript $ unversioned validatorScript
       filepath = validatorScriptFilePath pabConf (ScriptUtils.validatorHash validatorScript)
    in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
 
@@ -184,11 +183,11 @@ writeAll pabConf tx = do
   -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
   -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
-  let (_, validatorScripts, redeemers, datums) =
-        unzip4 $ mapMaybe Tx.inScripts $ Tx.txInputs tx
+  let (validatorScripts, redeemers, datums) =
+        unzip3 $ mapMaybe (Tx.inScripts . Tx.fillTxInputWitnesses tx) $ Tx.txInputs tx
 
-      policyScripts = Map.elems $ Tx.txMintScripts tx
-      allDatums = datums <> Map.elems (Tx.txData tx)
+      policyScripts = catMaybes $ Tx.lookupMintingPolicy (Tx.txScripts tx) <$> Map.keys (Tx.txMintingWitnesses tx)
+      allDatums = catMaybes datums <> Map.elems (Tx.txData tx)
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
 
   results <-

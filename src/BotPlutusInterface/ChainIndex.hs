@@ -85,6 +85,11 @@ handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
         <$> chainIndexTxoQuery
           contractEnv
           (ChainIndexClient.getTxoSetAtAddress (TxoAtAddressRequest (Just page) credential))
+    DatumsAtAddress page credential ->
+      DatumsAtResponse
+        <$> chainIndexQueryMany
+          cePABConfig
+          (ChainIndexClient.getDatumsAtAddress (QueryAtAddressRequest (Just page) credential))
 
 chainIndexQuery' :: forall (a :: Type). PABConfig -> ClientM a -> IO (Either ClientError a)
 chainIndexQuery' pabConf endpoint = do

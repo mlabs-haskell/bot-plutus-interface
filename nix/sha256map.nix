@@ -23,6 +23,6 @@
   "https://github.com/input-output-hk/Win32-network"."3825d3abf75f83f406c1f7161883c438dac7277d" = "19wahfv726fa3mqajpqdqhnl9ica3xmf68i254q45iyjcpj1psqx";
   "https://github.com/sevanspowell/hw-aeson"."b5ef03a7d7443fcd6217ed88c335f0c411a05408" = "1dwx90wqavdl4d0npbzbxyh2pzi9zs1qz7nvsrb3n1cm2xbv4i5z";
   "https://github.com/vshabanov/ekg-json"."00ebe7211c981686e65730b7144fbf5350462608" = "sha256-VT8Ur585TCn03P2TVi6t92v2Z6tl8vKijICjse6ocv8=";
-  "https://github.com/mlabs-haskell/plutus-apps"."d89436f05aca87dc40ffdee5733a5bacc354b09f" = "1qh8qcwsf05azqgxjkdvjk48vj9l3ca1axs2fl50npyy8137ml4y";
+  "https://github.com/mlabs-haskell/plutus-apps"."2d26a10eb412f8ab13fd7e1e5d5003c133843791" = "1ydglw36qv5nnqd4yrd06k0wxcwkvffvvwlbp5qz4rskz0z3rniz";
   "https://github.com/input-output-hk/moo"."8c487714fbfdea66188fcb85053e7e292e0cc348" = "1mdj218hgh7s5a6b9k14vg9i06zxah0wa42ycdgh245izs8nfv0x";
 }

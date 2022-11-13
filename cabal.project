@@ -376,7 +376,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/mlabs-haskell/plutus-apps
-  tag: d89436f05aca87dc40ffdee5733a5bacc354b09f
+  tag: 2d26a10eb412f8ab13fd7e1e5d5003c133843791
   subdir:
     cardano-streaming
     doc

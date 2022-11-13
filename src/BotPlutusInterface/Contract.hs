@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -47,7 +48,7 @@ import Cardano.Api (
   Tx (Tx),
   toLedgerPParams,
  )
-import Cardano.Api.Shelley (toShelleyTxOut)
+import Cardano.Api qualified as C
 import Cardano.Ledger.Shelley.API.Wallet (
   CLI (evaluateMinLovelaceOutput),
  )
@@ -79,12 +80,12 @@ import Ledger.Ada qualified as Ada
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
 import Ledger.Slot (Slot (Slot))
-import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
+import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs, txOutValue)
 import Ledger.Tx qualified as Tx
-import Ledger.Tx.CardanoAPI (toCardanoTxOut, toCardanoTxOutDatumHash)
-import Ledger.Validation (Coin (Coin))
+import Ledger.Tx.CardanoAPI qualified as CardanoAPI
+import Ledger.Validation (Coin (Coin), fromPlutusTxOut)
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
-import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
+import Plutus.ChainIndex.Types (ChainIndexTxOut (ChainIndexTxOut, citoValue), RollbackState (..), TxIdState, TxStatus)
 
 -- import Plutus.Contract.CardanoAPI (toCardanoTxOutBabbage, toCardanoTxOutDatumHashBabbage)
 
@@ -99,7 +100,6 @@ import Plutus.Contract.Effects (
  )
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
-import Plutus.V1.Ledger.Tx (TxOut (txOutValue))
 import PlutusTx.Builtins (fromBuiltin)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
@@ -215,7 +215,7 @@ handlePABReq contractEnv req = do
       WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx'
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
     AwaitTimeReq t -> AwaitTimeResp <$> awaitTime @w contractEnv t
-    CurrentPABSlotReq -> CurrentPABSlotResp <$> currentSlot @w contractEnv
+    CurrentNodeClientSlotReq -> CurrentNodeClientSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
       either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
@@ -231,6 +231,8 @@ handlePABReq contractEnv req = do
     ExposeEndpointReq _ -> error ("Unsupported PAB effect: " ++ show req)
     YieldUnbalancedTxReq _ -> error ("Unsupported PAB effect: " ++ show req)
     CurrentChainIndexSlotReq -> error ("Unsupported PAB effect: " ++ show req)
+    CurrentNodeClientTimeRangeReq -> error ("Unsupported PAB effect: " ++ show req)
+    GetParamsReq -> error ("Unsupported PAB effect: " ++ show req)
 
   printBpiLog @w (Debug [PABLog]) $ pretty resp
   pure resp
@@ -259,9 +261,8 @@ adjustUnbalancedTx' ::
   Eff effs (Either Tx.ToCardanoError UnbalancedTx)
 adjustUnbalancedTx' contractEnv unbalancedTx = pure $ do
   pparams <- getPParams
-  let networkId = contractEnv.cePABConfig.pcNetwork
 
-  updatedOuts <- traverse (adjustTxOut networkId pparams) (unbalancedTx ^. tx . outputs)
+  updatedOuts <- traverse (adjustTxOut pparams) (unbalancedTx ^. tx . outputs)
   return $ unbalancedTx & (tx . outputs .~ updatedOuts)
   where
     getPParams =
@@ -269,11 +270,13 @@ adjustUnbalancedTx' contractEnv unbalancedTx = pure $ do
         asBabbageBased toLedgerPParams
           <$> contractEnv.cePABConfig.pcProtocolParams
 
-    adjustTxOut networkId pparams txOut = do
-      txOut' <- toCardanoTxOut networkId toCardanoTxOutDatumHash txOut
-      let (Coin minTxOut) = evaluateMinLovelaceOutput pparams (asBabbageBased toShelleyTxOut txOut')
+    adjustTxOut pparams txOut = do
+      -- txOut' <- toCardanoTxOut networkId toCardanoTxOutDatumHash txOut
+      let (Coin minTxOut) = evaluateMinLovelaceOutput pparams (fromPlutusTxOut txOut)
           missingLovelace = max 0 (Ada.lovelaceOf minTxOut - Ada.fromValue (txOutValue txOut))
-      pure $ txOut {txOutValue = txOutValue txOut <> Ada.toValue missingLovelace}
+      -- pure $ txOut {txOutValue = txOutValue txOut <> Ada.toValue missingLovelace}
+      newVal <- CardanoAPI.toCardanoValue (txOutValue txOut <> Ada.toValue missingLovelace)
+      pure $ txOut & Tx.outValue .~ (C.TxOutValue C.MultiAssetInBabbageEra newVal)
 
     asBabbageBased f = f ShelleyBasedEraBabbage
 
@@ -357,8 +360,8 @@ balanceTx ::
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTx _ (UnbalancedTx (Left _) _ _ _) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
-balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
+balanceTx _ (UnbalancedCardanoTx _ _ _) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
+balanceTx contractEnv unbalancedTx@(UnbalancedEmulatorTx tx' _ _) = do
   let pabConf = contractEnv.cePABConfig
 
   result <- handleCollateral @w contractEnv
@@ -381,7 +384,6 @@ balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
 fromCardanoTx :: CardanoTx -> Tx.Tx
 fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
 fromCardanoTx (EmulatorTx tx') = tx'
-fromCardanoTx (Tx.Both tx' _) = tx'
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -620,12 +622,12 @@ findCollateralAtOwnPKH cEnv =
               pabConf.pcOwnStakePubKeyHash
 
       r <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
-      let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
+      let refsAndOuts = Map.toList r
       hoistEither $ case filter check refsAndOuts of
         [] -> Left "Couldn't find collateral UTxO"
         ((oref, _) : _) -> Right oref
   where
-    check (_, txOut) = Tx.txOutValue txOut == collateralValue (cePABConfig cEnv)
+    check (_, ChainIndexTxOut {citoValue}) = citoValue == collateralValue (cePABConfig cEnv)
 
 {- | Construct a 'NonEmpty' list from a single element.
  Should be replaced by NonEmpty.singleton after updating to base 4.15

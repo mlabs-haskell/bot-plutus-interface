@@ -19,7 +19,6 @@ import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissingCLI,
   getInMemCollateral,
-  posixTimeRangeToContainedSlotRange,
   printBpiLog,
  )
 import BotPlutusInterface.Files (DummyPrivKey, unDummyPrivateKey)
@@ -32,15 +31,17 @@ import BotPlutusInterface.Types (
   collateralTxOutRef,
  )
 import Cardano.Api (ExecutionUnitPrices (ExecutionUnitPrices))
+import Cardano.Api qualified as C
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamPrices))
-import Control.Lens (folded, to, (^..))
+import Cardano.Api.Shelley qualified as CS
+import Control.Lens (folded, to, (&), (.~), (^..))
 import Control.Monad (foldM, void)
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Either (EitherT, hoistEither, newEitherT, runEitherT)
 import Control.Monad.Trans.Except (throwE)
-import Data.Bifunctor (bimap)
 import Data.Coerce (coerce)
+import Data.Either (fromRight)
 import Data.Kind (Type)
 import Data.List qualified as List
 import Data.Map (Map)
@@ -53,30 +54,28 @@ import GHC.Real (Ratio ((:%)))
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address (..))
-import Ledger.Constraints.OffChain (UnbalancedTx (..))
+import Ledger.Constraints.OffChain (UnbalancedTx (..), unBalancedTxTx)
 import Ledger.Crypto (PubKeyHash)
-import Ledger.Interval (
-  Extended (Finite, NegInf, PosInf),
-  Interval (Interval),
-  LowerBound (LowerBound),
-  UpperBound (UpperBound),
- )
-import Ledger.Time (POSIXTimeRange)
 import Ledger.Tx (
-  Tx (..),
-  TxIn (..),
-  TxInType (..),
-  TxOut (..),
-  TxOutRef (..),
+  Tx (Tx, txCollateralInputs, txInputs, txMint, txOutputs, txScripts),
+  TxInput (..),
+  TxInputType (..),
+  TxOut (TxOut),
+  TxOutRef,
+  txFee,
+  txOutAddress,
  )
 import Ledger.Tx qualified as Tx
-import Ledger.Tx.CardanoAPI (CardanoBuildTx)
+import Ledger.Tx.CardanoAPI qualified as CardanoAPI
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
+import Plutus.ChainIndex.Tx (ChainIndexTxOut (..))
+import Plutus.ChainIndex.Types (ReferenceScript (..), fromReferenceScript)
 import Plutus.V1.Ledger.Api (
   CurrencySymbol (..),
   TokenName (..),
  )
+import Plutus.V2.Ledger.Api (OutputDatum (..))
 import Prettyprinter (pretty, viaShow, (<+>))
 import Prelude
 
@@ -120,7 +119,7 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
       let utxoIndex :: Map TxOutRef TxOut
-          utxoIndex = fmap Tx.toTxOut utxos <> unBalancedTxUtxoIndex unbalancedTx
+          utxoIndex = fmap (chainIndexTxOutToTxOut pabConf.pcNetwork) utxos <> unBalancedTxUtxoIndex unbalancedTx
 
           requiredSigs :: [PubKeyHash]
           requiredSigs = map Ledger.unPaymentPubKeyHash $ Set.toList (unBalancedTxRequiredSignatories unbalancedTx)
@@ -130,11 +129,13 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       -- We need this folder on the CLI machine, which may not be the local machine
       lift $ createDirectoryIfMissingCLI @w False (Text.unpack "pcTxFileDir")
 
-      tx <-
-        newEitherT $
-          addValidRange @w
-            (unBalancedTxValidityTimeRange unbalancedTx)
-            (unBalancedTxTx unbalancedTx)
+      -- TODO: Find out if we still need to add valid range (cannot find it under unbalancedTx)
+      -- tx <-
+      --   newEitherT $
+      --     addValidRange @w
+      --       (unBalancedTxValidityTimeRange unbalancedTx)
+      --       (unBalancedTxTx unbalancedTx)
+      let tx = fromRight (error "BPI is not using CardanoTxs") $ unBalancedTxTx unbalancedTx
 
       -- Adds required collaterals in the `Tx`, if `bcHasScripts`
       -- is true. Also adds signatures for fee calculation
@@ -148,11 +149,11 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
           else hoistEither $ addSignatories ownPkh privKeys requiredSigs tx
 
       -- Balance the tx
-      balancedTx <- balanceTxLoop utxoIndex privKeys preBalancedTx
+      balancedTx <- balanceTxLoop pabConf.pcNetwork utxoIndex privKeys preBalancedTx
 
       -- Get current Ada change
       let adaChange = getAdaChange utxoIndex balancedTx
-          bTx = balanceTxLoop utxoIndex privKeys (addOutput changeAddr balancedTx)
+          bTx = balanceTxLoop pabConf.pcNetwork utxoIndex privKeys (addOutput pabConf.pcNetwork changeAddr balancedTx)
 
       -- Checks if there's ada change left, if there is then we check
       -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
@@ -185,16 +186,17 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
     changeAddr = Ledger.pubKeyHashAddress (Ledger.PaymentPubKeyHash ownPkh) pabConf.pcOwnStakePubKeyHash
 
     balanceTxLoop ::
+      C.NetworkId ->
       Map TxOutRef TxOut ->
       Map PubKeyHash DummyPrivKey ->
       Tx ->
       EitherT Text (Eff effs) Tx
-    balanceTxLoop utxoIndex privKeys tx = do
+    balanceTxLoop networkId utxoIndex privKeys tx = do
       void $ lift $ Files.writeAll @w pabConf tx
 
       -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
       txWithoutFees <-
-        newEitherT $ balanceTxStep @w balanceCfg utxoIndex changeAddr $ tx `withFee` 0
+        newEitherT $ balanceTxStep @w networkId balanceCfg utxoIndex changeAddr $ tx `withFee` 0
 
       exBudget <- newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
 
@@ -205,11 +207,11 @@ balanceTxIO' balanceCfg pabConf ownPkh unbalancedTx =
       lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Fees:" <+> pretty fees
 
       -- Rebalance the initial tx with the above fees
-      balancedTx <- newEitherT $ balanceTxStep @w balanceCfg utxoIndex changeAddr $ tx `withFee` fees
+      balancedTx <- newEitherT $ balanceTxStep @w networkId balanceCfg utxoIndex changeAddr $ tx `withFee` fees
 
       if balancedTx == tx
         then pure balancedTx
-        else balanceTxLoop utxoIndex privKeys balancedTx
+        else balanceTxLoop networkId utxoIndex privKeys balancedTx
 
 -- `utxosAndCollateralAtAddress` returns all the utxos that can be used as an input of a `Tx`,
 -- i.e. we filter out `CollateralUtxo` present at the user's address, so it can't be used as input of a `Tx`.
@@ -219,7 +221,7 @@ utxosAndCollateralAtAddress ::
   BalanceConfig ->
   PABConfig ->
   Address ->
-  Eff effs (Either Text (Map TxOutRef Tx.ChainIndexTxOut, Maybe CollateralUtxo))
+  Eff effs (Either Text (Map TxOutRef ChainIndexTxOut, Maybe CollateralUtxo))
 utxosAndCollateralAtAddress balanceCfg pabConf changeAddr =
   runEitherT $ do
     utxos <- newEitherT $ CardanoCLI.utxosAt @w pabConf changeAddr
@@ -244,7 +246,7 @@ hasChangeUTxO changeAddr tx =
   where
     check :: TxOut -> Bool
     check txOut =
-      Tx.txOutAddress txOut == changeAddr
+      txOutAddress txOut == changeAddr
 
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
 getExecutionUnitPrices pabConf =
@@ -267,21 +269,22 @@ withFee tx fee = tx {txFee = Ada.lovelaceValueOf fee}
 balanceTxStep ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
+  C.NetworkId ->
   BalanceConfig ->
   Map TxOutRef TxOut ->
   Address ->
   Tx ->
   Eff effs (Either Text Tx)
-balanceTxStep balanceCfg utxos changeAddr tx =
+balanceTxStep networkId balanceCfg utxos changeAddr tx =
   runEitherT $
     (newEitherT . balanceTxIns @w utxos) tx
-      >>= hoistEither . handleNonAdaChange balanceCfg changeAddr utxos
+      >>= hoistEither . handleNonAdaChange networkId balanceCfg changeAddr utxos
 
 -- | Get change value of a transaction, taking inputs, outputs, mint and fees into account
 getChange :: Map TxOutRef TxOut -> Tx -> Value
 getChange utxos tx =
   let fees = lovelaceValue $ txFee tx
-      txInRefs = map Tx.txInRef $ txInputs tx
+      txInRefs = map Tx.txInputRef $ txInputs tx
       inputValue = mconcat $ map Tx.txOutValue $ mapMaybe (`Map.lookup` utxos) txInRefs
       outputValue = mconcat $ map Tx.txOutValue $ txOutputs tx
       nonMintedOutputValue = outputValue `minus` txMint tx
@@ -322,34 +325,32 @@ balanceTxIns utxos tx = do
 -- | Set collateral or fail in case it's required but not available
 addTxCollaterals :: CollateralUtxo -> Tx -> Tx
 addTxCollaterals cOut tx
-  | txUsesScripts tx = tx {txCollateral = [Tx.pubKeyTxIn (collateralTxOutRef cOut)]}
+  | txUsesScripts tx = tx {txCollateralInputs = [Tx.pubKeyTxInput (collateralTxOutRef cOut)]}
   | otherwise = tx
 
 txUsesScripts :: Tx -> Bool
-txUsesScripts Tx {txInputs, txMintScripts} =
-  not (null txMintScripts)
+txUsesScripts Tx {txInputs, txScripts} =
+  not (null txScripts)
     || any
-      (\TxIn {txInType} -> case txInType of Just ConsumeScriptAddress {} -> True; _ -> False)
+      (\TxInput {txInputType} -> case txInputType of TxScriptAddress {} -> True; _ -> False)
       txInputs
 
 -- | Ensures all non ada change goes back to user
-handleNonAdaChange :: BalanceConfig -> Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
-handleNonAdaChange balanceCfg changeAddr utxos tx =
+handleNonAdaChange :: C.NetworkId -> BalanceConfig -> Address -> Map TxOutRef TxOut -> Tx -> Either Text Tx
+handleNonAdaChange networkId balanceCfg changeAddr utxos tx =
   let nonAdaChange = getNonAdaChange utxos tx
       predicate =
         if bcSeparateChange balanceCfg
           then
             ( \txout ->
-                Tx.txOutAddress txout == changeAddr
+                txOutAddress txout == changeAddr
                   && not (justLovelace $ Tx.txOutValue txout)
             )
           else (\txout -> Tx.txOutAddress txout == changeAddr)
+
       newOutput =
-        TxOut
-          { txOutAddress = changeAddr
-          , txOutValue = nonAdaChange
-          , txOutDatumHash = Nothing
-          }
+        mkTxOut networkId changeAddr nonAdaChange NoOutputDatum ReferenceScriptNone
+
       outputs =
         modifyFirst
           predicate
@@ -371,7 +372,7 @@ addAdaChange balanceCfg changeAddr change tx
       { txOutputs =
           List.reverse $
             modifyFirst
-              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (txOutValue txout))
+              (\txout -> Tx.txOutAddress txout == changeAddr && justLovelace (Tx.txOutValue txout))
               (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
               (List.reverse $ txOutputs tx)
       }
@@ -379,24 +380,25 @@ addAdaChange balanceCfg changeAddr change tx
     tx
       { txOutputs =
           modifyFirst
-            ((== changeAddr) . Tx.txOutAddress)
+            ((== changeAddr) . txOutAddress)
             (fmap $ addValueToTxOut $ Ada.lovelaceValueOf change)
             (txOutputs tx)
       }
 
 addValueToTxOut :: Value -> TxOut -> TxOut
-addValueToTxOut val txOut = txOut {txOutValue = txOutValue txOut <> val}
+addValueToTxOut val txOut =
+  let newVal = fromRight (error "Couldn't convert value") $ CardanoAPI.toCardanoValue (Tx.txOutValue txOut <> val)
+   in txOut & Tx.outValue .~ (C.TxOutValue C.MultiAssetInBabbageEra newVal)
 
 -- | Adds a 1 lovelace output to a transaction
-addOutput :: Address -> Tx -> Tx
-addOutput changeAddr tx = tx {txOutputs = txOutputs tx ++ [changeTxOut]}
+addOutput :: C.NetworkId -> Address -> Tx -> Tx
+addOutput networkId changeAddr tx = tx {txOutputs = txOutputs tx ++ [changeTxOut]}
   where
     changeTxOut =
-      TxOut
-        { txOutAddress = changeAddr
-        , txOutValue = Ada.lovelaceValueOf 1
-        , txOutDatumHash = Nothing
-        }
+      TxOut $ C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra value) C.TxOutDatumNone CS.ReferenceScriptNone
+
+    addr = fromRight (error "Couldn't convert address") $ CardanoAPI.toCardanoAddressInEra networkId changeAddr
+    value = fromRight (error "Couldn't convert value") $ CardanoAPI.toCardanoValue $ Ada.lovelaceValueOf 1
 
 {- | Add the required signatories to the transaction. Be aware the the signature itself is invalid,
  and will be ignored. Only the pub key hashes are used, mapped to signing key files on disk.
@@ -412,28 +414,28 @@ addSignatories ownPkh privKeys pkhs tx =
     tx
     (ownPkh : pkhs)
 
-addValidRange ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  POSIXTimeRange ->
-  Either CardanoBuildTx Tx ->
-  Eff effs (Either Text Tx)
-addValidRange _ (Left _) = pure $ Left "BPI is not using CardanoBuildTx"
-addValidRange timeRange (Right tx) =
-  if validateRange timeRange
-    then
-      bimap (Text.pack . show) (setRange tx)
-        <$> posixTimeRangeToContainedSlotRange @w timeRange
-    else pure $ Left "Invalid validity interval."
-  where
-    setRange tx' range = tx' {txValidRange = range}
+-- addValidRange ::
+--   forall (w :: Type) (effs :: [Type -> Type]).
+--   Member (PABEffect w) effs =>
+--   POSIXTimeRange ->
+--   Either CardanoBuildTx Tx ->
+--   Eff effs (Either Text Tx)
+-- addValidRange _ (Left _) = pure $ Left "BPI is not using CardanoBuildTx"
+-- addValidRange timeRange (Right tx) =
+--   if validateRange timeRange
+--     then
+--       bimap (Text.pack . show) (setRange tx)
+--         <$> posixTimeRangeToContainedSlotRange @w timeRange
+--     else pure $ Left "Invalid validity interval."
+--   where
+--     setRange tx' range = tx' {txValidRange = range}
 
-validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
-validateRange (Interval (LowerBound PosInf _) _) = False
-validateRange (Interval _ (UpperBound NegInf _)) = False
-validateRange (Interval (LowerBound (Finite lowerBound) _) (UpperBound (Finite upperBound) _))
-  | lowerBound >= upperBound = False
-validateRange _ = True
+-- validateRange :: forall (a :: Type). Ord a => Interval a -> Bool
+-- validateRange (Interval (LowerBound PosInf _) _) = False
+-- validateRange (Interval _ (UpperBound NegInf _)) = False
+-- validateRange (Interval (LowerBound (Finite lowerBound) _) (UpperBound (Finite upperBound) _))
+--   | lowerBound >= upperBound = False
+-- validateRange _ = True
 
 {- | Modifies the first element matching a predicate, or, if none found, call the modifier with Nothing
  Calling this function ensures the modifier will always be run once
@@ -468,3 +470,15 @@ justLovelace value = length (Value.flattenValue value) == 1 && lovelaceValue val
 consJust :: forall (a :: Type). Maybe a -> [a] -> [a]
 consJust (Just x) = (x :)
 consJust _ = id
+
+chainIndexTxOutToTxOut :: C.NetworkId -> ChainIndexTxOut -> TxOut
+chainIndexTxOutToTxOut networkId (ChainIndexTxOut {citoAddress, citoValue, citoDatum, citoRefScript}) =
+  mkTxOut networkId citoAddress citoValue citoDatum citoRefScript
+
+mkTxOut :: C.NetworkId -> Address -> Value -> OutputDatum -> ReferenceScript -> TxOut
+mkTxOut networkId addr value datum refScript =
+  let addr' = fromRight (error "Couldn't convert address") $ CardanoAPI.toCardanoAddressInEra networkId addr
+      value' = fromRight (error "Couldn't convert value") $ CardanoAPI.toCardanoValue value
+      datum' = fromRight (error "Couldn't convert output datum") $ CardanoAPI.toCardanoTxOutDatum datum
+      refScript' = fromRight (error "Couldn't convert reference script") $ CardanoAPI.toCardanoReferenceScript $ fromReferenceScript refScript
+   in TxOut $ C.TxOut addr' (C.TxOutValue C.MultiAssetInBabbageEra value') datum' refScript'

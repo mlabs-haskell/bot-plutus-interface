@@ -29,20 +29,20 @@ import Data.Attoparsec.Text (
  )
 import Data.Functor (($>))
 import Data.Text (Text)
-import Ledger (Address (addressCredential), Datum)
+import Ledger (Address)
 import Ledger.Ada qualified as Ada
 import Ledger.Scripts (DatumHash (..))
-import Ledger.Tx (ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut), TxId (..), TxOutRef (..))
+import Ledger.Tx (TxId (..), TxOutRef (..))
 import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
-import Plutus.Script.Utils.Scripts qualified as ScriptUtils
+import Plutus.ChainIndex.Tx (ChainIndexTxOut (ChainIndexTxOut))
+import Plutus.ChainIndex.Types (ReferenceScript (ReferenceScriptNone))
 import Plutus.V1.Ledger.Api (
   BuiltinByteString,
-  Credential (PubKeyCredential, ScriptCredential),
   CurrencySymbol (..),
   TokenName (..),
  )
-import Plutus.V2.Ledger.Api (OutputDatum (NoOutputDatum, OutputDatum, OutputDatumHash))
+import Plutus.V2.Ledger.Api (OutputDatum (NoOutputDatum, OutputDatumHash))
 import PlutusTx.Builtins (toBuiltin)
 import Prelude hiding (takeWhile)
 
@@ -76,24 +76,13 @@ chainIndexTxOutParser address = do
   value <- mconcat <$> (valueParser <?> "Value") `sepBy` " + "
   void " + "
 
-  case addressCredential address of
-    ScriptCredential validatorHash -> do
-      datumHash <- datumHashParser <?> "DatumHash"
-      pure $
-        ScriptChainIndexTxOut
-          address
-          value
-          (datumHash, Nothing)
-          Nothing
-          (validatorHash, Nothing)
-    PubKeyCredential _ -> do
-      outputDatum <- outputDatumParser <?> "OutputDatum"
-      pure $
-        PublicKeyChainIndexTxOut
-          address
-          value
-          (convertOutputDatum outputDatum)
-          Nothing
+  outputDatum <- outputDatumParser <?> "OutputDatum"
+  pure $
+    ChainIndexTxOut
+      address
+      value
+      outputDatum
+      ReferenceScriptNone
 
 valueParser :: Parser Value
 valueParser = do
@@ -120,12 +109,6 @@ tokenNameParser = do
       void $ char '.'
       void $ optional $ string "0x"
       TokenName <$> decodeHash (takeWhile (not . isSpace))
-
-convertOutputDatum :: OutputDatum -> Maybe (DatumHash, Maybe Datum)
-convertOutputDatum = \case
-  NoOutputDatum -> Nothing
-  OutputDatumHash dh -> Just (dh, Nothing)
-  OutputDatum d -> Just (ScriptUtils.datumHash d, Just d)
 
 -- TODO: Handle inline datums, if we need them here
 outputDatumParser :: Parser OutputDatum

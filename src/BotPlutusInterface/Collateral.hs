@@ -16,12 +16,14 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Prelude (Void)
 import Control.Concurrent.STM (atomically, readTVarIO, writeTVar)
+import Data.Default (def)
 import Data.Kind (Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Ledger (ChainIndexTxOut, PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
+import Ledger (PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
 import Ledger.Constraints qualified as Constraints
 import Plutus.ChainIndex (Page (pageItems))
+import Plutus.ChainIndex.Tx (ChainIndexTxOut)
 import Prelude
 
 getInMemCollateral :: forall (w :: Type). ContractEnvironment w -> IO (Maybe CollateralUtxo)
@@ -33,7 +35,7 @@ setInMemCollateral cEnv txOutRef = do
   atomically $ writeTVar cVar (Just txOutRef)
 
 mkCollateralTx :: PABConfig -> Either Constraints.MkTxError Constraints.UnbalancedTx
-mkCollateralTx pabConf = Constraints.mkTx @Void mempty txc
+mkCollateralTx pabConf = Constraints.mkTxWithParams @Void def mempty txc
   where
     txc :: Constraints.TxConstraints Void Void
     txc = Constraints.mustPayToPubKey (PaymentPubKeyHash $ pcOwnPubKeyHash pabConf) (collateralValue pabConf)

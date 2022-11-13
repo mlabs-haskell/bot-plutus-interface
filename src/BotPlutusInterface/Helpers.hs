@@ -7,7 +7,7 @@ import Data.Row (Row)
 import Data.Text (pack)
 import Ledger (POSIXTime, TxId)
 import Plutus.Contract.Error (AsContractError, _OtherContractError)
-import Plutus.Contract.Request (RollbackState (Unknown), awaitTxStatusChange, currentTime, waitNSlots)
+import Plutus.Contract.Request (RollbackState (Unknown), awaitTxStatusChange, currentNodeClientTimeRange, waitNSlots)
 import Plutus.Contract.Types (Contract, throwError)
 import Prelude
 
@@ -16,7 +16,7 @@ awaitTxConfirmedUntilTime txId maxTime = do
   mTx <- awaitTxStatusChange txId
   case mTx of
     Unknown -> do
-      curTime <- currentTime
+      curTime <- snd <$> currentNodeClientTimeRange
       if curTime > maxTime
         then
           throwError $

@@ -69,18 +69,20 @@ import Ledger.Interval (
  )
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
-import Ledger.Tx (ChainIndexTxOut, RedeemerPtr (..), Redeemers, ScriptTag (..), Tx (..), TxId (..), TxIn (..), TxInType (..), TxOut (..), TxOutRef (..), txId)
+import Ledger.Tx (Tx (..), TxIn (..), TxInType (..), TxOut, Versioned (..), fillTxInputWitnesses, txId, txMintingRedeemers, txOutAddress, txOutDatumHash, txOutValue, unversioned)
 import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
+import Plutus.ChainIndex.Tx (ChainIndexTxOut)
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
-  CurrencySymbol (..),
   ExBudget (..),
   ExCPU (..),
   ExMemory (..),
   TokenName (..),
  )
+import Plutus.V2.Ledger.Api (CurrencySymbol (..), MintingPolicyHash (..), Redeemer)
+import Plutus.V2.Ledger.Tx (TxId (..), TxOutRef (..))
 import PlutusTx.Builtins (fromBuiltin)
 import Prelude
 
@@ -157,8 +159,8 @@ buildTx ::
   Tx ->
   Eff effs (Either Text ExBudget)
 buildTx pabConf privKeys txBudget tx = do
-  let (ins, valBudget) = txInOpts (spendBudgets txBudget) pabConf (txInputs tx)
-      (mints, mintBudget) = mintOpts (mintBudgets txBudget) pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
+  let (ins, valBudget) = txInOpts (spendBudgets txBudget) pabConf (fillTxInputWitnesses tx <$> txInputs tx)
+      (mints, mintBudget) = mintOpts (mintBudgets txBudget) pabConf (txMintingRedeemers tx) (txMint tx)
   callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const $ valBudget <> mintBudget)
   where
     requiredSigners =
@@ -178,7 +180,7 @@ buildTx pabConf privKeys txBudget tx = do
       mconcat
         [ ["transaction", "build-raw", "--babbage-era"]
         , ins
-        , txInCollateralOpts (txCollateral tx)
+        , txInCollateralOpts (fillTxInputWitnesses tx <$> txCollateralInputs tx)
         , txOutOpts pabConf (txData tx) (txOutputs tx)
         , mints
         , validRangeOpts (txValidRange tx)
@@ -253,17 +255,25 @@ txInOpts spendIndex pabConf =
     scriptInputs :: Maybe TxInType -> ExBudget -> ([Text], ExBudget)
     scriptInputs txInType exBudget =
       case txInType of
-        Just (ConsumeScriptAddress _lang validator redeemer datum) ->
+        Just (ScriptAddress validator redeemer datum) ->
           (,exBudget) $
             mconcat
-              [
-                [ "--tx-in-script-file"
-                , validatorScriptFilePath pabConf (Scripts.validatorHash validator)
-                ]
-              ,
-                [ "--tx-in-datum-file"
-                , datumJsonFilePath pabConf (ScriptUtils.datumHash datum)
-                ]
+              [ case validator of
+                  Left v ->
+                    [ "--tx-in-script-file"
+                    , validatorScriptFilePath pabConf (Scripts.validatorHash v)
+                    ]
+                  Right txOut ->
+                    [ "--spending-tx-in-reference"
+                    , txOutRefToCliArg (unversioned txOut)
+                    ]
+              , case datum of
+                  Just d ->
+                    [ "--tx-in-datum-file"
+                    , datumJsonFilePath pabConf (ScriptUtils.datumHash d)
+                    ]
+                  Nothing ->
+                    ["--tx-in-inline-datum-present"]
               ,
                 [ "--tx-in-redeemer-file"
                 , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
@@ -285,40 +295,32 @@ txInCollateralOpts =
 mintOpts ::
   MintBudgets ->
   PABConfig ->
-  Map Ledger.MintingPolicyHash Ledger.MintingPolicy ->
-  Redeemers ->
+  Map MintingPolicyHash Redeemer ->
   Value ->
   ([Text], ExBudget)
-mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
+mintOpts mintIndex pabConf mintingRedeemers mintValue =
   let scriptOpts =
         foldMap
-          ( \(idx, policy) ->
-              let redeemerPtr = RedeemerPtr Mint idx
-                  redeemer = Map.lookup redeemerPtr redeemers
-                  curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
+          ( \(mintingPolHash, redeemer) ->
+              let curSymbol = let (MintingPolicyHash hsh) = mintingPolHash in CurrencySymbol hsh
                   exBudget =
                     Map.findWithDefault
                       mempty
-                      (Scripts.mintingPolicyHash policy)
+                      mintingPolHash
                       mintIndex
-                  toOpts r =
-                    (,exBudget) $
-                      mconcat
-                        [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
-                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash r)]
-                        , ["--mint-execution-units", exBudgetToCliArg exBudget]
-                        ]
-               in orMempty $ fmap toOpts redeemer
+               in (,exBudget) $
+                    mconcat
+                      [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
+                      , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)]
+                      , ["--mint-execution-units", exBudgetToCliArg exBudget]
+                      ]
           )
-          $ zip [0 ..] $ Map.elems mintingPolicies
+          $ Map.toList mintingRedeemers
       mintOpt =
         if not (Value.isZero mintValue)
           then ["--mint", valueToCliArg mintValue]
           else []
    in first (<> mintOpt) scriptOpts
-
-orMempty :: forall (m :: Type). Monoid m => Maybe m -> m
-orMempty = fromMaybe mempty
 
 -- | This function does not check if the range is valid, for that see `PreBalance.validateRange`
 validRangeOpts :: SlotRange -> [Text]
@@ -337,17 +339,17 @@ validRangeOpts (Interval lowerBound upperBound) =
 txOutOpts :: PABConfig -> Map DatumHash Datum -> [TxOut] -> [Text]
 txOutOpts pabConf datums =
   concatMap
-    ( \TxOut {txOutAddress, txOutValue, txOutDatumHash} ->
+    ( \txOut ->
         mconcat
           [
             [ "--tx-out"
             , Text.intercalate
                 "+"
-                [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
-                , valueToCliArg txOutValue
+                [ unsafeSerialiseAddress pabConf.pcNetwork (txOutAddress txOut)
+                , valueToCliArg (txOutValue txOut)
                 ]
             ]
-          , case txOutDatumHash of
+          , case txOutDatumHash txOut of
               Nothing -> []
               Just datumHash@(DatumHash dh) ->
                 if Map.member datumHash datums
