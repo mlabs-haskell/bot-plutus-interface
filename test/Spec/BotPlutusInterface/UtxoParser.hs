@@ -12,12 +12,13 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Address (Address)
 import Ledger.Tx (
-  ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
   TxOutRef (TxOutRef),
  )
 import Ledger.Value (TokenName (TokenName))
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
+import Plutus.ChainIndex.Types (ChainIndexTxOut (ChainIndexTxOut), ReferenceScript (..))
+import Plutus.V2.Ledger.Api (OutputDatum (..))
 import PlutusTx.Builtins (toBuiltin)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
@@ -63,7 +64,7 @@ singleAdaOnly = do
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) Nothing Nothing
+      , ChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) NoOutputDatum ReferenceScriptNone
       )
     ]
 
@@ -80,15 +81,15 @@ multiAdaOnly = do
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) Nothing Nothing
+      , ChainIndexTxOut addr (Ada.lovelaceValueOf 5000000000) NoOutputDatum ReferenceScriptNone
       )
     ,
       ( TxOutRef "52a003b3f4956433429631afe4002f82a924a5a7a891db7ae1f6434797a57dff" 1
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 89835907) Nothing Nothing
+      , ChainIndexTxOut addr (Ada.lovelaceValueOf 89835907) NoOutputDatum ReferenceScriptNone
       )
     ,
       ( TxOutRef "d8a5630a9d7e913f9d186c95e5138a239a4e79ece3414ac894dbf37280944de3" 0
-      , PublicKeyChainIndexTxOut addr (Ada.lovelaceValueOf 501000123456) Nothing Nothing
+      , ChainIndexTxOut addr (Ada.lovelaceValueOf 501000123456) NoOutputDatum ReferenceScriptNone
       )
     ]
 
@@ -111,15 +112,15 @@ singleWithNativeTokens = do
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
-      , PublicKeyChainIndexTxOut
+      , ChainIndexTxOut
           addr
           ( Ada.lovelaceValueOf 1234
               <> Value.assetClassValue token 2345
               <> Value.assetClassValue tokenWithRawByteString 3456
               <> Value.assetClassValue tokenWithEmptyName 4567
           )
-          Nothing
-          Nothing
+          NoOutputDatum
+          ReferenceScriptNone
       )
     ]
 
@@ -134,12 +135,11 @@ singleWithDatum = do
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
-      , ScriptChainIndexTxOut
+      , ChainIndexTxOut
           addr
           (Ada.lovelaceValueOf 5000000000)
-          ("2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0", Nothing)
-          Nothing
-          ("0000", Nothing)
+          (OutputDatumHash "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0")
+          ReferenceScriptNone
       )
     ]
 
@@ -154,11 +154,11 @@ pkhAddrWithDatum = do
     |]
     [
       ( TxOutRef "384de3f29396fdf687551e3f9e05bd400adcd277720c71f1d2b61f17f5183e51" 0
-      , PublicKeyChainIndexTxOut
+      , ChainIndexTxOut
           addr
           (Ada.lovelaceValueOf 5000000000)
-          (Just ("2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0", Nothing))
-          Nothing
+          (OutputDatumHash "2cdb268baecefad822e5712f9e690e1787f186f5c84c343ffdc060b21f0241e0")
+          ReferenceScriptNone
       )
     ]
 

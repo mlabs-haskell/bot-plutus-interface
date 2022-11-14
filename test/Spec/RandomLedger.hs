@@ -9,17 +9,21 @@ module Spec.RandomLedger (
   randomTxOutRefs,
 ) where
 
-import Plutus.PAB.Arbitrary ()
-
+import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as CS
 import Control.Lens (folded, (%~), (&), (^..))
 import Control.Monad (replicateM)
+import Data.Either (fromRight)
 import Data.List.Extra (mconcatMap)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import GHC.Natural (Natural)
 import Ledger.Tx (TxOut (..), TxOutRef (..))
+import Ledger.Tx.CardanoAPI qualified as CardanoAPI
 import Ledger.Value (AssetClass (AssetClass), Value)
 import Ledger.Value qualified as Value
+import Plutus.PAB.Arbitrary ()
+import Plutus.V2.Ledger.Api (OutputDatum (..))
 import Test.QuickCheck (Arbitrary (arbitrary), Gen, elements)
 import Prelude
 
@@ -44,13 +48,16 @@ randomValue samplesize assetclasses =
         zip (Set.toList selectedAc) amounts
 
 randomTxOut :: Int -> Set AssetClass -> Gen TxOut
-randomTxOut samplesize assetclasses =
-  do
-    addr <- arbitrary
-    value <- randomValue samplesize assetclasses
-    datumhash <- arbitrary
+randomTxOut samplesize assetclasses = do
+  addr <- arbitrary
+  value <- randomValue samplesize assetclasses
+  datumHash <- arbitrary
 
-    pure (TxOut addr value datumhash)
+  let addr' = fromRight (error "Couldn't convert address") $ CardanoAPI.toCardanoAddressInEra (C.Testnet (C.NetworkMagic 9)) addr
+      value' = fromRight (error "Couldn't convert value") $ CardanoAPI.toCardanoValue value
+      datumHash' = fromRight (error "Couldn't convert datum hash") $ CardanoAPI.toCardanoTxOutDatum (OutputDatumHash datumHash)
+
+  pure $ TxOut $ C.TxOut addr' (C.TxOutValue C.MultiAssetInBabbageEra value') datumHash' CS.ReferenceScriptNone
 
 randomTxOuts :: Int -> Int -> Set AssetClass -> Gen [TxOut]
 randomTxOuts numTxOuts samplesize =

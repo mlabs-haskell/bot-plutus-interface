@@ -77,8 +77,6 @@ import Cardano.Api (
   Key (VerificationKey, getVerificationKey),
   NetworkId (Mainnet),
   PaymentKey,
-  PlutusScriptVersion (PlutusScriptV2),
-  Script (PlutusScript),
   SigningKey (PaymentSigningKey),
   TextEnvelope (TextEnvelope, teDescription, teRawCBOR, teType),
   TextEnvelopeDescr,
@@ -86,15 +84,12 @@ import Cardano.Api (
   deserialiseFromTextEnvelope,
   getVerificationKey,
   serialiseToTextEnvelope,
-  toScriptInAnyLang,
  )
-import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
-import Codec.Serialise (serialise)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
-import Control.Lens (at, set, view, (%~), (&), (<|), (?~), (^.), (^..), _1)
+import Control.Lens (at, set, view, (%~), (&), (<|), (?~), (^.), (^..), (^?), _1)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, reinterpret2, run)
@@ -107,8 +102,6 @@ import Data.Aeson.Extras (encodeByteString)
 import Data.Bool (bool)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as BS
-import Data.ByteString.Lazy qualified as LBS
-import Data.ByteString.Short qualified as SBS
 import Data.Default (Default (def))
 import Data.Either.Combinators (fromRight, mapLeft)
 import Data.Hex (hex, unhex)
@@ -137,15 +130,18 @@ import Ledger (
  )
 import Ledger qualified
 import Ledger.Ada qualified as Ada
+import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash), pubKeyHashAddress, scriptValidatorHashAddress)
 import Ledger.Crypto (PubKey, PubKeyHash)
-import Ledger.Scripts (Datum (Datum), DatumHash (DatumHash))
+import Ledger.Scripts (DatumHash (DatumHash))
 import Ledger.Slot (Slot (getSlot))
 import Ledger.Tx (
-  ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
+  DatumFromQuery (..),
+  DecoratedTxOut (..),
   TxId (TxId),
   TxOutRef (TxOutRef),
-  ciTxOutAddress,
-  ciTxOutValue,
+  decoratedTxOutAddress,
+  decoratedTxOutDatum,
+  decoratedTxOutValue,
  )
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
@@ -155,15 +151,11 @@ import Plutus.ChainIndex.Tx (
   ChainIndexTx (..),
   ChainIndexTxOutputs (ValidTx),
   OutputDatum (NoOutputDatum, OutputDatum, OutputDatumHash),
-  ReferenceScript (ReferenceScriptInAnyLang, ReferenceScriptNone),
  )
-import Plutus.ChainIndex.Tx qualified as CIT
-import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), Tip (..))
+import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), ChainIndexTxOut (..), ReferenceScript (..), Tip (..))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))
-import Plutus.V1.Ledger.Api qualified as V1
-import Plutus.V1.Ledger.Credential (Credential (PubKeyCredential))
 import PlutusTx.Builtins (fromBuiltin)
 import PlutusTx.Builtins.Internal (BuiltinByteString (BuiltinByteString))
 import Prettyprinter qualified as PP
@@ -261,7 +253,7 @@ data MockContractState w = MockContractState
   , _observableState :: w
   , _logHistory :: [(LogContext, LogLevel, PP.Doc ())]
   , _contractEnv :: ContractEnvironment w
-  , _utxos :: [(TxOutRef, ChainIndexTxOut)]
+  , _utxos :: [(TxOutRef, DecoratedTxOut)]
   , _tip :: Tip
   , _collateralUtxo :: Maybe CollateralUtxo
   }
@@ -287,7 +279,7 @@ instance Monoid w => Default (MockContractState w) where
         _utxos =
           [
             ( collateralTxOutRef theCollateralUtxo
-            , PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing Nothing
+            , PublicKeyDecoratedTxOut pkh1 Nothing (Ada.lovelaceValueOf $ toInteger $ pcCollateralSize def) Nothing Nothing
             )
           ]
       , _tip = Tip 1000 (BlockId "ab12") 4
@@ -469,10 +461,10 @@ mockQueryUtxo addr = do
   pure $
     mockQueryUtxoOut $
       filter
-        ((==) addr . unsafeSerialiseAddress network . view ciTxOutAddress . snd)
+        ((==) addr . unsafeSerialiseAddress network . view decoratedTxOutAddress . snd)
         (state ^. utxos)
 
-mockQueryUtxoOut :: [(TxOutRef, ChainIndexTxOut)] -> String
+mockQueryUtxoOut :: [(TxOutRef, DecoratedTxOut)] -> String
 mockQueryUtxoOut utxos' =
   Text.unpack $
     Text.unlines
@@ -480,24 +472,27 @@ mockQueryUtxoOut utxos' =
       , "--------------------------------------------------------------------------------------"
       , Text.unlines $
           map
-            ( \(TxOutRef (TxId txId) txIx, ciTxOut) ->
+            ( \(TxOutRef (TxId txId) txIx, decTxOut) ->
                 let txId' = encodeByteString $ fromBuiltin txId
                     txIx' = Text.pack $ show txIx
-                    amts = valueToUtxoOut $ view ciTxOutValue ciTxOut
-                    outDatum = txOutToDatum ciTxOut
+                    amts = valueToUtxoOut $ view decoratedTxOutValue decTxOut
+                    outDatum = txOutToDatum $ toPlutusOutputDatum $ decTxOut ^? decoratedTxOutDatum
                  in [text|${txId'}     ${txIx'}        ${amts} + ${outDatum}|]
             )
             utxos'
       ]
+  where
+    toPlutusOutputDatum :: Maybe (DatumHash, DatumFromQuery) -> OutputDatum
+    toPlutusOutputDatum Nothing = NoOutputDatum
+    toPlutusOutputDatum (Just (_, DatumInline d)) = OutputDatum d
+    toPlutusOutputDatum (Just (dh, _)) = OutputDatumHash dh
 
-txOutToDatum :: ChainIndexTxOut -> Text
+txOutToDatum :: OutputDatum -> Text
 txOutToDatum =
   \case
-    PublicKeyChainIndexTxOut _ _ Nothing _ -> "TxOutDatumNone"
-    PublicKeyChainIndexTxOut _ _ (Just (dh, Nothing)) _ -> printDatumHash dh
-    PublicKeyChainIndexTxOut _ _ (Just (_, Just (Datum d))) _ -> printDatum d
-    ScriptChainIndexTxOut _ _ (dh, Nothing) _ _ -> printDatumHash dh
-    ScriptChainIndexTxOut _ _ (_, Just (Datum d)) _ _ -> printDatum d
+    NoOutputDatum -> "TxOutDatumNone"
+    OutputDatumHash dh -> printDatumHash dh
+    OutputDatum d -> printDatum d
   where
     printDatumHash (DatumHash dh) =
       "TxDatumHash ScriptDataInBabbageEra " <> encodeByteString (fromBuiltin dh)
@@ -628,6 +623,8 @@ mockQueryChainIndex = \case
   UnspentTxOutSetAtAddress _ _ -> do
     state <- get @(MockContractState w)
     pure $ UnspentTxOutsAtResponse $ QueryResponse (state ^. utxos) Nothing
+  DatumsAtAddress _ _ -> do
+    throwError @Text "DatumsAtAddress is unimplemented"
   TxFromTxId txId ->
     if txId == nonExistingTxId
       then pure $ TxIdResponse Nothing
@@ -686,51 +683,43 @@ mockQueryChainIndex = \case
     pure $ GetTipResponse (state ^. tip)
 
 -- | Fills in gaps of inputs with garbage TxOuts, so that the indexes we know about are in the correct positions
-buildOutputsFromKnownUTxOs :: [(TxOutRef, ChainIndexTxOut)] -> TxId -> ChainIndexTxOutputs
-buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map converCiTxOut $ fillGaps sortedRelatedRefs 0
+buildOutputsFromKnownUTxOs :: [(TxOutRef, DecoratedTxOut)] -> TxId -> ChainIndexTxOutputs
+buildOutputsFromKnownUTxOs knownUtxos txId = ValidTx $ map toCito $ fillGaps sortedRelatedRefs 0
   where
     sortedRelatedRefs = sortOn (Tx.txOutRefIdx . fst) $ filter ((== txId) . Tx.txOutRefId . fst) knownUtxos
-    fillGaps :: [(TxOutRef, ChainIndexTxOut)] -> Integer -> [ChainIndexTxOut]
+    fillGaps :: [(TxOutRef, DecoratedTxOut)] -> Integer -> [DecoratedTxOut]
     fillGaps [] _ = []
     fillGaps (out@(TxOutRef _ n', txOut) : outs) n
       | n' == n = txOut : fillGaps outs (n + 1)
       | otherwise = defTxOut : fillGaps (out : outs) (n + 1)
     defTxOut =
-      PublicKeyChainIndexTxOut
-        (Ledger.Address (PubKeyCredential "") Nothing)
-        mempty
-        Nothing
-        Nothing
+      PublicKeyDecoratedTxOut "" Nothing mempty Nothing Nothing
 
-converCiTxOut :: ChainIndexTxOut -> CIT.ChainIndexTxOut
-converCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
-  CIT.ChainIndexTxOut addr val (convertMaybeDatum dat) (convertRefScript maybeRefSc)
-converCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
-  let datum = case eitherDatum of
-        (dh, Nothing) -> OutputDatumHash dh
-        (_, Just d) -> OutputDatum d
-   in CIT.ChainIndexTxOut addr val datum (convertRefScript maybeRefSc)
+    toCito (PublicKeyDecoratedTxOut pkh _ val datum _) =
+      ChainIndexTxOut (pubKeyHashAddress (PaymentPubKeyHash pkh) Nothing) val (maybe NoOutputDatum (OutputDatumHash . fst) datum) ReferenceScriptNone
+    toCito (ScriptDecoratedTxOut valHash _ val (dh, _) _ _) =
+      ChainIndexTxOut (scriptValidatorHashAddress valHash Nothing) val (OutputDatumHash dh) ReferenceScriptNone
 
-convertMaybeDatum :: Maybe (DatumHash, Maybe Datum) -> OutputDatum
-convertMaybeDatum = \case
-  -- FIXME" tmp implementation, check if something exists already for such conversion
-  Nothing -> NoOutputDatum
-  Just (dh, Nothing) -> OutputDatumHash dh
-  Just (_dh, Just d) -> OutputDatum d
+-- convertMaybeDatum :: Maybe (DatumHash, Maybe Datum) -> OutputDatum
+-- convertMaybeDatum = \case
+--   -- FIXME" tmp implementation, check if something exists already for such conversion
+--   Nothing -> NoOutputDatum
+--   Just (dh, Nothing) -> OutputDatumHash dh
+--   Just (_dh, Just d) -> OutputDatum d
 
-convertRefScript :: Maybe V1.Script -> ReferenceScript
-convertRefScript =
-  \case
-    Nothing -> ReferenceScriptNone
-    Just v ->
-      ReferenceScriptInAnyLang
-        . toScriptInAnyLang
-        . PlutusScript PlutusScriptV2
-        . PlutusScriptSerialised
-        . SBS.toShort
-        . LBS.toStrict
-        . serialise
-        $ v
+-- convertRefScript :: Maybe V1.Script -> ReferenceScript
+-- convertRefScript =
+--   \case
+--     Nothing -> ReferenceScriptNone
+--     Just v ->
+--       ReferenceScriptInAnyLang
+--         . toScriptInAnyLang
+--         . PlutusScript PlutusScriptV2
+--         . PlutusScriptSerialised
+--         . SBS.toShort
+--         . LBS.toStrict
+--         . serialise
+--         $ v
 
 mockExBudget ::
   forall (w :: Type).

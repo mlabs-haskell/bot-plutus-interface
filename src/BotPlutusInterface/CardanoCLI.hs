@@ -239,21 +239,21 @@ submitTx pabConf tx =
 txInOpts :: SpendBudgets -> PABConfig -> [TxIn] -> ([Text], ExBudget)
 txInOpts spendIndex pabConf =
   foldMap
-    ( \(TxIn txOutRef txInType) ->
+    ( \(TxIn oref inType) ->
         let (opts, exBudget) =
               scriptInputs
-                txInType
-                (Map.findWithDefault mempty txOutRef spendIndex)
+                inType
+                (Map.findWithDefault mempty oref spendIndex)
          in (,exBudget) $
               mconcat
-                [ ["--tx-in", txOutRefToCliArg txOutRef]
+                [ ["--tx-in", txOutRefToCliArg oref]
                 , opts
                 ]
     )
   where
     scriptInputs :: Maybe TxInType -> ExBudget -> ([Text], ExBudget)
-    scriptInputs txInType exBudget =
-      case txInType of
+    scriptInputs inType exBudget =
+      case inType of
         Just (ScriptAddress validator redeemer datum) ->
           (,exBudget) $
             mconcat
