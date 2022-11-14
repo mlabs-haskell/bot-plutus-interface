@@ -414,7 +414,8 @@ writeBalancedTx contractEnv cardanoTx = do
     lift . printBpiLog @w (Debug [PABLog]) $ viaShow missingPubKeys
     lift . printBpiLog @w (Debug [PABLog]) $ viaShow requiredSigners
 
-    newEitherT $ CardanoCLI.signTx @w pabConf tx' presentPubKeys
+    when (not $ null presentPubKeys) $
+      newEitherT $ CardanoCLI.signTx @w pabConf tx' presentPubKeys
 
     let fullySignable = null missingPubKeys
         cardanoTxId = Ledger.getCardanoTxId $ Tx.CardanoApiTx cardanoApiTx
