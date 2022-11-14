@@ -465,7 +465,7 @@ mockQueryUtxo :: forall (w :: Type). Text -> MockContract w String
 mockQueryUtxo addr = do
   state <- get @(MockContractState w)
 
-  let network = (state ^. contractEnv).cePABConfig.pcNetwork
+  let network = pcNetwork (cePABConfig (state ^. contractEnv))
   pure $
     mockQueryUtxoOut $
       filter
