@@ -59,7 +59,7 @@ estimateBudget pabConf txFile = do
         maybeToEither (BudgetEstimationError "Missing max units in parameters") $
           protocolParamMaxTxExUnits pparams
 
-      scaledBudget <- getScaledBudget maxUnits (pcBudgetMultiplier  pabConf) budget
+      scaledBudget <- getScaledBudget maxUnits (pcBudgetMultiplier pabConf) budget
 
       (spendingBudgets, policyBudgets) <- mkBudgetMaps scaledBudget body
 

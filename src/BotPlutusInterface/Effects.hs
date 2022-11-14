@@ -41,13 +41,13 @@ import BotPlutusInterface.Types (
   CLILocation (..),
   CollateralUtxo,
   ContractEnvironment (..),
-  PABConfig (..),
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
   LogLine (..),
   LogType (..),
   LogsList (LogsList),
+  PABConfig (..),
   TxBudget,
   TxFile,
   addBudget,
@@ -152,7 +152,7 @@ handlePABEffect contractEnv =
         PrintLog logCtx logLevel msg -> do
           let logLine = LogLine logCtx logLevel msg
           printLog' (pcLogLevel (cePABConfig contractEnv)) logLine
-          when (pcCollectLogs (cePABConfig contractEnv)) $ 
+          when (pcCollectLogs (cePABConfig contractEnv)) $
             collectLog (ceContractLogs contractEnv) logLine
         UpdateInstanceState s -> do
           atomically $

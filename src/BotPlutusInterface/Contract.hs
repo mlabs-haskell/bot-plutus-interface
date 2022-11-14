@@ -32,14 +32,14 @@ import BotPlutusInterface.Effects (
 import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (
-  TxStatusPolling (..),
-  PABConfig (..),
   CollateralUtxo (CollateralUtxo),
   ContractEnvironment (..),
   LogLevel (Debug, Notice, Warn),
   LogType (CollateralLog, PABLog),
+  PABConfig (..),
   Tip (block, slot),
   TxFile (Signed),
+  TxStatusPolling (..),
   collateralValue,
  )
 import Cardano.Api (
@@ -205,7 +205,7 @@ handlePABReq contractEnv req = do
         . OwnAddressesResp
         . nonEmptySingleton
         $ Ledger.pubKeyHashAddress
-          (PaymentPubKeyHash (pcOwnPubKeyHash(cePABConfig contractEnv)))
+          (PaymentPubKeyHash (pcOwnPubKeyHash (cePABConfig contractEnv)))
           (pcOwnStakePubKeyHash (cePABConfig contractEnv))
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
@@ -298,8 +298,8 @@ awaitTxStatusChange contractEnv txId = do
   printBpiLog @w (Debug [PABLog]) $ pretty $ "Awaiting status change for " ++ show txId
 
   let txStatusPolling = pcTxStatusPolling (cePABConfig contractEnv)
-      pollInterval = fromIntegral $ spInterval txStatusPolling 
-      pollTimeout = spBlocksTimeOut txStatusPolling 
+      pollInterval = fromIntegral $ spInterval txStatusPolling
+      pollTimeout = spBlocksTimeOut txStatusPolling
       cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
 
   fix $ \loop -> do
@@ -393,7 +393,7 @@ writeBalancedTx ::
   CardanoTx ->
   Eff effs WriteBalancedTxResponse
 writeBalancedTx contractEnv cardanoTx = do
-  let pabConf = cePABConfig contractEnv 
+  let pabConf = cePABConfig contractEnv
       tx' = fromCardanoTx cardanoTx
   uploadDir @w (pcSigningKeyFileDir pabConf)
   createDirectoryIfMissing @w False (Text.unpack (pcScriptFileDir pabConf))
@@ -479,7 +479,7 @@ awaitSlot contractEnv s@(Slot n) = do
   tip <- CardanoCLI.queryTip @w (cePABConfig contractEnv)
   case tip of
     Right tip'
-      | n < slot tip'-> pure $ Slot (slot tip')
+      | n < slot tip' -> pure $ Slot (slot tip')
     _ -> awaitSlot contractEnv s
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
@@ -586,7 +586,7 @@ makeCollateral ::
 makeCollateral cEnv = runEitherT $ do
   lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
-  let pabConf = cePABConfig cEnv 
+  let pabConf = cePABConfig cEnv
   unbalancedTx <-
     firstEitherT (Text.pack . show) $
       hoistEither $ Collateral.mkCollateralTx pabConf
@@ -596,7 +596,8 @@ makeCollateral cEnv = runEitherT $ do
       Balance.balanceTxIO' @w
         Balance.defaultBalanceConfig {Balance.bcHasScripts = False, Balance.bcSeparateChange = True}
         pabConf
-        (pcOwnPubKeyHash pabConf) unbalancedTx
+        (pcOwnPubKeyHash pabConf)
+        unbalancedTx
 
   wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)
   case wbr of
