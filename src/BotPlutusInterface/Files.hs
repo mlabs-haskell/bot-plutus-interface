@@ -32,7 +32,7 @@ import BotPlutusInterface.Effects (
   writeFileJSON,
   writeFileTextEnvelope,
  )
-import BotPlutusInterface.Types (PABConfig)
+import BotPlutusInterface.Types (PABConfig (..))
 import Cardano.Api (
   AsType (AsPaymentKey, AsSigningKey, AsVerificationKey),
   FileError,
@@ -95,31 +95,31 @@ import Prelude
 policyScriptFilePath :: PABConfig -> CurrencySymbol -> Text
 policyScriptFilePath pabConf curSymbol =
   let c = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
-   in pabConf.pcScriptFileDir <> "/policy-" <> c <> ".plutus"
+   in pcScriptFileDir pabConf <> "/policy-" <> c <> ".plutus"
 
 -- | Path and filename of a validator script
 validatorScriptFilePath :: PABConfig -> ValidatorHash -> Text
 validatorScriptFilePath pabConf (ValidatorHash valHash) =
   let h = encodeByteString $ fromBuiltin valHash
-   in pabConf.pcScriptFileDir <> "/validator-" <> h <> ".plutus"
+   in pcScriptFileDir pabConf <> "/validator-" <> h <> ".plutus"
 
 datumJsonFilePath :: PABConfig -> DatumHash -> Text
 datumJsonFilePath pabConf (DatumHash datumHash) =
   let h = encodeByteString $ fromBuiltin datumHash
-   in pabConf.pcScriptFileDir <> "/datum-" <> h <> ".json"
+   in pcScriptFileDir pabConf <> "/datum-" <> h <> ".json"
 
 redeemerJsonFilePath :: PABConfig -> RedeemerHash -> Text
 redeemerJsonFilePath pabConf (RedeemerHash redeemerHash) =
   let h = encodeByteString $ fromBuiltin redeemerHash
-   in pabConf.pcScriptFileDir <> "/redeemer-" <> h <> ".json"
+   in pcScriptFileDir pabConf <> "/redeemer-" <> h <> ".json"
 
 signingKeyFilePath :: PABConfig -> PubKeyHash -> Text
 signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
   let h = encodeByteString $ fromBuiltin pubKeyHash
-   in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
+   in pcSigningKeyFileDir pabConf <> "/signing-key-" <> h <> ".skey"
 
 txFilePath :: PABConfig -> Text -> Tx.TxId -> Text
-txFilePath pabConf ext txId = pabConf.pcTxFileDir <> "/" <> txFileName txId ext
+txFilePath pabConf ext txId = pcTxFileDir pabConf <> "/" <> txFileName txId ext
 
 txFileName :: Tx.TxId -> Text -> Text
 txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext
@@ -180,7 +180,7 @@ writeAll ::
   Tx ->
   Eff effs (Either (FileError ()) [Text])
 writeAll pabConf tx = do
-  createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
+  createDirectoryIfMissing @w False (Text.unpack $ pcScriptFileDir pabConf)
   -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
   -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
@@ -210,13 +210,13 @@ readPrivateKeys ::
   PABConfig ->
   Eff effs (Either Text (Map PubKeyHash DummyPrivKey))
 readPrivateKeys pabConf = do
-  files <- listDirectory @w $ Text.unpack pabConf.pcSigningKeyFileDir
+  files <- listDirectory @w $ Text.unpack (pcSigningKeyFileDir pabConf)
 
   privKeys <-
     catMaybes
       <$> mapM
         ( \filename ->
-            let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
+            let fullPath = Text.unpack (pcSigningKeyFileDir pabConf) </> filename
              in case takeExtension filename of
                   ".vkey" -> Just <$> readVerificationKey @w fullPath
                   ".skey" -> Just <$> readSigningKey @w fullPath

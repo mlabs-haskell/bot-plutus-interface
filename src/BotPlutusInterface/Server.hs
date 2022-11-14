@@ -203,19 +203,19 @@ handleContractActivityChange contractInstanceID prevState currentState =
   catMaybes [observableStateChange, activityChange]
   where
     activityChange =
-      if (csActivity <$> prevState) /= Just currentState.csActivity
-        then case currentState.csActivity of
+      if (csActivity <$> prevState) /= Just (csActivity currentState)
+        then case csActivity currentState of
           Done maybeError -> do
             Just $ InstanceUpdate contractInstanceID $ ContractFinished maybeError
           _ -> Nothing
         else Nothing
 
     observableStateChange =
-      if (toJSON . csObservableState <$> prevState) /= Just (toJSON currentState.csObservableState)
+      if (toJSON . csObservableState <$> prevState) /= Just (toJSON (csObservableState currentState))
         then
           Just $
             InstanceUpdate contractInstanceID $
-              NewObservableState (toJSON currentState.csObservableState)
+              NewObservableState (toJSON (csObservableState currentState))
         else Nothing
 
 -- | Broadcast a contract update to subscribers
@@ -299,9 +299,9 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
 rawTxHandler :: PABConfig -> TxIdCapture -> Handler RawTx
 rawTxHandler config (TxIdCapture txId) = do
   -- Check that endpoint is enabled
-  assert config.pcEnableTxEndpoint
+  assert (pcEnableTxEndpoint config)
   -- Absolute path to pcTxFileDir that is specified in the config
-  txFolderPath <- liftIO $ makeAbsolute (unpack config.pcTxFileDir)
+  txFolderPath <- liftIO $ makeAbsolute (unpack (pcTxFileDir config))
 
   -- Create full path
   let path :: FilePath

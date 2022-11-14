@@ -27,7 +27,7 @@ import BotPlutusInterface.Files (
  )
 import BotPlutusInterface.Types (
   MintBudgets,
-  PABConfig,
+  PABConfig (..),
   SpendBudgets,
   Tip,
   TxBudget,
@@ -112,7 +112,7 @@ utxosAt pabConf address =
       , cmdArgs =
           mconcat
             [ ["query", "utxo"]
-            , ["--address", unsafeSerialiseAddress pabConf.pcNetwork address]
+            , ["--address", unsafeSerialiseAddress (pcNetwork pabConf) address]
             , networkOpt pabConf
             ]
       , cmdOutParser =
@@ -141,7 +141,7 @@ calculateMinFee pabConf tx =
               , ["--tx-in-count", showText $ length $ txInputs tx]
               , ["--tx-out-count", showText $ length $ txOutputs tx]
               , ["--witness-count", showText $ length $ txSignatures tx]
-              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+              , ["--protocol-params-file", pcProtocolParamsFile pabConf]
               , networkOpt pabConf
               ]
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
@@ -187,7 +187,7 @@ buildTx pabConf privKeys txBudget tx = do
           requiredSigners
         , ["--fee", showText . getLovelace . fromValue $ txFee tx]
         , mconcat
-            [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+            [ ["--protocol-params-file", pcProtocolParamsFile pabConf]
             , ["--out-file", txFilePath pabConf "raw" (txId tx)]
             ]
         ]
@@ -343,7 +343,7 @@ txOutOpts pabConf datums =
             [ "--tx-out"
             , Text.intercalate
                 "+"
-                [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
+                [ unsafeSerialiseAddress (pcNetwork pabConf) txOutAddress
                 , valueToCliArg txOutValue
                 ]
             ]
@@ -357,7 +357,7 @@ txOutOpts pabConf datums =
     )
 
 networkOpt :: PABConfig -> [Text]
-networkOpt pabConf = case pabConf.pcNetwork of
+networkOpt pabConf = case pcNetwork pabConf of
   Testnet (NetworkMagic t) -> ["--testnet-magic", showText t]
   Mainnet -> ["--mainnet"]
 

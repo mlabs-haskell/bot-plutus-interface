@@ -7,7 +7,7 @@ module BotPlutusInterface.ChainIndex (
 import BotPlutusInterface.Collateral (removeCollateralFromPage)
 import BotPlutusInterface.Types (
   ContractEnvironment (ContractEnvironment, cePABConfig),
-  PABConfig,
+  PABConfig (..),
   readCollateralUtxo,
  )
 import Data.Kind (Type)
@@ -89,7 +89,7 @@ handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
 chainIndexQuery' :: forall (a :: Type). PABConfig -> ClientM a -> IO (Either ClientError a)
 chainIndexQuery' pabConf endpoint = do
   manager' <- newManager defaultManagerSettings {managerResponseTimeout = responseTimeoutNone}
-  runClientM endpoint $ mkClientEnv manager' pabConf.pcChainIndexUrl
+  runClientM endpoint $ mkClientEnv manager' $ pcChainIndexUrl pabConf
 
 chainIndexQueryMany :: forall (a :: Type). PABConfig -> ClientM a -> IO a
 chainIndexQueryMany pabConf endpoint =
@@ -113,7 +113,7 @@ chainIndexUtxoQuery contractEnv query = do
       removeCollateral (UtxosResponse tip page) = UtxosResponse tip (removeCollateralFromPage collateralUtxo page)
   removeCollateral
     <$> chainIndexQueryMany
-      contractEnv.cePABConfig
+      (cePABConfig contractEnv)
       query
 
 -- | Query for txo's and filter collateral txo from result.
@@ -124,5 +124,5 @@ chainIndexTxoQuery contractEnv query = do
       removeCollateral (TxosResponse page) = TxosResponse (removeCollateralFromPage collateralUtxo page)
   removeCollateral
     <$> chainIndexQueryMany
-      contractEnv.cePABConfig
+      (cePABConfig contractEnv)
       query

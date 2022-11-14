@@ -8,7 +8,7 @@ import BotPlutusInterface.QueryNode qualified as QueryNode
 import BotPlutusInterface.Types (
   BudgetEstimationError (..),
   MintBudgets,
-  PABConfig (pcNetwork),
+  PABConfig (..),
   SpendBudgets,
   TxBudget (TxBudget),
   TxFile (..),
@@ -54,12 +54,12 @@ estimateBudget pabConf txFile = do
       pparams <-
         maybeToEither
           (BudgetEstimationError "No protocol params found")
-          pabConf.pcProtocolParams
+          $ pcProtocolParams pabConf
       maxUnits <-
         maybeToEither (BudgetEstimationError "Missing max units in parameters") $
           protocolParamMaxTxExUnits pparams
 
-      scaledBudget <- getScaledBudget maxUnits pabConf.pcBudgetMultiplier budget
+      scaledBudget <- getScaledBudget maxUnits (pcBudgetMultiplier  pabConf) budget
 
       (spendingBudgets, policyBudgets) <- mkBudgetMaps scaledBudget body
 

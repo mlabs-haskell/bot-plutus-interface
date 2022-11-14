@@ -40,7 +40,8 @@ import BotPlutusInterface.Types (
   BudgetEstimationError,
   CLILocation (..),
   CollateralUtxo,
-  ContractEnvironment,
+  ContractEnvironment (..),
+  PABConfig (..),
   ContractState (ContractState),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
@@ -139,27 +140,27 @@ handlePABEffect contractEnv =
   interpretM
     ( \case
         CallCommand shellArgs ->
-          case contractEnv.cePABConfig.pcCliLocation of
+          case pcCliLocation (cePABConfig contractEnv) of
             Local -> callLocalCommand shellArgs
             Remote ipAddr -> callRemoteCommand ipAddr shellArgs
         CreateDirectoryIfMissing createParents filePath ->
           Directory.createDirectoryIfMissing createParents filePath
         CreateDirectoryIfMissingCLI createParents filePath ->
-          case contractEnv.cePABConfig.pcCliLocation of
+          case pcCliLocation (cePABConfig contractEnv) of
             Local -> Directory.createDirectoryIfMissing createParents filePath
             Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
         PrintLog logCtx logLevel msg -> do
           let logLine = LogLine logCtx logLevel msg
-          printLog' contractEnv.cePABConfig.pcLogLevel logLine
-          when contractEnv.cePABConfig.pcCollectLogs $
-            collectLog contractEnv.ceContractLogs logLine
+          printLog' (pcLogLevel (cePABConfig contractEnv)) logLine
+          when (pcCollectLogs (cePABConfig contractEnv)) $ 
+            collectLog (ceContractLogs contractEnv) logLine
         UpdateInstanceState s -> do
           atomically $
-            modifyTVar contractEnv.ceContractState $
+            modifyTVar (ceContractState contractEnv) $
               \(ContractState _ w) -> ContractState s w
         LogToContract w -> do
           atomically $
-            modifyTVar contractEnv.ceContractState $
+            modifyTVar (ceContractState contractEnv) $
               \(ContractState s w') -> ContractState s (w' <> w)
         ThreadDelay microSeconds -> Concurrent.threadDelay microSeconds
         ReadFileTextEnvelope asType filepath -> Cardano.Api.readFileTextEnvelope asType filepath
@@ -172,21 +173,21 @@ handlePABEffect contractEnv =
           Cardano.Api.writeFileTextEnvelope filepath envelopeDescr contents
         ListDirectory filepath -> Directory.listDirectory filepath
         UploadDir dir ->
-          case contractEnv.cePABConfig.pcCliLocation of
+          case pcCliLocation (cePABConfig contractEnv) of
             Local -> pure ()
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""
         QueryChainIndex query ->
           handleChainIndexReq contractEnv query
         EstimateBudget txPath ->
-          ExBudget.estimateBudget contractEnv.cePABConfig txPath
+          ExBudget.estimateBudget (cePABConfig contractEnv) txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
         SlotToPOSIXTime slot ->
-          TimeSlot.slotToPOSIXTimeIO contractEnv.cePABConfig slot
+          TimeSlot.slotToPOSIXTimeIO (cePABConfig contractEnv) slot
         POSIXTimeToSlot pTime ->
-          TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
+          TimeSlot.posixTimeToSlotIO (cePABConfig contractEnv) pTime
         POSIXTimeRangeToSlotRange pTimeRange ->
-          TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
+          TimeSlot.posixTimeRangeToContainedSlotRangeIO (cePABConfig contractEnv) pTimeRange
         GetInMemCollateral -> Collateral.getInMemCollateral contractEnv
         SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
     )
@@ -259,7 +260,7 @@ readProcessEither path args =
 saveBudgetImpl :: ContractEnvironment w -> Ledger.TxId -> TxBudget -> IO ()
 saveBudgetImpl contractEnv txId budget =
   atomically $
-    modifyTVar' contractEnv.ceContractStats (addBudget txId budget)
+    modifyTVar' (ceContractStats contractEnv) (addBudget txId budget)
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@
