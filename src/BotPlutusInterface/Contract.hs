@@ -414,7 +414,8 @@ writeBalancedTx contractEnv cardanoTx = do
     lift . printBpiLog @w (Debug [PABLog]) $ viaShow missingPubKeys
     lift . printBpiLog @w (Debug [PABLog]) $ viaShow requiredSigners
 
-    when (not $ null presentPubKeys) $
+    let signingHappened = not $ null presentPubKeys
+    when signingHappened $
       newEitherT $ CardanoCLI.signTx @w pabConf tx' presentPubKeys
 
     let fullySignable = null missingPubKeys
@@ -440,7 +441,8 @@ writeBalancedTx contractEnv cardanoTx = do
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
     mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx')) (Files.txFilePath pabConf "raw" cardanoTxId)
-    cpFiles (Files.txFilePath pabConf "signed" (Tx.txId tx')) (Files.txFilePath pabConf "signed" cardanoTxId)
+    when signingHappened $
+      cpFiles (Files.txFilePath pabConf "signed" (Tx.txId tx')) (Files.txFilePath pabConf "signed" cardanoTxId)
 
     pure cardanoApiTx
   where
