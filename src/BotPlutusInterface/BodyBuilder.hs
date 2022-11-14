@@ -55,15 +55,14 @@ buildAndEstimateBudget ::
   , Member (State EstimationContext) effs
   ) =>
   PABConfig ->
-  Map PubKeyHash DummyPrivKey ->
   Tx ->
   EitherT Text (Eff effs) TxBudget
-buildAndEstimateBudget pabConf privKeys tx =
+buildAndEstimateBudget pabConf tx =
   buildDraftTxBody
     >> estimateBudgetByDraftBody (Text.unpack $ txFilePath pabConf "raw" (txId tx))
     >>= buildBodyUsingEstimatedBudget
   where
-    buildDraftTxBody = newEitherT $ CardanoCLI.buildTx @w pabConf privKeys mempty tx
+    buildDraftTxBody = newEitherT $ CardanoCLI.buildTx @w pabConf mempty tx
 
     estimateBudgetByDraftBody path =
       firstEitherT textShow . newEitherT $ get >>= flip (estimateBudget @w) (Raw path)
@@ -73,6 +72,5 @@ buildAndEstimateBudget pabConf privKeys tx =
         newEitherT $
           CardanoCLI.buildTx @w
             pabConf
-            privKeys
             txBudget
             tx

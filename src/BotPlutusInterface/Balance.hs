@@ -179,13 +179,15 @@ balanceTxIOEstimationContext balanceCfg pabConf ownPkh unbalancedTx' = do
         addSignatories ownPkh privKeys requiredSigs $
           maybe tx (`addTxCollaterals` tx) mcollateral
 
+  lift $ printBpiLog @w (Debug [TxBalancingLog]) $ "Signatures:" <+> viaShow (Ledger.txSignatures preBalancedTx)
+
   -- Balance the tx
-  balancedTx <- balanceTxLoop @w balanceCfg pabConf utxoIndex privKeys changeAddr preBalancedTx
+  balancedTx <- balanceTxLoop @w balanceCfg pabConf utxoIndex changeAddr preBalancedTx
   changeTxOutWithMinAmt <- firstEitherT WAPI.OtherError $ newEitherT $ addOutput @w changeAddr balancedTx
 
   -- Get current Ada change
   let adaChange = getAdaChange utxoIndex balancedTx
-      bTx = balanceTxLoop @w balanceCfg pabConf utxoIndex privKeys changeAddr changeTxOutWithMinAmt
+      bTx = balanceTxLoop @w balanceCfg pabConf utxoIndex changeAddr changeTxOutWithMinAmt
 
   -- Checks if there's ada change left, if there is then we check
   -- if `bcSeparateChange` is true, if this is the case then we create a new UTxO at
@@ -222,18 +224,17 @@ balanceTxLoop ::
   BalanceConfig ->
   PABConfig ->
   Map TxOutRef TxOut ->
-  Map PubKeyHash DummyPrivKey ->
   CApi.AddressInEra CApi.BabbageEra ->
   Tx ->
   EitherT WAPI.WalletAPIError (Eff effs) Tx
-balanceTxLoop balanceCfg pabConf utxoIx privKeys changeAddr tx = do
+balanceTxLoop balanceCfg pabConf utxoIx changeAddr tx = do
   void $ lift $ Files.writeAll @w pabConf tx -- TODO: Does this really need to happen in the loop?
 
   -- Calculate fees by pre-balancing the tx, building it, and running the CLI on result
   txWithoutFees <-
     newEitherT $ balanceTxStep @w balanceCfg utxoIx changeAddr $ tx `withFee` 0
 
-  exBudget <- bimapEitherT WAPI.OtherError toExBudget $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys txWithoutFees
+  exBudget <- bimapEitherT WAPI.OtherError toExBudget $ BodyBuilder.buildAndEstimateBudget @w pabConf txWithoutFees
 
   nonBudgettedFees <- firstEitherT WAPI.OtherError $ newEitherT $ CardanoCLI.calculateMinFee @w pabConf txWithoutFees
 
@@ -246,7 +247,7 @@ balanceTxLoop balanceCfg pabConf utxoIx privKeys changeAddr tx = do
 
   if balancedTx == tx
     then pure balancedTx
-    else balanceTxLoop @w balanceCfg pabConf utxoIx privKeys changeAddr balancedTx
+    else balanceTxLoop @w balanceCfg pabConf utxoIx changeAddr balancedTx
 
 toCtxTxTxOut :: forall (era :: Type). CApi.TxOut CApi.CtxUTxO era -> CApi.TxOut CApi.CtxTx era
 toCtxTxTxOut (CApi.TxOut addr val d refS) =

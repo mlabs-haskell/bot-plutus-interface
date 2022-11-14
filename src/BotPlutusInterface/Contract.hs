@@ -402,7 +402,7 @@ writeBalancedTx contractEnv cardanoTx = do
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
         (presentPubKeys, missingPubKeys) = partition ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-    txBudget <- BodyBuilder.runInEstimationEffect @w tx' id $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx'
+    txBudget <- BodyBuilder.runInEstimationEffect @w tx' id $ BodyBuilder.buildAndEstimateBudget @w pabConf tx'
 
     -- TODO: This whole part is hacky and we should remove it.
     let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx')

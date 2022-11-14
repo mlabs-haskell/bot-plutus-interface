@@ -50,6 +50,7 @@ import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
 import Data.Bool (bool)
+import Data.ByteString qualified as BS
 import Data.ByteString.Lazy.Char8 qualified as Char8
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
@@ -97,6 +98,7 @@ import Plutus.V1.Ledger.Api (
   ExCPU (ExCPU),
   ExMemory (ExMemory),
  )
+import Plutus.V1.Ledger.Bytes qualified as Bytes
 import PlutusTx.Builtins (fromBuiltin, toBuiltin)
 import Prelude
 
@@ -139,6 +141,14 @@ calculateMinFee pabConf tx =
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
         }
 
+-- | This is a hack solution to extract the pubkeyhash from a "PubKey", for the case where we've not know the pk, and put a pkh into that type
+pubKeyToPubKeyHashHack :: Ledger.PubKey -> Ledger.PubKeyHash
+pubKeyToPubKeyHashHack pk@(Ledger.PubKey ledgerBytes) =
+  let bytes = Bytes.bytes ledgerBytes
+   in if BS.length bytes > 28
+        then Ledger.pubKeyHash pk
+        else Ledger.PubKeyHash $ toBuiltin bytes
+
 -- | Build a tx body and write it to disk
 buildTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -146,24 +156,14 @@ buildTx ::
   , Member (State EstimationContext) effs
   ) =>
   PABConfig ->
-  Map PubKeyHash DummyPrivKey ->
   TxBudget ->
   Tx ->
   Eff effs (Either Text ())
-buildTx pabConf privKeys txBudget tx = do
+buildTx pabConf txBudget tx = do
   utxos <- ecUtxos <$> get
   let requiredSigners =
         concatMap
-          ( \pubKey ->
-              let pkh = Ledger.pubKeyHash pubKey
-               in case Map.lookup pkh privKeys of
-                    Just (FromSKey _) ->
-                      ["--required-signer", signingKeyFilePath pabConf pkh]
-                    Just (FromVKey _) ->
-                      ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
-                    Nothing ->
-                      []
-          )
+          (\pubKey -> ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash $ pubKeyToPubKeyHashHack pubKey])
           (Map.keys (Ledger.txSignatures tx))
       opts ins mints =
         mconcat
