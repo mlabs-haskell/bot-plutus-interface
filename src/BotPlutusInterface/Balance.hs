@@ -277,7 +277,6 @@ utxosAndCollateralAtAddress tx changeAddr =
             (UtxosAtExcluding changeAddr . Set.singleton . collateralTxOutRef)
             inMemCollateral
 
-    -- TODO: This may actually need to include the collateral utxo, waiting on Misha's response
     utxos <- firstEitherT (WAPI.OtherError . Text.pack . show) $ newEitherT $ queryNode @w nodeQuery
 
     lift $ modify $ \(EstimationContext systemContext curUtxos) -> EstimationContext systemContext $ Map.union curUtxos utxos

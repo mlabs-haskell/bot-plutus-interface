@@ -13,10 +13,8 @@ module BotPlutusInterface.CardanoCLI (
 
 import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand)
 import BotPlutusInterface.Files (
-  DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
-  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-  -- metadataFilePath,
+  metadataFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
   referenceScriptFilePath,
@@ -77,6 +75,7 @@ import Ledger.Tx (
     txData,
     txFee,
     txInputs,
+    txMetadata,
     txMint,
     txOutputs,
     txReferenceInputs,
@@ -99,7 +98,7 @@ import Plutus.V1.Ledger.Api (
   ExMemory (ExMemory),
  )
 import Plutus.V1.Ledger.Bytes qualified as Bytes
-import PlutusTx.Builtins (fromBuiltin, toBuiltin)
+import PlutusTx.Builtins (BuiltinByteString, fromBuiltin, toBuiltin)
 import Prelude
 
 -- | Getting information of the latest block
@@ -174,9 +173,8 @@ buildTx pabConf txBudget tx = do
           , txOutOpts pabConf (txData tx) (txOutputs tx)
           , mints
           , validRangeOpts (txValidRange tx)
-          , -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-            -- , metadataOpts pabConf (txMetadata tx)
-            requiredSigners
+          , metadataOpts pabConf (txMetadata tx)
+          , requiredSigners
           , ["--fee", showText . getLovelace . fromValue $ txFee tx]
           , mconcat
               [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
@@ -419,8 +417,7 @@ exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
 
--- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
--- metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]
--- metadataOpts _ Nothing = mempty
--- metadataOpts pabConf (Just meta) =
---   ["--metadata-json-file", metadataFilePath pabConf meta]
+metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]
+metadataOpts _ Nothing = mempty
+metadataOpts pabConf (Just meta) =
+  ["--metadata-json-file", metadataFilePath pabConf meta]

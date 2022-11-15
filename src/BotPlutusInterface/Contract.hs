@@ -606,8 +606,8 @@ makeCollateral cEnv = runEitherT $ do
 
   let pabConf = cEnv.cePABConfig
 
-  -- TODO: Enforce existence of pparams at the beggining
-  pparams <- maybe (error "Must have ProtocolParamaneters in PABConfig") return (pcProtocolParams pabConf)
+  -- TODO: Enforce existence of pparams at the beginning
+  pparams <- maybe (error "Must have ProtocolParameters in PABConfig") return (pcProtocolParams pabConf)
 
   unbalancedTx <-
     firstEitherT (WAPI.OtherError . Text.pack . show) $

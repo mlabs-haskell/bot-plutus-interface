@@ -3,6 +3,8 @@
 
 module Cardano.PlutusExample.NFT where
 
+import BotPlutusInterface.Constraints (mustIncludeMetadata, submitBpiTxConstraintsWith)
+import BotPlutusInterface.Metadata (NftMetadata (..), NftMetadataToken (..), TxMetadata (..))
 import Cardano.Api.Shelley (PlutusScript (..), PlutusScriptV1)
 import Codec.Serialise (serialise)
 import Control.Monad (void)
@@ -31,7 +33,7 @@ import Ledger.Constraints as Constraints
 import Ledger.Scripts qualified as Scripts
 import Ledger.Typed.Scripts qualified as TypedScripts
 import Ledger.Value (flattenValue, singleton)
-import Plutus.Contract (Contract, Endpoint, submitTxConstraintsWith, tell, utxosAt)
+import Plutus.Contract (Contract, Endpoint, tell, utxosAt)
 import Plutus.Contract qualified as Contract
 import Plutus.Script.Utils.V1.Scripts qualified as ScriptUtils
 import PlutusTx qualified
@@ -113,6 +115,11 @@ mintNft MintParams {..} = do
               , Constraints.mustSpendPubKeyOutput oref
               , Constraints.mustPayToPubKeyAddress mpPubKeyHash mpStakeHash val
               ]
-      void $ submitTxConstraintsWith @Void lookups tx
+          tokenMetadata = NftMetadataToken mpName mpImage (Just "image/jpeg") (Just mpDescription) Nothing Nothing
+          txMetadata = TxMetadata (Just $ NftMetadata $ Map.singleton cs $ Map.singleton mpTokenName tokenMetadata) mempty
+          bpiConstraints =
+            [ mustIncludeMetadata txMetadata
+            ]
+      void $ submitBpiTxConstraintsWith @Void lookups tx metadata
       Contract.logInfo @Hask.String $ printf "forged %s" (Hask.show val)
       tell $ Last $ Just "Finished"

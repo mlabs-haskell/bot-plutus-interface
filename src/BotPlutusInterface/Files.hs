@@ -10,8 +10,7 @@ module BotPlutusInterface.Files (
   txFilePath,
   txFileName,
   txIdToText,
-  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-  -- metadataFilePath,
+  metadataFilePath,
   writeAll,
   writePolicyScriptFile,
   redeemerJsonFilePath,
@@ -33,6 +32,7 @@ import BotPlutusInterface.Effects (
   listDirectory,
   readFileTextEnvelope,
   writeFileJSON,
+  writeFileRaw,
   writeFileTextEnvelope,
  )
 import BotPlutusInterface.Types (PABConfig)
@@ -66,6 +66,7 @@ import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
+import Data.ByteString.Hash (blake2b_256)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
@@ -73,7 +74,7 @@ import Data.Kind (Type)
 import Data.List (isPrefixOf, nub, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (catMaybes, mapMaybe, maybeToList)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger qualified
@@ -99,7 +100,7 @@ import Plutus.V1.Ledger.Api (
   toBuiltin,
  )
 import PlutusTx (ToData, dataToBuiltinData, toData)
-import PlutusTx.Builtins (fromBuiltin)
+import PlutusTx.Builtins (BuiltinByteString, fromBuiltin)
 import System.FilePath (takeExtension, (</>))
 import Prelude
 
@@ -135,6 +136,12 @@ signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
   let h = encodeByteString $ fromBuiltin pubKeyHash
    in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
 
+-- | Path of stored metadata files
+metadataFilePath :: PABConfig -> BuiltinByteString -> Text
+metadataFilePath pabConf meta =
+  let h = encodeByteString $ blake2b_256 $ fromBuiltin meta
+   in pabConf.pcMetadataDir <> "/metadata-" <> h <> ".json"
+
 txFilePath :: PABConfig -> Text -> Tx.TxId -> Text
 txFilePath pabConf ext txId = pabConf.pcTxFileDir <> "/" <> txFileName txId ext
 
@@ -143,15 +150,6 @@ txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext
 
 txIdToText :: Tx.TxId -> Text
 txIdToText = encodeByteString . fromBuiltin . Tx.getTxId
-
--- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-
-{- | Path of stored metadata files
- metadataFilePath :: PABConfig -> BuiltinByteString -> Text
- metadataFilePath pabConf (BuiltinByteString meta) =
-   let h = encodeByteString $ blake2b meta
-    in pabConf.pcMetadataDir <> "/metadata-" <> h <> ".json"
--}
 
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile ::
@@ -187,17 +185,16 @@ writeReferenceScriptFile pabConf script =
   let filepath = referenceScriptFilePath pabConf (ScriptUtils.scriptHash script)
    in writeScriptEnvelope @w script filepath
 
--- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
--- -- | Writes metadata file under the given folder
--- writeMetadataFile ::
---   forall (w :: Type) (effs :: [Type -> Type]).
---   Member (PABEffect w) effs =>
---   PABConfig ->
---   BuiltinByteString ->
---   Eff effs (Either (FileError ()) Text)
--- writeMetadataFile pabConf metadata =
---   let filepath = metadataFilePath pabConf metadata
---    in const filepath <<$>> writeFileRaw @w (Text.unpack filepath) metadata
+-- | Writes metadata file under the given folder
+writeMetadataFile ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  BuiltinByteString ->
+  Eff effs (Either (FileError ()) Text)
+writeMetadataFile pabConf metadata =
+  let filepath = metadataFilePath pabConf metadata
+   in fmap (const filepath) <$> writeFileRaw @w (Text.unpack filepath) metadata
 
 txMintingPolicies :: Tx.Tx -> [Versioned MintingPolicy]
 txMintingPolicies tx = mapMaybe (Ledger.lookupMintingPolicy $ Tx.txScripts tx) $ Map.keys $ Tx.txMintingWitnesses tx
@@ -237,8 +234,7 @@ writeAll ::
   Eff effs (Either (FileError ()) [Text])
 writeAll pabConf tx = do
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
-  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-  -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
+  createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
   let (mValidatorScripts, redeemers, mDatums) = unzip3 $ txValidatorInputs tx
       validatorScripts = catMaybes mValidatorScripts
@@ -255,8 +251,7 @@ writeAll pabConf tx = do
         , map (writeDatumJsonFile @w pabConf) allDatums
         , map (writeRedeemerJsonFile @w pabConf) allRedeemers
         , map (writeReferenceScriptFile @w pabConf) allRefScripts
-        -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-        -- , map (writeMetadataFile @w pabConf) (maybeToList $ Tx.txMetadata tx)
+        , map (writeMetadataFile @w pabConf) (maybeToList $ Tx.txMetadata tx)
         ]
 
   pure $ sequence results
@@ -286,7 +281,7 @@ readPrivateKeys pabConf = do
     paymentSKeyPrefix = "signing-key"
 
     {- this filtering ensures that only payment keys are read,
-     it allows to store other types of keys in the same drirectory if required
+     it allows to store other types of keys in the same directory if required
      by altering filename prefix
     -}
     guardPaymentKey prefix filename =

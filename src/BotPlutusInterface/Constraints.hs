@@ -1,11 +1,19 @@
-module BotPlutusInterface.Constraints (submitBpiTxConstraintsWith, mustValidateInFixed, BpiConstraint) where
+module BotPlutusInterface.Constraints (
+  BpiConstraint (..),
+  mustIncludeMetadata,
+  mustValidateInFixed,
+  submitBpiTxConstraintsWith,
+) where
 
+import BotPlutusInterface.Metadata (TxMetadata)
 import Control.Lens (re, (^.))
 import Control.Monad (foldM, forM_)
+import Data.Aeson qualified as Aeson
+import Data.ByteString.Lazy (toStrict)
 import Data.Kind (Type)
 import Data.Row (Row)
 import Data.Text (Text, pack)
-import Ledger (CardanoTx, POSIXTimeRange, Tx (txValidRange))
+import Ledger (CardanoTx, POSIXTimeRange, Tx (txMetadata, txValidRange))
 import Ledger.Constraints (ScriptLookups, TxConstraint (MustValidateIn), TxConstraints (txConstraints), UnbalancedTx (UnbalancedEmulatorTx))
 import Ledger.Slot (SlotRange)
 import Ledger.TimeSlot (SlotConversionError)
@@ -13,15 +21,20 @@ import Ledger.Typed.Scripts (DatumType, RedeemerType)
 import Plutus.Contract (AsContractError (_OtherContractError), Contract, mkTxConstraints, submitUnbalancedTx, throwError)
 import Plutus.Contract.Effects (PABReq (PosixTimeRangeToContainedSlotRangeReq), _PosixTimeRangeToContainedSlotRangeResp)
 import Plutus.Contract.Request (pabReq)
+import PlutusTx.Builtins (BuiltinByteString, toBuiltin)
 import PlutusTx.IsData.Class (FromData, ToData)
 import Prelude
 
 -- TODO: add MustMintValueWithReferencePolicy
 data BpiConstraint
   = MustValidateInFixed POSIXTimeRange
+  | MustIncludeMetadata BuiltinByteString
 
 mustValidateInFixed :: POSIXTimeRange -> [BpiConstraint]
 mustValidateInFixed = pure . MustValidateInFixed
+
+mustIncludeMetadata :: TxMetadata -> [BpiConstraint]
+mustIncludeMetadata = pure . MustIncludeMetadata . toBuiltin . toStrict . Aeson.encode
 
 flagBannedConstraints ::
   forall (a :: Type) (w :: Type) (s :: Row Type) (e :: Type).
@@ -82,3 +95,5 @@ mapBpiConstraints bpiConstraints = mapTx $ \tx -> foldM processBpiConstraint tx 
       eSlotRange <- posixTimeRangeToContainedSlotRange posixTimeRange
       slotRange <- either (throwAsContractError . pack . show) pure eSlotRange
       pure tx {txValidRange = slotRange}
+    processBpiConstraint tx (MustIncludeMetadata metadata) =
+      pure tx {txMetadata = Just metadata}

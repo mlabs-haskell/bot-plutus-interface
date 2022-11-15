@@ -8,21 +8,16 @@ module BotPlutusInterface.BodyBuilder (buildAndEstimateBudget, runInEstimationEf
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
 import BotPlutusInterface.Effects (PABEffect, estimateBudget, getEstimationContext)
 
-import BotPlutusInterface.Files (
-  DummyPrivKey,
-  txFilePath,
- )
+import BotPlutusInterface.Files (txFilePath)
 import BotPlutusInterface.Types (EstimationContext, PABConfig, TxBudget, TxFile (Raw))
 import Control.Monad.Freer (Eff, Member)
 import Control.Monad.Freer.State (State, evalState, get)
 import Control.Monad.Trans.Either (EitherT, firstEitherT, mapEitherT, newEitherT)
 import Data.Kind (Type)
-import Data.Map (Map)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Ledger (Tx (txInputs, txReferenceInputs), TxInput (txInputRef), txId)
-import Ledger.Crypto (PubKeyHash)
 import Prelude
 
 textShow :: forall (a :: Type). Show a => a -> Text
