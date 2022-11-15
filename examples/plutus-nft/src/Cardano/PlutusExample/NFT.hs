@@ -115,11 +115,10 @@ mintNft MintParams {..} = do
               , Constraints.mustSpendPubKeyOutput oref
               , Constraints.mustPayToPubKeyAddress mpPubKeyHash mpStakeHash val
               ]
-          tokenMetadata = NftMetadataToken mpName mpImage (Just "image/jpeg") (Just mpDescription) Nothing Nothing
-          txMetadata = TxMetadata (Just $ NftMetadata $ Map.singleton cs $ Map.singleton mpTokenName tokenMetadata) mempty
-          bpiConstraints =
-            [ mustIncludeMetadata txMetadata
-            ]
-      void $ submitBpiTxConstraintsWith @Void lookups tx metadata
+          tokenMetadata = NftMetadataToken mpName mpImage (Just "image/jpeg") mpDescription Hask.mempty Hask.mempty
+          txMetadata = TxMetadata (Just $ NftMetadata $ Map.singleton cs $ Map.singleton mpTokenName tokenMetadata) Hask.mempty
+          bpiConstraints = mustIncludeMetadata txMetadata
+
+      void $ submitBpiTxConstraintsWith @Void lookups tx bpiConstraints
       Contract.logInfo @Hask.String $ printf "forged %s" (Hask.show val)
       tell $ Last $ Just "Finished"
