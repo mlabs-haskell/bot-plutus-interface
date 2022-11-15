@@ -102,8 +102,6 @@ mintNft MintParams {..} = do
       tell $ Last $ Just $ "Using oref:" Hask.<> Text.pack (Hask.show oref)
       let cs = curSymbol oref mpTokenName
           val = singleton cs mpTokenName 1
-          -- TODO: Add metadata in the tx.
-          --       Currently this is not possible, as metadata is not supported.
           lookups =
             Hask.mconcat
               [ Constraints.plutusV1MintingPolicy (policy oref mpTokenName)

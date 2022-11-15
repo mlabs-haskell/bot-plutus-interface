@@ -70,11 +70,9 @@ import Spec.MockContract (
   pkh3',
   pkhAddr1,
   runContractPure,
-  signingKey1,
   testingNetwork,
   theCollateralTxId,
   tip,
-  toSigningKeyFile,
   toVerificationKeyFile,
   utxos,
   verificationKey1,
@@ -135,7 +133,7 @@ sendAda = do
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-out ${addr2}+857690
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
@@ -160,7 +158,7 @@ sendAda = do
           --tx-in ${inTxId}#0
           --tx-out ${addr2}+857690
           --tx-out ${addr1}+12642010
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
@@ -199,7 +197,7 @@ sendAdaNoChange = do
           --tx-in ${inTxId}#0
           --tx-out ${addr2}+857690
           --tx-out ${addr1}+857690
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
@@ -231,7 +229,7 @@ sendAdaStaking = do
           cardano-cli transaction build-raw --babbage-era
           --tx-in ${inTxId}#0
           --tx-out ${addr2Staking}+978370
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
@@ -255,7 +253,7 @@ sendAdaStaking = do
           --tx-in ${inTxId}#0
           --tx-out ${addr2Staking}+978370
           --tx-out ${addr1}+857690
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
@@ -296,8 +294,8 @@ multisigSupport = do
           --tx-in ${inTxId}#0
           --tx-out ${addr2}+857690
           --tx-out ${addr1}+857690
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
-          --required-signer ./signing-keys/signing-key-${pkh3'}.skey
+          --required-signer-hash ${pkh1'}
+          --required-signer-hash ${pkh3'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
@@ -323,8 +321,7 @@ withoutSigning = do
           & utxos <>~ [(txOutRef, txOut)]
           & files
             .~ Map.fromList
-              [ toSigningKeyFile "./signing-keys" signingKey1
-              , toVerificationKeyFile "./signing-keys" verificationKey1
+              [ toVerificationKeyFile "./signing-keys" verificationKey1
               , toVerificationKeyFile "./signing-keys" verificationKey3
               ]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
@@ -347,7 +344,7 @@ withoutSigning = do
           --tx-in ${inTxId}#0
           --tx-out ${addr2}+857690
           --tx-out ${addr1}+857690
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --required-signer-hash ${pkh3'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
@@ -392,7 +389,7 @@ sendTokens = do
           --tx-in ${inTxId1}#0
           --tx-out ${addr2}+1047330 + 5 ${curSymbol'}.74657374546f6b656e
           --tx-out ${addr1}+48952370 + 95 ${curSymbol'}.74657374546f6b656e
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
         |]
@@ -431,7 +428,7 @@ sendTokensWithoutName = do
           --tx-in ${inTxId1}#0
           --tx-out ${addr2}+1008540 + 5 ${curSymbol'}
           --tx-out ${addr1}+48991160 + 95 ${curSymbol'}
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
@@ -484,7 +481,7 @@ mintTokens = do
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --mint-execution-units (0,0)
           --mint 5 ${curSymbol'}.74657374546f6b656e
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
@@ -501,7 +498,7 @@ mintTokens = do
           --mint-redeemer-file ./result-scripts/redeemer-${redeemerHash}.json
           --mint-execution-units (0,0)
           --mint 5 ${curSymbol'}.74657374546f6b656e
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
@@ -574,7 +571,7 @@ spendToValidator = do
           --tx-in ${inTxId}#0
           --tx-out ${valAddr'}+1017160
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
@@ -587,7 +584,7 @@ spendToValidator = do
           --tx-out ${valAddr'}+1017160
           --tx-out-datum-embed-file ./result-scripts/datum-${datumHash'}.json
           --tx-out ${addr1}+3982540
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 300
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
@@ -678,7 +675,7 @@ redeemFromValidator = do
           --tx-in-execution-units (0,0)
           --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+857690
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 0 --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
         )
@@ -695,7 +692,7 @@ redeemFromValidator = do
           --tx-in-collateral ${collateralTxId}#0
           --tx-out ${addr2}+857690
           --tx-out ${addr1}+49143160
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 400
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]
@@ -766,7 +763,7 @@ withValidRange = do
           --tx-out ${addr2}+857690
           --invalid-before 47577202
           --invalid-hereafter 50255602
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?
           |]
@@ -780,7 +777,7 @@ withValidRange = do
           --tx-out ${addr1}+857690
           --invalid-before 47577202
           --invalid-hereafter 50255602
-          --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+          --required-signer-hash ${pkh1'}
           --fee 0
           --protocol-params-file ./protocol.json --out-file ./txs/tx-?.raw
           |]

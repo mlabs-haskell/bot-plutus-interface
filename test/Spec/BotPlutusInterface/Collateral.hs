@@ -121,7 +121,7 @@ testTxUsesCollateralCorrectly = do
             --mint-redeemer-file ./result-scripts/redeemer-923918e403bf43c34b4ef6b48eb2ee04babed17320d8d1b9ff9ad086e86f44ec.json
             --mint-execution-units (0,0)
             --mint 5 363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f.74657374546f6b656e
-            --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+            --required-signer-hash ${pkh1'}
             --fee 0 --protocol-params-file ./protocol.json
             --out-file ./txs/tx-?.raw
           |]
@@ -150,7 +150,7 @@ testTxCreatesCollateralCorrectly = do
          --babbage-era
          --tx-in ${inTxId}#0
          --tx-out ${addr1}+${collatVal}
-         --required-signer ./signing-keys/signing-key-${pkh1'}.skey
+         --required-signer-hash ${pkh1'}
          --fee 0
          --protocol-params-file ./protocol.json
          --out-file ./txs/tx-?.raw

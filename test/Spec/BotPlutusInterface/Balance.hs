@@ -242,7 +242,7 @@ dontAddChangeToDatum = do
       payToUserValue = Ada.lovelaceValueOf 1_000_000
       txConsts =
         -- Pay the same datum to the script, but with more ada.
-        Constraints.mustPayToOtherScript valHash scrDatum payToScriptValue
+        Constraints.mustPayToOtherScriptWithInlineDatum valHash scrDatum payToScriptValue
           <> Constraints.mustPayToPubKey paymentPkh3 payToUserValue
           <> Constraints.mustSpendScriptOutput txOutRef6 Ledger.unitRedeemer
           <> Constraints.mustSpendPubKeyOutput txOutRef7
@@ -319,7 +319,7 @@ dontAddChangeToDatum2 = do
         -- ADA and tokens are moved into their own UTxO(s),
         -- rather than just being left in the original UTxO.
         -- (The extra ada is used to cover fees etc...)
-        Constraints.mustPayToOtherScript valHash scrDatum payToScrValue
+        Constraints.mustPayToOtherScriptWithInlineDatum valHash scrDatum payToScrValue
           <> Constraints.mustSpendScriptOutput txOutRef6 Ledger.unitRedeemer
 
   pparams <- maybe (assertFailure "Must have ProtocolParams set in PABConfig") return $ pcProtocolParams pabConf

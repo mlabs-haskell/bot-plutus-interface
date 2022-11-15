@@ -445,8 +445,6 @@ handleNonAdaChange balanceCfg changeAddr utxos tx = runEitherT $ do
     then return $ if isZero nonAdaChange then tx else tx {txOutputs = outputs}
     else throwE $ WAPI.InsufficientFunds "Not enough inputs to balance tokens."
 
--- TODO: This function is horrible, too much repeated code
-
 {- | `addAdaChange` checks if `bcSeparateChange` is true,
       if it is then we add the ada change to seperate `TxOut` at changeAddr that contains only ada,
       else we add it to any `TxOut` present at changeAddr.

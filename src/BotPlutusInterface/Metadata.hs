@@ -53,7 +53,8 @@ data NftMetadataFiles = NftMetadataFiles
 instance ToJSON NftMetadataFiles where
   toJSON NftMetadataFiles {..} =
     object $
-      addOtherFields nmfOtherFields
+      addOtherFields
+        nmfOtherFields
         [ "name" .= nmfName
         , "src" .= nmfSrc
         , "mediaType" .= nmfMediaType
@@ -75,7 +76,9 @@ instance ToJSON NftMetadataToken where
       addOtherFields nmtOtherFields $
         addFieldWhenNotEmpty "files" nmtFiles $
           addFieldWhenJust "mediaType" nmtMediaType $
-            addFieldWhenJust "description" nmtDescription
+            addFieldWhenJust
+              "description"
+              nmtDescription
               [ "name" .= nmtName
               , "image" .= nmtImage
               ]

@@ -463,6 +463,7 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
     ("cardano-cli", "transaction" : "submit" : _) ->
       pure $ Right $ cmdOutParser ""
     ("mv", _) -> pure $ Right $ cmdOutParser ""
+    ("cp", _) -> pure $ Right $ cmdOutParser ""
     (unsupportedCmd, unsupportedArgs) ->
       throwError @Text
         ("Unsupported command: " <> Text.intercalate " " (unsupportedCmd : unsupportedArgs))
