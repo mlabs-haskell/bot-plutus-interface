@@ -441,7 +441,7 @@
           export LC_ALL=C.UTF-8
           export LANG=C.UTF-8
           export IN_NIX_SHELL='pure'
-          make format_check cabalfmt_check nixpkgsfmt_check lint
+          make format_check cabalfmt_check nixpkgsfmt_check lint_check
           mkdir $out
         '';
 
