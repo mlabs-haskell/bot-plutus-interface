@@ -475,5 +475,11 @@
       checks = perSystem (system: self.flake.${system}.checks // {
         formatCheck = formatCheckFor system;
       });
+
+      hydraJobs = {
+        checks = {inherit (self.checks) x86_64-linux;};
+        packages = {inherit (self.packages) x86_64-linux;};
+        devShells = {inherit (self.devShells) x86_64-linux;};
+      };
     };
 }
