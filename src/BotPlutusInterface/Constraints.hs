@@ -25,7 +25,7 @@ import PlutusTx.Builtins (BuiltinByteString, toBuiltin)
 import PlutusTx.IsData.Class (FromData, ToData)
 import Prelude
 
--- TODO: add MustMintValueWithReferencePolicy
+-- TODO: add MustMintValueWithReferencePolicy (both here and in cardanoCLI)
 data BpiConstraint
   = MustValidateInFixed POSIXTimeRange
   | MustIncludeMetadata BuiltinByteString

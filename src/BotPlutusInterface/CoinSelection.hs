@@ -34,6 +34,7 @@ import Data.Kind (Type)
 import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (isJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, pack)
@@ -470,9 +471,9 @@ uniqueAssetClasses = Set.fromList . concatMap valueToAssetClass
 -- Converting a chain index transaction output to a transaction input type
 txOutToTxIn :: (TxOutRef, TxOut) -> Either Text TxInput
 txOutToTxIn (txOutRef, txOut) =
-  case Ledger.txOutPubKey txOut of
-    Just _ -> Right $ Ledger.pubKeyTxInput txOutRef
-    _ -> Left "Cannot covert a script output to TxIn"
+  if isJust $ Ledger.txOutPubKey txOut
+    then Right $ Ledger.pubKeyTxInput txOutRef
+    else Left "Cannot covert a script output to TxIn"
 
 -- Apply a binary operation on two vectors of same length.
 opVec ::
