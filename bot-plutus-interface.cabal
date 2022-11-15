@@ -108,17 +108,19 @@ library
     , aeson
     , attoparsec                 >=0.13.2.2
     , base16
+    , basement
     , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto
     , cardano-crypto-class
+    , cardano-crypto-wrapper
     , cardano-ledger-alonzo
     , cardano-ledger-babbage
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-prelude
     , cardano-slotting
-    , cardano-crypto-wrapper
+    , cborg
     , config-schema
     , config-value
     , containers
@@ -135,7 +137,6 @@ library
     , lens
     , memory
     , mtl
-    , cborg
     , ouroboros-consensus
     , playground-common
     , plutus-chain-index
@@ -176,7 +177,6 @@ library
     , wai
     , warp
     , websockets
-    , basement
 
   hs-source-dirs:  src
 
