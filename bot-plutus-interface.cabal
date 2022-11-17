@@ -207,6 +207,7 @@ test-suite bot-plutus-interface-test
     , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto-class
+    , cardano-prelude
     , cardano-slotting
     , containers
     , data-default

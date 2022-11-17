@@ -7,7 +7,7 @@ import BotPlutusInterface.Types (
 import Cardano.Prelude (note)
 import Control.Lens ((%~), (&), (.~), (^.))
 import Data.Default (def)
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import Ledger (
   ChainIndexTxOut (PublicKeyChainIndexTxOut),
   Params (Params),
@@ -26,7 +26,6 @@ import Plutus.Contract (
   Contract (..),
   Endpoint,
   adjustUnbalancedTx,
-  mapError,
   throwError,
  )
 import Spec.MockContract (
@@ -74,7 +73,7 @@ testOutsGetAdjusted = do
 
         let constraints = foldMap toPayConstraint [shouldBeAdjusted, shouldNotBeAdjusted]
         utx <-
-          mapError (Text.pack . show) $
+          either (throwError . pack . show) pure $
             Constraints.mkTxWithParams @Void
               (Params def pparams (pcNetwork pabConf))
               mempty
