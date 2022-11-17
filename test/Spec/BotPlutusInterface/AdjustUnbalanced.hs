@@ -26,6 +26,7 @@ import Plutus.Contract (
   Contract (..),
   Endpoint,
   adjustUnbalancedTx,
+  mapError,
   throwError,
  )
 import Spec.MockContract (
@@ -72,15 +73,12 @@ testOutsGetAdjusted = do
         pparams <- note "Must have ProtocolParams set in PABConfig" $ pcProtocolParams pabConf
 
         let constraints = foldMap toPayConstraint [shouldBeAdjusted, shouldNotBeAdjusted]
-            utx =
-              either
-                (error . show)
-                id
-                ( Constraints.mkTxWithParams @Void
-                    (Params def pparams (pcNetwork pabConf))
-                    mempty
-                    constraints
-                )
+        utx <-
+          mapError (Text.pack . show) $
+            Constraints.mkTxWithParams @Void
+              (Params def pparams (pcNetwork pabConf))
+              mempty
+              constraints
         adjustedUtx <- adjustUnbalancedTx utx
         return (adjustedUtx ^. tx . outputs)
 

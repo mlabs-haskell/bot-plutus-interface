@@ -26,6 +26,7 @@ import PlutusTx.IsData.Class (FromData, ToData)
 import Prelude
 
 -- TODO: add MustMintValueWithReferencePolicy (both here and in cardanoCLI)
+-- https://github.com/mlabs-haskell/bot-plutus-interface/issues/165
 data BpiConstraint
   = MustValidateInFixed POSIXTimeRange
   | MustIncludeMetadata BuiltinByteString

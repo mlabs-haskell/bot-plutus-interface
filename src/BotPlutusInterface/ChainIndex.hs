@@ -39,6 +39,7 @@ handleChainIndexReq :: forall (w :: Type). ContractEnvironment w -> ChainIndexQu
 handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
   \case
     -- TODO: Implement DatumsAtAddress
+    -- https://github.com/mlabs-haskell/bot-plutus-interface/issues/164
     DatumsAtAddress _ _ -> error "Not implemented ChainIndex.DatumsAtAddress"
     DatumFromHash datumHash ->
       DatumHashResponse <$> chainIndexQueryOne cePABConfig (ChainIndexClient.getDatum datumHash)

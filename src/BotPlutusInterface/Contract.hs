@@ -223,6 +223,7 @@ handlePABReq contractEnv req = do
           pparams = fromMaybe (error "GetParamsReq: Must have ProtocolParamaneters in PABConfig") $ pcProtocolParams pabConfig
           netId = pcNetwork pabConfig
           -- FIXME: Compute SlotConfig properly
+          -- Ideally plutus-apps drops slotConfig from the env, as it shouldn't exist
           slotConfig = def
        in return $ GetParamsResp $ Params slotConfig pparams netId
     OwnAddressesReq ->
