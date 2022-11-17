@@ -27,7 +27,7 @@ import BotPlutusInterface.Effects (
  )
 import BotPlutusInterface.Files (DummyPrivKey, dummyXPrv, unDummyPrivateKey)
 import BotPlutusInterface.Files qualified as Files
-import BotPlutusInterface.Helpers (addressTxOut, lovelaceValueOf)
+import BotPlutusInterface.Helpers (addressTxOut, isZero, lovelaceValueOf)
 import BotPlutusInterface.Types (
   CollateralUtxo (collateralTxOutRef),
   EstimationContext (..),
@@ -81,15 +81,12 @@ import Ledger.Tx qualified as Tx
 import Ledger.Tx.CardanoAPI.Internal (toCardanoValue)
 import Ledger.Value (Value)
 import Ledger.Value qualified as Value
-import Plutus.V1.Ledger.Api (
-  CurrencySymbol (..),
-  LedgerBytes (LedgerBytes),
-  TokenName (..),
- )
+import Plutus.V1.Ledger.Api (LedgerBytes (LedgerBytes))
 
 import Data.Foldable (Foldable (foldr'))
 import Ledger (PubKey (PubKey), PubKeyHash (PubKeyHash), signTx')
 import Ledger.Constraints.OffChain qualified as Constraints
+import Plutus.Contract.Util (uncurry3)
 import Prettyprinter (pretty, viaShow, (<+>))
 import Wallet.API qualified as WAPI
 import Prelude
@@ -542,18 +539,11 @@ minus a b = a <> CApi.negateValue b
 ledgerMinus :: Value -> Value -> Value
 ledgerMinus x y =
   let negativeValues = map (\(c, t, a) -> (c, t, - a)) $ Value.flattenValue y
-   in x <> mconcat (map unflattenValue negativeValues)
-
-unflattenValue :: (CurrencySymbol, TokenName, Integer) -> Value
-unflattenValue (curSymbol, tokenName, amount) =
-  Value.assetClassValue (Value.assetClass curSymbol tokenName) amount
+   in x <> mconcat (map (uncurry3 Value.singleton) negativeValues)
 
 isValueNat :: CApi.Value -> Bool
 isValueNat =
   all (\(_, q) -> q >= 0) . CApi.valueToList
-
-isZero :: CApi.Value -> Bool
-isZero = null . CApi.valueToList
 
 justLovelace :: CApi.Value -> Bool
 justLovelace (CApi.valueToList -> [(CApi.AdaAssetId, _)]) = True

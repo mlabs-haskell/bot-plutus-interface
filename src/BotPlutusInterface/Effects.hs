@@ -38,7 +38,7 @@ module BotPlutusInterface.Effects (
   unionEstimationContext,
 ) where
 
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (..), runNodeQuery)
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, QueryEraHistory, QuerySystemStart, UtxosFromTxOutRefs), runNodeQuery)
 import BotPlutusInterface.CardanoNode.Query (NodeQueryError)
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.Collateral (withCollateralHandling)

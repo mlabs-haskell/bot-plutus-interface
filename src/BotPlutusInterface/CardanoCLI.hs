@@ -22,6 +22,7 @@ import BotPlutusInterface.Files (
   txFilePath,
   validatorScriptFilePath,
  )
+import BotPlutusInterface.Helpers (isZero)
 import BotPlutusInterface.Types (
   EstimationContext (ecUtxos),
   MintBudgets,
@@ -264,6 +265,7 @@ txInputOpts spendIndex pabConf utxos =
                 ]
               ]
         _ -> pure []
+
     getTxInTypeAndPrefix :: Either Scripts.ValidatorHash (ScriptUtils.Versioned TxOutRef) -> ([Text], Text)
     getTxInTypeAndPrefix = \case
       Left vHash ->
@@ -282,9 +284,11 @@ txInputOpts spendIndex pabConf utxos =
               ScriptUtils.PlutusV2 -> ["--spending-plutus-script-v2"]
         , "--spending-reference-"
         )
+
     txOutDatumIsInline :: CApi.TxOut CApi.CtxUTxO CApi.BabbageEra -> Bool
     txOutDatumIsInline (CApi.TxOut _ _ (CApi.TxOutDatumInline _ _) _) = True
     txOutDatumIsInline _ = False
+
     handleTxInDatum :: Text -> TxOutRef -> Maybe DatumHash -> Either Text [Text]
     handleTxInDatum prefix txOutRef mDHash =
       if maybe False txOutDatumIsInline (Map.lookup txOutRef utxos)
@@ -305,9 +309,6 @@ txRefInputOpts =
 txInputCollateralOpts :: [TxInput] -> [Text]
 txInputCollateralOpts =
   concatMap (\(TxInput txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef])
-
-isZero :: CApi.Value -> Bool
-isZero = all ((== 0) . snd) . CApi.valueToList
 
 -- Minting options
 mintOpts ::

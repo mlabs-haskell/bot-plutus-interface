@@ -251,8 +251,9 @@ handlePABReq contractEnv req = do
     AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w @effs unbalancedTx
     CurrentNodeClientTimeRangeReq -> do
       -- TODO: This needs rework, we need to get the current slotLength from the eraSummaries
+      let currentSlotLength = 1_000 -- 1 second in milliseconds
       t <- currentTime @w contractEnv
-      return $ CurrentNodeClientTimeRangeResp (t, t + 1_000)
+      return $ CurrentNodeClientTimeRangeResp (t, t + currentSlotLength)
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -644,11 +645,11 @@ findCollateralAtOwnPKH cEnv =
         firstEitherT (WAPI.OtherError . Text.pack . show) $
           newEitherT $ queryNode @w (UtxosAt changeAddr)
       let refsAndValues = Map.toList $ txOutvalue <$> r
-      hoistEither $ case filter check refsAndValues of
+      hoistEither $ case filter isAcceptableCollateral refsAndValues of
         [] -> Left $ WAPI.OtherError "Couldn't find collateral UTxO"
         ((oref, _) : _) -> Right oref
   where
-    check (_, v) = fromCardanoValue v == collateralValue (cePABConfig cEnv)
+    isAcceptableCollateral (_, v) = fromCardanoValue v == collateralValue (cePABConfig cEnv)
     txOutvalue (TxOut _ v _ _) = txOutValueToValue v
 
 {- | Construct a 'NonEmpty' list from a single element.

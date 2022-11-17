@@ -1,11 +1,12 @@
 module BotPlutusInterface.Helpers (
-  awaitTxConfirmedUntilTime,
-  unsafeToCardanoAddressInEra,
-  unsafeSerialiseAddress,
-  lovelaceValueOf,
-  unsafeValueOf,
   addressTxOut,
+  awaitTxConfirmedUntilTime,
+  isZero,
+  lovelaceValueOf,
   traverseKeys,
+  unsafeSerialiseAddress,
+  unsafeToCardanoAddressInEra,
+  unsafeValueOf,
 ) where
 
 import Cardano.Api qualified as CApi
@@ -17,6 +18,7 @@ import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Row (Row)
 import Data.Text (Text, pack)
+import GHC.Stack (HasCallStack)
 import Ledger (POSIXTime, TxId)
 import Ledger qualified
 import Ledger.Tx.CardanoAPI.Internal (toCardanoAddressInEra, toCardanoValue)
@@ -25,6 +27,9 @@ import Plutus.Contract.Request (RollbackState (Unknown), awaitTxStatusChange, cu
 import Plutus.Contract.Types (Contract, throwError)
 import Plutus.V1.Ledger.Value qualified as Value
 import Prelude
+
+isZero :: CApi.Value -> Bool
+isZero = all ((== 0) . snd) . CApi.valueToList
 
 awaitTxConfirmedUntilTime :: forall (w :: Type) (s :: Row Type) (e :: Type). (AsContractError e) => TxId -> POSIXTime -> Contract w s e ()
 awaitTxConfirmedUntilTime txId maxTime = do
@@ -43,8 +48,8 @@ awaitTxConfirmedUntilTime txId maxTime = do
           awaitTxConfirmedUntilTime txId maxTime
     _ -> pure ()
 
-unsafeToCardanoAddressInEra :: CApi.NetworkId -> Ledger.Address -> CApi.AddressInEra CApi.BabbageEra
-unsafeToCardanoAddressInEra network = fromRight undefined . toCardanoAddressInEra network
+unsafeToCardanoAddressInEra :: HasCallStack => CApi.NetworkId -> Ledger.Address -> CApi.AddressInEra CApi.BabbageEra
+unsafeToCardanoAddressInEra network = fromRight (error "Failed to convert address to addressInEra") . toCardanoAddressInEra network
 
 unsafeSerialiseAddress :: CApi.NetworkId -> Ledger.Address -> Text
 unsafeSerialiseAddress network = CApi.serialiseAddress . unsafeToCardanoAddressInEra network
@@ -53,8 +58,8 @@ lovelaceValueOf :: Integer -> CApi.Value
 lovelaceValueOf amt = CApi.valueFromList [(CApi.AdaAssetId, CApi.Quantity amt)]
 
 -- Probably unsafeSingleton, also name should define value type
-unsafeValueOf :: Ledger.CurrencySymbol -> Ledger.TokenName -> Integer -> CApi.Value
-unsafeValueOf cs tn amt = fromRight undefined $ toCardanoValue $ Value.singleton cs tn amt
+unsafeValueOf :: HasCallStack => Ledger.CurrencySymbol -> Ledger.TokenName -> Integer -> CApi.Value
+unsafeValueOf cs tn amt = fromRight (error "Failed to convert plutus value to cardano value") $ toCardanoValue $ Value.singleton cs tn amt
 
 addressTxOut :: CApi.AddressInEra CApi.BabbageEra -> CApi.Value -> Ledger.TxOut
 addressTxOut addr v = Ledger.TxOut $ CApi.TxOut addr (CApi.TxOutValue CApi.MultiAssetInBabbageEra v) CApi.TxOutDatumNone ReferenceScriptNone

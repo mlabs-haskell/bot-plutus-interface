@@ -44,6 +44,8 @@ flagBannedConstraints ::
   Contract w s e ()
 flagBannedConstraints _ constraints =
   forM_ (txConstraints constraints) $ \case
+    -- See https://github.com/input-output-hk/plutus-apps/blob/a2045141fc0b4f14470ebf4679c6abe40aac4db7/plutus-ledger-constraints/src/Ledger/Constraints/OffChain.hs#L743
+    -- The use of posixTimeRangeToContainedSlotRange, rather than the effect.
     MustValidateIn _ -> throwAsContractError "MustValidateIn from plutus-apps miscalculates slot ranges, use MustValidateInFixed from BpiConstraint instead."
     _ -> pure ()
 

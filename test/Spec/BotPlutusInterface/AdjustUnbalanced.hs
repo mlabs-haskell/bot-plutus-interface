@@ -4,6 +4,7 @@ import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
   PABConfig (pcNetwork, pcOwnPubKeyHash, pcProtocolParams),
  )
+import Cardano.Prelude (note)
 import Control.Lens ((%~), (&), (.~), (^.))
 import Data.Default (def)
 import Data.Text (Text)
@@ -68,7 +69,7 @@ testOutsGetAdjusted = do
       pabConf = cePABConfig $ initState ^. contractEnv
       contract :: Contract () (Endpoint "SendAda" ()) Text [TxOut]
       contract = do
-        pparams <- maybe (throwError "Must have ProtocolParams set in PABConfig") return $ pcProtocolParams pabConf
+        pparams <- note "Must have ProtocolParams set in PABConfig" $ pcProtocolParams pabConf
 
         let constraints = foldMap toPayConstraint [shouldBeAdjusted, shouldNotBeAdjusted]
             utx =

@@ -39,7 +39,7 @@ module BotPlutusInterface.Types (
   toExBudget,
 ) where
 
-import Cardano.Api (AddressInEra, BabbageEra, EraHistory, NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex, TxOut)
+import Cardano.Api (AddressInEra, BabbageEra, EraHistory, NetworkId (Testnet), NetworkMagic (NetworkMagic), ScriptExecutionError, ScriptWitnessIndex, TxOut)
 import Cardano.Api.Shelley (CardanoMode, CtxUTxO, ProtocolParameters)
 import Cardano.Slotting.Time (SystemStart)
 import Control.Concurrent.STM (TVar, readTVarIO)
@@ -76,7 +76,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
-import Wallet.Types (ContractInstanceId (..))
+import Wallet.Types (ContractInstanceId)
 import Prelude
 
 data PABConfig = PABConfig

@@ -21,6 +21,7 @@ import BotPlutusInterface.Types (
   RawTx,
   SomeContractState (SomeContractState),
  )
+import Cardano.Prelude (note)
 import Control.Concurrent (ThreadId, forkIO)
 import Control.Concurrent.STM (TVar, atomically, modifyTVar, newTVarIO, readTVar, readTVarIO, retry)
 import Control.Monad (forever, guard, unless, void)
@@ -318,4 +319,4 @@ rawTxHandler config (TxIdCapture txId) = do
   unless config.pcEnableTxEndpoint $ throwError err404
 
   mRawTx <- liftIO $ getTxFromFile config txId "raw"
-  maybe (throwError err404) pure mRawTx
+  note err404 mRawTx
