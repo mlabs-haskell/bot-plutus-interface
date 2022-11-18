@@ -21,6 +21,7 @@ import BotPlutusInterface.Effects (
   minUtxo,
   posixTimeRangeToContainedSlotRange,
   posixTimeToSlot,
+  posixTimeToSlotLength,
   printBpiLog,
   queryChainIndex,
   queryNode,
@@ -67,6 +68,7 @@ import Data.Aeson.Extras (encodeByteString)
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Bifunctor (first)
 import Data.Default (Default (def))
+import Data.Either (fromRight)
 import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Function (fix, (&))
 import Data.Kind (Type)
@@ -83,6 +85,7 @@ import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
 import Ledger.Slot (Slot (Slot))
+import Ledger.TimeSlot (nominalDiffTimeToPOSIXTime)
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
 import Ledger.Tx qualified as Tx
 import Ledger.Tx.CardanoAPI.Internal (fromCardanoValue)
@@ -251,10 +254,9 @@ handlePABReq contractEnv req = do
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w @effs unbalancedTx
     CurrentNodeClientTimeRangeReq -> do
-      -- TODO: This needs rework, we need to get the current slotLength from the eraSummaries
-      let currentSlotLength = 1_000 -- 1 second in milliseconds
       t <- currentTime @w contractEnv
-      return $ CurrentNodeClientTimeRangeResp (t, t + currentSlotLength)
+      slotLength <- fromRight (error "Failed to query slot length") <$> posixTimeToSlotLength @w t
+      return $ CurrentNodeClientTimeRangeResp (t, t + nominalDiffTimeToPOSIXTime slotLength)
     ------------------------
     -- Unhandled requests --
     ------------------------

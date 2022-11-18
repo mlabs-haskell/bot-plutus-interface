@@ -29,6 +29,7 @@ module BotPlutusInterface.Effects (
   slotToPOSIXTime,
   posixTimeToSlot,
   posixTimeRangeToContainedSlotRange,
+  posixTimeToSlotLength,
   getInMemCollateral,
   setInMemCollateral,
   queryNode,
@@ -90,6 +91,7 @@ import Data.Set qualified as Set
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Time (NominalDiffTime)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Validation (Coin (Coin))
@@ -148,6 +150,9 @@ data PABEffect (w :: Type) (r :: Type) where
   POSIXTimeRangeToSlotRange ::
     Ledger.POSIXTimeRange ->
     PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
+  POSIXTimeToSlotLength ::
+    Ledger.POSIXTime ->
+    PABEffect w (Either TimeSlot.TimeSlotConversionError NominalDiffTime)
   GetInMemCollateral :: PABEffect w (Maybe CollateralUtxo)
   SetInMemCollateral :: CollateralUtxo -> PABEffect w ()
   MinUtxo :: Ledger.TxOut -> PABEffect w (Either Text Ledger.TxOut)
@@ -216,6 +221,8 @@ handlePABEffect contractEnv =
           TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
         POSIXTimeRangeToSlotRange pTimeRange ->
           TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
+        POSIXTimeToSlotLength time ->
+          TimeSlot.posixTimeToSlotLengthIO contractEnv.cePABConfig time
         GetInMemCollateral -> Collateral.getInMemCollateral contractEnv
         SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
         MinUtxo utxo -> return $ calcMinUtxo contractEnv.cePABConfig utxo
@@ -461,6 +468,13 @@ posixTimeRangeToContainedSlotRange ::
   Ledger.POSIXTimeRange ->
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
 posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange
+
+posixTimeToSlotLength ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.POSIXTime ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError NominalDiffTime)
+posixTimeToSlotLength = send @(PABEffect w) . POSIXTimeToSlotLength
 
 getInMemCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).

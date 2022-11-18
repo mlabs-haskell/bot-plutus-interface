@@ -9,6 +9,7 @@ module BotPlutusInterface.TimeSlot (
   slotToPOSIXTimeIO,
   posixTimeToSlotIO,
   posixTimeRangeToContainedSlotRangeIO,
+  posixTimeToSlotLengthIO,
 ) where
 
 import BotPlutusInterface.CardanoNode.Query (
@@ -31,10 +32,11 @@ import Cardano.Ledger.Babbage.PParams (PParams, _protocolVersion)
 import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Slot (EpochInfo)
 import Cardano.Slotting.EpochInfo (hoistEpochInfo)
-import Cardano.Slotting.Time (SystemStart, toRelativeTime)
+import Cardano.Slotting.Time (SystemStart, getSlotLength, toRelativeTime)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Trans.Either (
   EitherT,
+  bimapEitherT,
   firstEitherT,
   hoistEither,
   newEitherT,
@@ -43,7 +45,7 @@ import Control.Monad.Trans.Either (
 import Data.Bifunctor (first)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Time (UTCTime, secondsToNominalDiffTime)
+import Data.Time (NominalDiffTime, UTCTime, secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Ledger (
   Extended (Finite, NegInf, PosInf),
@@ -228,3 +230,21 @@ toLedgerEpochInfo ::
 toLedgerEpochInfo (CApi.EraHistory _ interpreter) =
   hoistEpochInfo (first (Text.pack . show) . runExcept) $
     Consensus.interpreterToEpochInfo interpreter
+
+posixTimeToSlotLengthIO :: PABConfig -> Ledger.POSIXTime -> IO (Either TimeSlotConversionError NominalDiffTime)
+posixTimeToSlotLengthIO pabConf time = do
+  conn <- connectionInfo pabConf
+  runM $ runReader conn (posixTimeToSlotLengthIO' time)
+
+posixTimeToSlotLengthIO' ::
+  QueryConstraint effs =>
+  Ledger.POSIXTime ->
+  Eff effs (Either TimeSlotConversionError NominalDiffTime)
+posixTimeToSlotLengthIO' time = runEitherT $ do
+  sysStart <- newET $ queryInCardanoMode CApi.QuerySystemStart
+  eraHistory <- newET $ queryInCardanoMode (CApi.QueryEraHistory CApi.CardanoModeIsMultiEra)
+  slot <- firstEitherT toError . hoistEither $ posixTimeToSlot sysStart eraHistory time
+
+  let query = HF.slotToSlotLength $ toSlotNo slot
+      (CApi.EraHistory _ int) = eraHistory
+  bimapEitherT toError getSlotLength $ hoistEither $ HF.interpretQuery int query

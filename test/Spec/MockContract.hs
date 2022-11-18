@@ -401,6 +401,7 @@ runPABEffectPure initState req =
     go (SlotToPOSIXTime _) = pure $ Right 1506203091
     go (POSIXTimeToSlot _) = pure $ Right 1
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
+    go (POSIXTimeToSlotLength _) = pure $ Right 1_000
     go GetInMemCollateral = _collateralUtxo <$> get @(MockContractState w)
     go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
     go (QueryNode query) = mockQueryNode query
