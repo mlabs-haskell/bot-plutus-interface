@@ -84,7 +84,6 @@ import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
 import Data.Kind (Type)
-import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
 import Data.Set qualified as Set
 import Data.String (IsString, fromString)
