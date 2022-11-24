@@ -4,8 +4,8 @@
 module Cardano.PlutusExample.NFT where
 
 import BotPlutusInterface.Constraints (mustIncludeMetadata, submitBpiTxConstraintsWith)
-import BotPlutusInterface.Metadata (NftMetadata (..), NftMetadataToken (..), TxMetadata (..))
-import Cardano.Api.Shelley (PlutusScript (..), PlutusScriptV1)
+import BotPlutusInterface.Metadata (NftMetadata (NftMetadata), NftMetadataToken (NftMetadataToken), TxMetadata (TxMetadata))
+import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised), PlutusScriptV1)
 import Codec.Serialise (serialise)
 import Control.Monad (void)
 import Data.Aeson.TH (defaultOptions, deriveJSON)

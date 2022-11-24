@@ -36,7 +36,6 @@ module BotPlutusInterface.Effects (
   minUtxo,
   calcMinUtxo,
   getEstimationContext,
-  unionEstimationContext,
 ) where
 
 import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, QueryEraHistory, QuerySystemStart, UtxosFromTxOutRefs), runNodeQuery)
@@ -503,6 +502,7 @@ minUtxo ::
   Eff effs (Either Text Ledger.TxOut)
 minUtxo = send @(PABEffect w) . MinUtxo
 
+-- | Generates the estimation context needed for budget estimation, taking in a current known set of inputs to lookup
 getEstimationContext ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -514,14 +514,3 @@ getEstimationContext txOutRefs = do
   eraHistory <- queryNode @w QueryEraHistory
   utxos <- queryNode @w $ UtxosFromTxOutRefs txOutRefs
   pure $ EstimationContext <$> (SystemContext <$> params <*> systemStart <*> eraHistory) <*> utxos
-
-unionEstimationContext ::
-  forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
-  Set.Set Ledger.TxOutRef ->
-  EstimationContext ->
-  Eff effs (Either NodeQueryError EstimationContext)
-unionEstimationContext newTxOutRefs (EstimationContext systemContext utxos) = do
-  let missingTxOutRefs = Set.filter (`Map.member` utxos) newTxOutRefs
-  newUtxos <- queryNode @w $ UtxosFromTxOutRefs missingTxOutRefs
-  pure $ EstimationContext systemContext . Map.union utxos <$> newUtxos
