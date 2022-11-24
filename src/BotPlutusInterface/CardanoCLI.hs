@@ -141,7 +141,15 @@ calculateMinFee pabConf tx =
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
         }
 
--- | This is a hack solution to extract the pubkeyhash from a "PubKey", for the case where we've not know the pk, and put a pkh into that type
+{- | The transaction type we must work with (provided by plutus-apps) stores required signatures as a mapping of `Map PubKey Signature`
+ However, in the case of partial signatures (keys to be added to required signers as Pubkeyhash, but not signed by BPI),
+ we do not know, nor do we need, the full Pubkey. Unfortunately, this forces us to put a Pubkeyhash into the Pubkey data type,
+ to get it past the plutus-apps -> BPI layer (via the Tx type).
+ This function takes a Pubkey that we know may have this intentionally malformed encoding and:
+   If the pubkey inside is a real pubkey, hash it using the Ledger function
+   if the "pubkey" inside is actually a pubkeyhash, return this directly
+ We test for this using the length. A pubkeyhash is 28 bytes, whereas a pubkey is longer.
+-}
 pubKeyToPubKeyHashHack :: Ledger.PubKey -> Ledger.PubKeyHash
 pubKeyToPubKeyHashHack pk@(Ledger.PubKey ledgerBytes) =
   let bytes = Bytes.bytes ledgerBytes
