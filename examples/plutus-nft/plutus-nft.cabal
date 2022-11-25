@@ -25,11 +25,10 @@ common common-lang
     -Wall -Wcompat -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wredundant-constraints -Werror
     -fobject-code -fno-ignore-interface-pragmas
-    -fno-omit-interface-pragmas -fplugin=RecordDotPreprocessor
+    -fno-omit-interface-pragmas
 
   build-depends:
-    , base                     ^>=4.14
-    , record-dot-preprocessor
+    , base             ^>=4.14
     , record-hasfield
 
   default-extensions:

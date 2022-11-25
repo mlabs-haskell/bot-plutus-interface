@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Server (
   app,
@@ -205,19 +206,19 @@ handleContractActivityChange contractInstanceID prevState currentState =
   catMaybes [observableStateChange, activityChange]
   where
     activityChange =
-      if (csActivity <$> prevState) /= Just currentState.csActivity
-        then case currentState.csActivity of
+      if (csActivity <$> prevState) /= Just (csActivity currentState)
+        then case (csActivity currentState) of
           Done maybeError -> do
             Just $ InstanceUpdate contractInstanceID $ ContractFinished maybeError
           _ -> Nothing
         else Nothing
 
     observableStateChange =
-      if (toJSON . csObservableState <$> prevState) /= Just (toJSON currentState.csObservableState)
+      if (toJSON . csObservableState <$> prevState) /= Just (toJSON (csObservableState currentState))
         then
           Just $
             InstanceUpdate contractInstanceID $
-              NewObservableState (toJSON currentState.csObservableState)
+              NewObservableState (toJSON (csObservableState currentState))
         else Nothing
 
 -- | Broadcast a contract update to subscribers
@@ -298,9 +299,9 @@ handleContract pabConf state@(AppState st) contract = liftIO $ do
   pure contractInstanceID
 
 getTxFromFile :: PABConfig -> TxId -> Text -> IO (Maybe RawTx)
-getTxFromFile config txId ext = do
+getTxFromFile PABConfig {pcTxFileDir} txId ext = do
   -- Absolute path to pcTxFileDir that is specified in the config
-  txFolderPath <- makeAbsolute (unpack config.pcTxFileDir)
+  txFolderPath <- makeAbsolute (unpack pcTxFileDir)
 
   -- Create full path
   let path :: FilePath
@@ -316,7 +317,7 @@ getTxFromFile config txId ext = do
 rawTxHandler :: PABConfig -> TxIdCapture -> Handler RawTx
 rawTxHandler config (TxIdCapture txId) = do
   -- Check that endpoint is enabled
-  unless config.pcEnableTxEndpoint $ throwError err404
+  unless (pcEnableTxEndpoint config) $ throwError err404
 
   mRawTx <- liftIO $ getTxFromFile config txId "raw"
   note err404 mRawTx

@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Files (
   policyScriptFilePath,
@@ -35,7 +36,7 @@ import BotPlutusInterface.Effects (
   writeFileRaw,
   writeFileTextEnvelope,
  )
-import BotPlutusInterface.Types (PABConfig)
+import BotPlutusInterface.Types (PABConfig (..))
 import Cardano.Api (
   AsType (AsPaymentKey, AsSigningKey, AsVerificationKey),
   BabbageEra,
@@ -106,44 +107,44 @@ import Prelude
 
 -- | Filename of a minting policy script
 policyScriptFilePath :: PABConfig -> CurrencySymbol -> Text
-policyScriptFilePath pabConf curSymbol =
+policyScriptFilePath PABConfig {pcScriptFileDir} curSymbol =
   let c = encodeByteString $ fromBuiltin $ Value.unCurrencySymbol curSymbol
-   in pabConf.pcScriptFileDir <> "/policy-" <> c <> ".plutus"
+   in pcScriptFileDir <> "/policy-" <> c <> ".plutus"
 
 -- | Path and filename of a validator script
 validatorScriptFilePath :: PABConfig -> ValidatorHash -> Text
-validatorScriptFilePath pabConf (ValidatorHash valHash) =
+validatorScriptFilePath PABConfig {pcScriptFileDir} (ValidatorHash valHash) =
   let h = encodeByteString $ fromBuiltin valHash
-   in pabConf.pcScriptFileDir <> "/validator-" <> h <> ".plutus"
+   in pcScriptFileDir <> "/validator-" <> h <> ".plutus"
 
 referenceScriptFilePath :: PABConfig -> Ledger.ScriptHash -> Text
-referenceScriptFilePath pabConf scriptHash =
+referenceScriptFilePath PABConfig {pcScriptFileDir} scriptHash =
   let h = encodeByteString $ fromBuiltin $ Ledger.getScriptHash scriptHash
-   in pabConf.pcScriptFileDir <> "/reference-script-" <> h <> ".plutus"
+   in pcScriptFileDir <> "/reference-script-" <> h <> ".plutus"
 
 datumJsonFilePath :: PABConfig -> DatumHash -> Text
-datumJsonFilePath pabConf (DatumHash datumHash) =
+datumJsonFilePath PABConfig {pcScriptFileDir} (DatumHash datumHash) =
   let h = encodeByteString $ fromBuiltin datumHash
-   in pabConf.pcScriptFileDir <> "/datum-" <> h <> ".json"
+   in pcScriptFileDir <> "/datum-" <> h <> ".json"
 
 redeemerJsonFilePath :: PABConfig -> RedeemerHash -> Text
-redeemerJsonFilePath pabConf (RedeemerHash redeemerHash) =
+redeemerJsonFilePath PABConfig {pcScriptFileDir} (RedeemerHash redeemerHash) =
   let h = encodeByteString $ fromBuiltin redeemerHash
-   in pabConf.pcScriptFileDir <> "/redeemer-" <> h <> ".json"
+   in pcScriptFileDir <> "/redeemer-" <> h <> ".json"
 
 signingKeyFilePath :: PABConfig -> PubKeyHash -> Text
-signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
+signingKeyFilePath PABConfig {pcSigningKeyFileDir} (PubKeyHash pubKeyHash) =
   let h = encodeByteString $ fromBuiltin pubKeyHash
-   in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
+   in pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
 
 -- | Path of stored metadata files
 metadataFilePath :: PABConfig -> BuiltinByteString -> Text
-metadataFilePath pabConf meta =
+metadataFilePath PABConfig {pcMetadataDir} meta =
   let h = encodeByteString $ blake2b_256 $ fromBuiltin meta
-   in pabConf.pcMetadataDir <> "/metadata-" <> h <> ".json"
+   in pcMetadataDir <> "/metadata-" <> h <> ".json"
 
 txFilePath :: PABConfig -> Text -> Tx.TxId -> Text
-txFilePath pabConf ext txId = pabConf.pcTxFileDir <> "/" <> txFileName txId ext
+txFilePath PABConfig {pcTxFileDir} ext txId = pcTxFileDir <> "/" <> txFileName txId ext
 
 txFileName :: Tx.TxId -> Text -> Text
 txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext
@@ -233,8 +234,8 @@ writeAll ::
   Tx ->
   Eff effs (Either (FileError ()) [Text])
 writeAll pabConf tx = do
-  createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
-  createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
+  createDirectoryIfMissing @w False (Text.unpack (pcScriptFileDir pabConf))
+  createDirectoryIfMissing @w False (Text.unpack (pcMetadataDir pabConf))
 
   let (mValidatorScripts, redeemers, mDatums) = unzip3 $ txValidatorInputs tx
       validatorScripts = catMaybes mValidatorScripts
@@ -262,12 +263,12 @@ readPrivateKeys ::
   PABConfig ->
   Eff effs (Either Text (Map PubKeyHash DummyPrivKey))
 readPrivateKeys pabConf = do
-  files <- listDirectory @w $ Text.unpack pabConf.pcSigningKeyFileDir
+  files <- listDirectory @w $ Text.unpack (pcSigningKeyFileDir pabConf)
   privKeys <- catMaybes <$> mapM readKey files
   pure $ toPrivKeyMap <$> sequence privKeys
   where
     readKey filename =
-      let fullPath = Text.unpack pabConf.pcSigningKeyFileDir </> filename
+      let fullPath = Text.unpack (pcSigningKeyFileDir pabConf) </> filename
        in case takeExtension filename of
             ".vkey" ->
               guardPaymentKey paymentVKeyPrefix filename

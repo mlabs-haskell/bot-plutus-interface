@@ -24,14 +24,12 @@ source-repository head
 
 common common-lang
   ghc-options:
-    -Wall -Wcompat -Wincomplete-record-updates
-    -Wincomplete-uni-patterns -Wredundant-constraints -fobject-code
-    -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
-    -fplugin=RecordDotPreprocessor -Werror
+    -Wall -Wcompat -Wincomplete-uni-patterns -Wredundant-constraints
+    -fobject-code -fno-ignore-interface-pragmas
+    -fno-omit-interface-pragmas -Werror
 
   build-depends:
     , base
-    , record-dot-preprocessor
     , record-hasfield
 
   default-extensions:

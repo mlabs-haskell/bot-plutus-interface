@@ -73,7 +73,7 @@ ghci: requires_nix_shell
 FORMAT_SOURCES := $(shell fd -e hs)
 
 # Extensions we need to tell fourmolu about
-FORMAT_EXTENSIONS := -o -XTemplateHaskell -o -XTypeApplications -o -XImportQualifiedPost -o -XPatternSynonyms -o -fplugin=RecordDotPreprocessor
+FORMAT_EXTENSIONS := -o -XTemplateHaskell -o -XTypeApplications -o -XImportQualifiedPost -o -XPatternSynonyms
 
 # Run fourmolu formatter
 format: requires_nix_shell

@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -89,7 +90,7 @@ data PABConfig = PABConfig
     pcScriptFileDir :: !Text
   , -- | Directory name of the signing key files
     pcSigningKeyFileDir :: !Text
-  , -- | Directory name of the transaction files
+  , -- | Directory name of the transaction file
     pcTxFileDir :: !Text
   , -- | Protocol params file location relative to the cardano-cli working directory (needed for the cli)
     pcProtocolParamsFile :: !Text
@@ -118,11 +119,11 @@ collateralValue :: PABConfig -> Ledger.Value
 collateralValue = Ada.lovelaceValueOf . toInteger . pcCollateralSize
 
 ownAddress :: PABConfig -> Either Ledger.ToCardanoError (AddressInEra BabbageEra)
-ownAddress pabConf =
-  toCardanoAddressInEra pabConf.pcNetwork $
+ownAddress PABConfig {pcNetwork, pcOwnPubKeyHash, pcOwnStakePubKeyHash} =
+  toCardanoAddressInEra pcNetwork $
     Ledger.pubKeyHashAddress
-      (Ledger.PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
-      pabConf.pcOwnStakePubKeyHash
+      (Ledger.PaymentPubKeyHash pcOwnPubKeyHash)
+      (Ledger.stakePubKeyHashCredential <$> pcOwnStakePubKeyHash)
 
 {- | Settings for `Contract.awaitTxStatusChange` implementation.
  See also `BotPlutusInterface.Contract.awaitTxStatusChange`

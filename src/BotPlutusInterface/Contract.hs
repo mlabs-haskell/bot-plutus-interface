@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -39,8 +40,9 @@ import BotPlutusInterface.Types (
   ContractEnvironment (..),
   LogLevel (Debug, Notice, Warn),
   LogType (CollateralLog, PABLog),
-  PABConfig (pcNetwork, pcProtocolParams),
+  PABConfig (..),
   Tip (block, slot),
+  TxStatusPolling (..),
   collateralValue,
   ownAddress,
   pcCollateralSize,
@@ -53,6 +55,7 @@ import Cardano.Api (
   TxOut (TxOut),
   txOutValueToValue,
  )
+import Cardano.Api qualified as CApi
 import Cardano.Prelude (fromMaybe, liftA2)
 import Control.Lens (preview, (.~), (^.))
 import Control.Monad (join, unless, void, when)
@@ -215,27 +218,27 @@ handlePABReq ::
   ContractEnvironment w ->
   PABReq ->
   Eff effs PABResp
-handlePABReq contractEnv req = do
+handlePABReq contractEnv@ContractEnvironment {cePABConfig} req = do
   printBpiLog @w (Debug [PABLog]) $ pretty req
   resp <- case req of
     ----------------------
     -- Handled requests --
     ----------------------
     GetParamsReq ->
-      let pabConfig = cePABConfig contractEnv
-          pparams = fromMaybe (error "GetParamsReq: Must have ProtocolParamaneters in PABConfig") $ pcProtocolParams pabConfig
-          netId = pcNetwork pabConfig
+      let pparams = fromMaybe (error "GetParamsReq: Must have ProtocolParamaneters in PABConfig") $ pcProtocolParams cePABConfig
+          netId = pcNetwork cePABConfig
           -- FIXME: Compute SlotConfig properly
           -- Ideally plutus-apps drops slotConfig from the env, as it shouldn't exist
           slotConfig = def
-       in return $ GetParamsResp $ Params slotConfig pparams netId
+          pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage pparams
+       in return $ GetParamsResp $ Params slotConfig pparamsInEra netId
     OwnAddressesReq ->
       pure
         . OwnAddressesResp
         . nonEmptySingleton
         $ Ledger.pubKeyHashAddress
-          (PaymentPubKeyHash contractEnv.cePABConfig.pcOwnPubKeyHash)
-          contractEnv.cePABConfig.pcOwnStakePubKeyHash
+          (PaymentPubKeyHash (pcOwnPubKeyHash cePABConfig))
+          (Ledger.stakePubKeyHashCredential <$> pcOwnStakePubKeyHash cePABConfig)
     OwnContractInstanceIdReq ->
       pure $ OwnContractInstanceIdResp (ceContractInstanceId contractEnv)
     ChainIndexQueryReq query ->
@@ -301,9 +304,9 @@ awaitTxStatusChange contractEnv txId = do
   checkStartedBlock <- currentBlock contractEnv
   printBpiLog @w (Debug [PABLog]) $ pretty $ "Awaiting status change for " ++ show txId
 
-  let txStatusPolling = contractEnv.cePABConfig.pcTxStatusPolling
-      pollInterval = fromIntegral $ txStatusPolling.spInterval
-      pollTimeout = txStatusPolling.spBlocksTimeOut
+  let txStatusPolling = pcTxStatusPolling (cePABConfig contractEnv)
+      pollInterval = fromIntegral $ spInterval $ txStatusPolling
+      pollTimeout = spBlocksTimeOut txStatusPolling
       cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
 
   fix $ \loop -> do
@@ -365,18 +368,18 @@ balanceTx ::
   Eff effs BalanceTxResponse
 balanceTx _ UnbalancedCardanoTx {} = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
 balanceTx contractEnv unbalancedTx@UnbalancedEmulatorTx {} = do
-  let pabConf = contractEnv.cePABConfig
+  let pabConf = cePABConfig contractEnv
 
   result <- handleCollateral @w contractEnv
 
   case result of
     Left e -> pure $ BalanceTxFailed e
     _ -> do
-      uploadDir @w pabConf.pcSigningKeyFileDir
+      uploadDir @w (pcSigningKeyFileDir pabConf)
       eitherT (pure . BalanceTxFailed) (pure . BalanceTxSuccess . EmulatorTx) $
         Balance.balanceTxIO @w
           pabConf
-          pabConf.pcOwnPubKeyHash
+          (pcOwnPubKeyHash pabConf)
           unbalancedTx
 
 fromCardanoTx :: CardanoTx -> Tx.Tx
@@ -391,14 +394,14 @@ writeBalancedTx ::
   CardanoTx ->
   Eff effs WriteBalancedTxResponse
 writeBalancedTx contractEnv cardanoTx = do
-  let pabConf = contractEnv.cePABConfig
+  let pabConf = cePABConfig contractEnv
       tx' = fromCardanoTx cardanoTx
-  uploadDir @w pabConf.pcSigningKeyFileDir
-  createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
+  uploadDir @w (pcSigningKeyFileDir pabConf)
+  createDirectoryIfMissing @w False (Text.unpack (pcScriptFileDir pabConf))
 
   eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . CardanoApiTx) $ do
     void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx'
-    lift $ uploadDir @w pabConf.pcScriptFileDir
+    lift $ uploadDir @w (pcScriptFileDir pabConf)
 
     privKeys <- newEitherT $ Files.readPrivateKeys @w pabConf
 
@@ -437,10 +440,10 @@ writeBalancedTx contractEnv cardanoTx = do
               ]
             else ["Missing Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText missingPubKeys))]
 
-    when (pabConf.pcCollectStats && fullySignable) $
+    when ((pcCollectStats pabConf) && fullySignable) $
       lift $ saveBudget @w (Tx.txId tx') txBudget
 
-    when (not pabConf.pcDryRun && fullySignable) $ do
+    when (not (pcDryRun pabConf) && fullySignable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx'
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
@@ -482,11 +485,11 @@ awaitSlot ::
   Slot ->
   Eff effs Slot
 awaitSlot contractEnv s@(Slot n) = do
-  threadDelay @w (fromIntegral contractEnv.cePABConfig.pcTipPollingInterval)
-  tip <- CardanoCLI.queryTip @w contractEnv.cePABConfig
+  threadDelay @w (fromIntegral (pcTipPollingInterval (cePABConfig contractEnv)))
+  tip <- CardanoCLI.queryTip @w $ cePABConfig contractEnv
   case tip of
     Right tip'
-      | n < tip'.slot -> pure $ Slot tip'.slot
+      | n < (slot tip') -> pure $ Slot (slot tip')
     _ -> awaitSlot contractEnv s
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
@@ -512,10 +515,10 @@ currentTip ::
   Member (PABEffect w) effs =>
   ContractEnvironment w ->
   Eff effs (Block, Slot)
-currentTip contractEnv = do
+currentTip ContractEnvironment {cePABConfig} = do
   tip <-
     either (error . Text.unpack) id
-      <$> CardanoCLI.queryTip @w contractEnv.cePABConfig
+      <$> CardanoCLI.queryTip @w cePABConfig
   pure $ liftA2 (,) block (Slot . slot) tip
 
 currentSlot ::
@@ -608,19 +611,20 @@ makeCollateral ::
 makeCollateral cEnv = runEitherT $ do
   lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
-  let pabConf = cEnv.cePABConfig
+  let pabConf = (cePABConfig cEnv)
 
   -- TODO: Enforce existence of pparams at the beginning
   pparams <- maybe (error "Must have ProtocolParameters in PABConfig") return (pcProtocolParams pabConf)
+  let pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage pparams
 
   unbalancedTx <-
     firstEitherT (WAPI.OtherError . Text.pack . show) $
-      hoistEither $ Collateral.mkCollateralTx pabConf (error "We should not use SlotConfig anywhere") pparams -- FIXME: SlotConfig shennanigans
+      hoistEither $ Collateral.mkCollateralTx pabConf (error "We should not use SlotConfig anywhere") pparamsInEra -- FIXME: SlotConfig shennanigans
   balancedTx <-
     Balance.balanceTxIO' @w
       Balance.defaultBalanceConfig {Balance.bcSeparateChange = True}
       pabConf
-      pabConf.pcOwnPubKeyHash
+      (pcOwnPubKeyHash pabConf)
       unbalancedTx
 
   wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)

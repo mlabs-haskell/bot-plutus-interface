@@ -33,7 +33,7 @@ import BotPlutusInterface.Types (
   EstimationContext (..),
   LogLevel (Debug),
   LogType (TxBalancingLog),
-  PABConfig,
+  PABConfig (..),
   collateralTxOutRef,
   ownAddress,
   toExBudget,
@@ -302,9 +302,9 @@ hasChangeUTxO changeAddr tx =
     check txOut = txOutAddress txOut == changeAddr
 
 getExecutionUnitPrices :: PABConfig -> ExecutionUnitPrices
-getExecutionUnitPrices pabConf =
+getExecutionUnitPrices PABConfig {pcProtocolParams} =
   fromMaybe (ExecutionUnitPrices 0 0) $
-    pabConf.pcProtocolParams >>= protocolParamPrices
+    pcProtocolParams >>= protocolParamPrices
 
 getBudgetPrice :: ExecutionUnitPrices -> Ledger.ExBudget -> Integer
 getBudgetPrice (ExecutionUnitPrices cpuPrice memPrice) (Ledger.ExBudget cpuUsed memUsed) =
@@ -538,7 +538,7 @@ minus a b = a <> CApi.negateValue b
 
 ledgerMinus :: Value -> Value -> Value
 ledgerMinus x y =
-  let negativeValues = map (\(c, t, a) -> (c, t, - a)) $ Value.flattenValue y
+  let negativeValues = map (\(c, t, a) -> (c, t, -a)) $ Value.flattenValue y
    in x <> mconcat (map (uncurry3 Value.singleton) negativeValues)
 
 isValueNat :: CApi.Value -> Bool

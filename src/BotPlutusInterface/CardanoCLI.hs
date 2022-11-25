@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.CardanoCLI (
@@ -26,7 +27,7 @@ import BotPlutusInterface.Helpers (isZero)
 import BotPlutusInterface.Types (
   EstimationContext (ecUtxos),
   MintBudgets,
-  PABConfig,
+  PABConfig (..),
   SpendBudgets,
   Tip,
   TxBudget,
@@ -135,7 +136,7 @@ calculateMinFee pabConf tx =
               , ["--tx-in-count", showText $ length $ txInputs tx]
               , ["--tx-out-count", showText $ length $ txOutputs tx]
               , ["--witness-count", showText $ length $ txSignatures tx]
-              , ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+              , ["--protocol-params-file", (pcProtocolParamsFile pabConf)]
               , networkOpt pabConf
               ]
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
@@ -186,7 +187,7 @@ buildTx pabConf txBudget tx = do
           , requiredSigners
           , ["--fee", showText . getLovelace . fromValue $ txFee tx]
           , mconcat
-              [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+              [ ["--protocol-params-file", (pcProtocolParamsFile pabConf)]
               , ["--out-file", txFilePath pabConf "raw" (txId tx)]
               ]
           ]
@@ -398,7 +399,7 @@ txOutOpts pabConf datums =
             else ["--tx-out-datum-hash", encodeByteString dh]
 
 networkOpt :: PABConfig -> [Text]
-networkOpt pabConf = case pabConf.pcNetwork of
+networkOpt PABConfig {pcNetwork} = case pcNetwork of
   Testnet (NetworkMagic t) -> ["--testnet-magic", showText t]
   Mainnet -> ["--mainnet"]
 

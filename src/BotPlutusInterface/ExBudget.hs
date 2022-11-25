@@ -8,7 +8,7 @@ import BotPlutusInterface.Types (
   BudgetEstimationError (..),
   EstimationContext (..),
   MintBudgets,
-  PABConfig,
+  PABConfig (pcBudgetMultiplier),
   SpendBudgets,
   SystemContext (..),
   TxBudget (TxBudget),
@@ -43,12 +43,12 @@ estimateBudget pabConf eCtx txFile = do
     do
       body <- txBody
       budget <- getExUnits eCtx body
-      let pparams = eCtx.ecSystemContext.scParams
+      let pparams = scParams (ecSystemContext eCtx)
       maxUnits <-
         maybeToEither (BudgetEstimationError "Missing max units in parameters") $
           protocolParamMaxTxExUnits pparams
 
-      scaledBudget <- getScaledBudget maxUnits pabConf.pcBudgetMultiplier budget
+      scaledBudget <- getScaledBudget maxUnits (pcBudgetMultiplier pabConf) budget
 
       (spendingBudgets, policyBudgets) <- mkBudgetMaps scaledBudget body
 

@@ -13,12 +13,11 @@ import BotPlutusInterface.Types (
   pcOwnStakePubKeyHash,
   unCollateralVar,
  )
-import Cardano.Api.Shelley (ProtocolParameters)
 import Cardano.Prelude (Void)
 import Control.Concurrent.STM (atomically, readTVarIO, writeTVar)
 import Control.Monad (unless)
 import Data.Kind (Type)
-import Ledger (Params (Params), PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef)
+import Ledger (PParams, Params (Params), PaymentPubKeyHash (PaymentPubKeyHash), TxOutRef, stakePubKeyHashCredential)
 import Ledger.Constraints qualified as Constraints
 import Ledger.TimeSlot (SlotConfig)
 import Plutus.ChainIndex (Page (pageItems))
@@ -54,7 +53,7 @@ setInMemCollateral cEnv txOutRef = do
   atomically $ writeTVar cVar (Just txOutRef)
 
 -- NOTE: Hading over pparams explicitly because PABConfig has it as a Maybe
-mkCollateralTx :: PABConfig -> SlotConfig -> ProtocolParameters -> Either Constraints.MkTxError Constraints.UnbalancedTx
+mkCollateralTx :: PABConfig -> SlotConfig -> PParams -> Either Constraints.MkTxError Constraints.UnbalancedTx
 mkCollateralTx pabConf slotConfig pparams =
   Constraints.mkTxWithParams @Void
     (Params slotConfig pparams (pcNetwork pabConf))
@@ -66,7 +65,7 @@ mkCollateralTx pabConf slotConfig pparams =
       maybe -- pay to either a base or enterprise address
         Constraints.mustPayToPubKey
         (flip Constraints.mustPayToPubKeyAddress)
-        (pcOwnStakePubKeyHash pabConf)
+        (stakePubKeyHashCredential <$> pcOwnStakePubKeyHash pabConf)
         (PaymentPubKeyHash $ pcOwnPubKeyHash pabConf)
         (collateralValue pabConf)
 

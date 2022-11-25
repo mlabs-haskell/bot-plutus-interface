@@ -15,4 +15,4 @@ runPAB pabConf = do
   putStrLn "Starting BotPlutusInterface server"
   state <- Server.initState
 
-  run pabConf.pcPort (Server.app @t pabConf state)
+  run (pcPort pabConf) (Server.app @t pabConf state)

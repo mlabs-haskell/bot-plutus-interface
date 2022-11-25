@@ -6,7 +6,7 @@ module BotPlutusInterface.ChainIndex (
 
 import BotPlutusInterface.Types (
   ContractEnvironment (ContractEnvironment, cePABConfig),
-  PABConfig,
+  PABConfig (pcChainIndexUrl),
  )
 import Data.Kind (Type)
 import Network.HTTP.Client (
@@ -90,7 +90,7 @@ handleChainIndexReq contractEnv@ContractEnvironment {cePABConfig} =
 chainIndexQuery' :: forall (a :: Type). PABConfig -> ClientM a -> IO (Either ClientError a)
 chainIndexQuery' pabConf endpoint = do
   manager' <- newManager defaultManagerSettings {managerResponseTimeout = responseTimeoutNone}
-  runClientM endpoint $ mkClientEnv manager' pabConf.pcChainIndexUrl
+  runClientM endpoint $ mkClientEnv manager' (pcChainIndexUrl pabConf)
 
 chainIndexQueryMany :: forall (a :: Type). PABConfig -> ClientM a -> IO a
 chainIndexQueryMany pabConf endpoint =
@@ -108,14 +108,14 @@ chainIndexQueryOne pabConf endpoint = do
 
 -- | Query for utxo's.
 chainIndexUtxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM UtxosResponse -> IO UtxosResponse
-chainIndexUtxoQuery contractEnv query = do
+chainIndexUtxoQuery ContractEnvironment {cePABConfig} query = do
   chainIndexQueryMany
-    contractEnv.cePABConfig
+    cePABConfig
     query
 
 -- | Query for txo's.
 chainIndexTxoQuery :: forall (w :: Type). ContractEnvironment w -> ClientM TxosResponse -> IO TxosResponse
-chainIndexTxoQuery contractEnv query = do
+chainIndexTxoQuery ContractEnvironment {cePABConfig} query = do
   chainIndexQueryMany
-    contractEnv.cePABConfig
+    cePABConfig
     query
