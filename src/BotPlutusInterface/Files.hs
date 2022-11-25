@@ -10,11 +10,11 @@ module BotPlutusInterface.Files (
   txFilePath,
   txFileName,
   txIdToText,
-  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-  -- metadataFilePath,
+  metadataFilePath,
   writeAll,
   writePolicyScriptFile,
   redeemerJsonFilePath,
+  referenceScriptFilePath,
   mkDummyPrivateKey,
   writeRedeemerJsonFile,
   writeValidatorScriptFile,
@@ -22,56 +22,70 @@ module BotPlutusInterface.Files (
   skeyToDummyPrivKey,
   vkeyToDummyPrivKey,
   writeDatumJsonFile,
+  dummyXPrv,
 ) where
 
+import Basement.String qualified as Base
 import BotPlutusInterface.Effects (
   PABEffect,
   createDirectoryIfMissing,
   listDirectory,
   readFileTextEnvelope,
   writeFileJSON,
+  writeFileRaw,
   writeFileTextEnvelope,
  )
 import BotPlutusInterface.Types (PABConfig)
 import Cardano.Api (
   AsType (AsPaymentKey, AsSigningKey, AsVerificationKey),
+  BabbageEra,
   FileError,
+  HasTextEnvelope,
   Key (VerificationKey),
   PaymentKey,
+  PlutusScriptV1,
+  PlutusScriptV2,
   SigningKey,
+  TxOut (TxOut),
+  TxOutDatum (TxOutDatumHash, TxOutDatumInTx, TxOutDatumInline, TxOutDatumNone),
   getVerificationKey,
   serialiseToRawBytes,
  )
 import Cardano.Api.Shelley (
   PlutusScript (PlutusScriptSerialised),
-  PlutusScriptV1,
+  ReferenceScript (ReferenceScript),
   ScriptDataJsonSchema (ScriptDataJsonDetailedSchema),
   fromPlutusData,
   scriptDataToJson,
+  toPlutusData,
  )
+import Cardano.Crypto.Wallet (generate)
 import Cardano.Crypto.Wallet qualified as Crypto
 import Codec.Serialise qualified as Codec
 import Control.Monad.Freer (Eff, Member)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.ByteString qualified as ByteString
+import Data.ByteString.Hash (blake2b_256)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.ByteString.Short qualified as ShortByteString
 import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
-import Data.List (isPrefixOf, sortOn, unzip4)
+import Data.List (isPrefixOf, nub, sortOn)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (catMaybes, mapMaybe, maybeToList)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Ledger qualified
 import Ledger.Crypto (PubKey (PubKey), PubKeyHash (PubKeyHash))
 import Ledger.Crypto qualified as Crypto
-import Ledger.Tx (Tx)
+import Ledger.Tx (Tx, TxOut (getTxOut))
 import Ledger.Tx qualified as Tx
+import Ledger.Tx.CardanoAPI (fromCardanoScriptInAnyLang)
 import Ledger.Value qualified as Value
+import Plutus.Script.Utils.Scripts (Versioned (Versioned))
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
-import Plutus.Script.Utils.V1.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),
@@ -85,9 +99,8 @@ import Plutus.V1.Ledger.Api (
   ValidatorHash (..),
   toBuiltin,
  )
-import Plutus.V1.Ledger.Api qualified as Ledger
-import PlutusTx (ToData, toData)
-import PlutusTx.Builtins (fromBuiltin)
+import PlutusTx (ToData, dataToBuiltinData, toData)
+import PlutusTx.Builtins (BuiltinByteString, fromBuiltin)
 import System.FilePath (takeExtension, (</>))
 import Prelude
 
@@ -102,6 +115,11 @@ validatorScriptFilePath :: PABConfig -> ValidatorHash -> Text
 validatorScriptFilePath pabConf (ValidatorHash valHash) =
   let h = encodeByteString $ fromBuiltin valHash
    in pabConf.pcScriptFileDir <> "/validator-" <> h <> ".plutus"
+
+referenceScriptFilePath :: PABConfig -> Ledger.ScriptHash -> Text
+referenceScriptFilePath pabConf scriptHash =
+  let h = encodeByteString $ fromBuiltin $ Ledger.getScriptHash scriptHash
+   in pabConf.pcScriptFileDir <> "/reference-script-" <> h <> ".plutus"
 
 datumJsonFilePath :: PABConfig -> DatumHash -> Text
 datumJsonFilePath pabConf (DatumHash datumHash) =
@@ -118,6 +136,12 @@ signingKeyFilePath pabConf (PubKeyHash pubKeyHash) =
   let h = encodeByteString $ fromBuiltin pubKeyHash
    in pabConf.pcSigningKeyFileDir <> "/signing-key-" <> h <> ".skey"
 
+-- | Path of stored metadata files
+metadataFilePath :: PABConfig -> BuiltinByteString -> Text
+metadataFilePath pabConf meta =
+  let h = encodeByteString $ blake2b_256 $ fromBuiltin meta
+   in pabConf.pcMetadataDir <> "/metadata-" <> h <> ".json"
+
 txFilePath :: PABConfig -> Text -> Tx.TxId -> Text
 txFilePath pabConf ext txId = pabConf.pcTxFileDir <> "/" <> txFileName txId ext
 
@@ -127,50 +151,79 @@ txFileName txId ext = "tx-" <> txIdToText txId <> "." <> ext
 txIdToText :: Tx.TxId -> Text
 txIdToText = encodeByteString . fromBuiltin . Tx.getTxId
 
--- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-
-{- | Path of stored metadata files
- metadataFilePath :: PABConfig -> BuiltinByteString -> Text
- metadataFilePath pabConf (BuiltinByteString meta) =
-   let h = encodeByteString $ blake2b meta
-    in pabConf.pcMetadataDir <> "/metadata-" <> h <> ".json"
--}
-
 -- | Compiles and writes a script file under the given folder
 writePolicyScriptFile ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
-  MintingPolicy ->
+  Versioned MintingPolicy ->
   Eff effs (Either (FileError ()) Text)
 writePolicyScriptFile pabConf mintingPolicy =
-  let script = serialiseScript $ Ledger.unMintingPolicyScript mintingPolicy
+  let script = Ledger.unMintingPolicyScript <$> mintingPolicy
       filepath = policyScriptFilePath pabConf (ScriptUtils.scriptCurrencySymbol mintingPolicy)
-   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
+   in writeScriptEnvelope @w script filepath
 
 -- | Compiles and writes a script file under the given folder
 writeValidatorScriptFile ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
   PABConfig ->
-  Validator ->
+  Versioned Validator ->
   Eff effs (Either (FileError ()) Text)
 writeValidatorScriptFile pabConf validatorScript =
-  let script = serialiseScript $ Ledger.unValidatorScript validatorScript
+  let script = Ledger.unValidatorScript <$> validatorScript
       filepath = validatorScriptFilePath pabConf (ScriptUtils.validatorHash validatorScript)
-   in fmap (const filepath) <$> writeFileTextEnvelope @w (Text.unpack filepath) Nothing script
+   in writeScriptEnvelope @w script filepath
 
--- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
--- -- | Writes metadata file under the given folder
--- writeMetadataFile ::
---   forall (w :: Type) (effs :: [Type -> Type]).
---   Member (PABEffect w) effs =>
---   PABConfig ->
---   BuiltinByteString ->
---   Eff effs (Either (FileError ()) Text)
--- writeMetadataFile pabConf metadata =
---   let filepath = metadataFilePath pabConf metadata
---    in const filepath <<$>> writeFileRaw @w (Text.unpack filepath) metadata
+writeReferenceScriptFile ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  Versioned Script ->
+  Eff effs (Either (FileError ()) Text)
+writeReferenceScriptFile pabConf script =
+  let filepath = referenceScriptFilePath pabConf (ScriptUtils.scriptHash script)
+   in writeScriptEnvelope @w script filepath
+
+-- | Writes metadata file under the given folder
+writeMetadataFile ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  PABConfig ->
+  BuiltinByteString ->
+  Eff effs (Either (FileError ()) Text)
+writeMetadataFile pabConf metadata =
+  let filepath = metadataFilePath pabConf metadata
+   in fmap (const filepath) <$> writeFileRaw @w (Text.unpack filepath) metadata
+
+txMintingPolicies :: Tx.Tx -> [Versioned MintingPolicy]
+txMintingPolicies tx = mapMaybe (Ledger.lookupMintingPolicy $ Tx.txScripts tx) $ Map.keys $ Tx.txMintingWitnesses tx
+
+txValidatorInputs :: Tx.Tx -> [(Maybe (Versioned Validator), Redeemer, Maybe Datum)]
+txValidatorInputs tx = mapMaybe (fromTxInputType . Tx.txInputType) $ Tx.txInputs tx <> Tx.txReferenceInputs tx
+  where
+    fromTxInputType :: Tx.TxInputType -> Maybe (Maybe (Versioned Validator), Redeemer, Maybe Datum)
+    fromTxInputType (Tx.TxScriptAddress r eVHash mayDatHash) = do
+      mValidator <- either (Just <$> Tx.lookupValidator (Tx.txScripts tx)) (const $ pure Nothing) eVHash
+      let mDatum = mayDatHash >>= Tx.lookupDatum tx
+      pure (mValidator, r, mDatum)
+    fromTxInputType _ = Nothing
+
+txReferenceScripts :: Tx.Tx -> [Versioned Script]
+txReferenceScripts tx = catMaybes $ getVersionedScript . Tx.txOutReferenceScript <$> Tx.txOutputs tx
+  where
+    getVersionedScript :: ReferenceScript BabbageEra -> Maybe (Versioned Script)
+    getVersionedScript (ReferenceScript _ s) = fromCardanoScriptInAnyLang s
+    getVersionedScript _ = Nothing
+
+txOutputDatums :: Tx.Tx -> [Datum]
+txOutputDatums tx = do
+  TxOut _ _ dat _ <- getTxOut <$> Tx.txOutputs tx
+  case dat of
+    TxOutDatumNone -> []
+    TxOutDatumHash _ sdHash -> maybe [] return $ Tx.lookupDatum tx (DatumHash . toBuiltin . serialiseToRawBytes $ sdHash)
+    TxOutDatumInline _ sd -> return . Ledger.Datum . dataToBuiltinData . toPlutusData $ sd
+    TxOutDatumInTx _ sd -> return . Ledger.Datum . dataToBuiltinData . toPlutusData $ sd
 
 -- | Write to disk all validator scripts, datums and redemeers appearing in the tx
 writeAll ::
@@ -181,15 +234,14 @@ writeAll ::
   Eff effs (Either (FileError ()) [Text])
 writeAll pabConf tx = do
   createDirectoryIfMissing @w False (Text.unpack pabConf.pcScriptFileDir)
-  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-  -- createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
+  createDirectoryIfMissing @w False (Text.unpack pabConf.pcMetadataDir)
 
-  let (_, validatorScripts, redeemers, datums) =
-        unzip4 $ mapMaybe Tx.inScripts $ Tx.txInputs tx
-
-      policyScripts = Map.elems $ Tx.txMintScripts tx
-      allDatums = datums <> Map.elems (Tx.txData tx)
+  let (mValidatorScripts, redeemers, mDatums) = unzip3 $ txValidatorInputs tx
+      validatorScripts = catMaybes mValidatorScripts
+      policyScripts = txMintingPolicies tx
+      allDatums = nub $ catMaybes mDatums <> Map.elems (Tx.txData tx) <> txOutputDatums tx
       allRedeemers = redeemers <> Map.elems (Tx.txRedeemers tx)
+      allRefScripts = txReferenceScripts tx
 
   results <-
     sequence $
@@ -198,8 +250,8 @@ writeAll pabConf tx = do
         , map (writeValidatorScriptFile @w pabConf) validatorScripts
         , map (writeDatumJsonFile @w pabConf) allDatums
         , map (writeRedeemerJsonFile @w pabConf) allRedeemers
-        -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-        -- , map (writeMetadataFile @w pabConf) (maybeToList $ Tx.txMetadata tx)
+        , map (writeReferenceScriptFile @w pabConf) allRefScripts
+        , map (writeMetadataFile @w pabConf) (maybeToList $ Tx.txMetadata tx)
         ]
 
   pure $ sequence results
@@ -229,7 +281,7 @@ readPrivateKeys pabConf = do
     paymentSKeyPrefix = "signing-key"
 
     {- this filtering ensures that only payment keys are read,
-     it allows to store other types of keys in the same drirectory if required
+     it allows to store other types of keys in the same directory if required
      by altering filename prefix
     -}
     guardPaymentKey prefix filename =
@@ -256,6 +308,10 @@ data DummyPrivKey
 unDummyPrivateKey :: DummyPrivKey -> Crypto.XPrv
 unDummyPrivateKey (FromSKey key) = key
 unDummyPrivateKey (FromVKey key) = key
+
+-- | Used as a signing keys for foreign signers BPI has no access to (ie. multisig schemes)
+dummyXPrv :: Crypto.XPrv
+dummyXPrv = generate ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" :: Base.String) ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" :: Base.String)
 
 readSigningKey ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -304,12 +360,31 @@ mkDummyPrivateKey (PubKey (LedgerBytes pubkey)) =
         Crypto.xprv $
           mconcat [dummyPrivKey, dummyPrivKeySuffix, pubkeyBS, dummyChainCode]
 
-serialiseScript :: Script -> PlutusScript PlutusScriptV1
+serialiseScript :: forall (lang :: Type). Script -> PlutusScript lang
 serialiseScript =
   PlutusScriptSerialised
     . ShortByteString.toShort
     . LazyByteString.toStrict
     . Codec.serialise
+
+writeScriptEnvelope ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Versioned Script ->
+  Text ->
+  Eff effs (Either (FileError ()) Text)
+writeScriptEnvelope vScript filepath =
+  fmap (const filepath)
+    <$> case vScript of
+      (Versioned s ScriptUtils.PlutusV1) -> writeScriptEnvelope' $ serialiseScript @PlutusScriptV1 s
+      (Versioned s ScriptUtils.PlutusV2) -> writeScriptEnvelope' $ serialiseScript @PlutusScriptV2 s
+  where
+    writeScriptEnvelope' ::
+      forall (a :: Type).
+      HasTextEnvelope a =>
+      a ->
+      Eff effs (Either (FileError ()) ())
+    writeScriptEnvelope' = writeFileTextEnvelope @w (Text.unpack filepath) Nothing
 
 writeDatumJsonFile ::
   forall (w :: Type) (effs :: [Type -> Type]).

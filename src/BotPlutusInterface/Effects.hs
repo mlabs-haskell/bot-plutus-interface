@@ -5,6 +5,7 @@
 module BotPlutusInterface.Effects (
   PABEffect (..),
   ShellArgs (..),
+  addValue,
   handlePABEffect,
   createDirectoryIfMissing,
   createDirectoryIfMissingCLI,
@@ -28,15 +29,17 @@ module BotPlutusInterface.Effects (
   slotToPOSIXTime,
   posixTimeToSlot,
   posixTimeRangeToContainedSlotRange,
+  posixTimeToSlotLength,
   getInMemCollateral,
   setInMemCollateral,
   queryNode,
   minUtxo,
   calcMinUtxo,
+  getEstimationContext,
 ) where
 
-import BotPlutusInterface.CardanoAPI qualified as BPI.CApi
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery, runNodeQuery)
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, QueryEraHistory, QuerySystemStart, UtxosFromTxOutRefs), runNodeQuery)
+import BotPlutusInterface.CardanoNode.Query (NodeQueryError)
 import BotPlutusInterface.ChainIndex (handleChainIndexReq)
 import BotPlutusInterface.Collateral (withCollateralHandling)
 import BotPlutusInterface.Collateral qualified as Collateral
@@ -48,19 +51,20 @@ import BotPlutusInterface.Types (
   CollateralUtxo,
   ContractEnvironment (..),
   ContractState (ContractState),
+  EstimationContext (..),
   LogContext (BpiLog, ContractLog),
   LogLevel (..),
   LogLine (..),
   LogType (..),
   LogsList (LogsList),
   PABConfig (..),
+  SystemContext (..),
   TxBudget,
   TxFile,
   addBudget,
   sufficientLogLevel,
  )
 import Cardano.Api (AsType, FileError (FileIOError), HasTextEnvelope, TextEnvelopeDescr, TextEnvelopeError)
-import Cardano.Api qualified
 import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley qualified as CApi.S
 import Cardano.Ledger.Shelley.API.Wallet (
@@ -79,15 +83,15 @@ import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Bifunctor (second)
 import Data.ByteString qualified as ByteString
-import Data.Either.Combinators (mapLeft)
 import Data.Kind (Type)
 import Data.Maybe (catMaybes)
+import Data.Set qualified as Set
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Time (NominalDiffTime)
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Tx.CardanoAPI qualified as TxApi
 import Ledger.Validation (Coin (Coin))
 import Plutus.Contract.Effects (ChainIndexQuery, ChainIndexResponse)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -135,7 +139,7 @@ data PABEffect (w :: Type) (r :: Type) where
   UploadDir :: Text -> PABEffect w ()
   QueryChainIndex :: ChainIndexQuery -> PABEffect w ChainIndexResponse
   QueryNode :: NodeQuery a -> PABEffect w a
-  EstimateBudget :: TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
+  EstimateBudget :: EstimationContext -> TxFile -> PABEffect w (Either BudgetEstimationError TxBudget)
   SaveBudget :: Ledger.TxId -> TxBudget -> PABEffect w ()
   SlotToPOSIXTime ::
     Ledger.Slot ->
@@ -144,6 +148,9 @@ data PABEffect (w :: Type) (r :: Type) where
   POSIXTimeRangeToSlotRange ::
     Ledger.POSIXTimeRange ->
     PABEffect w (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
+  POSIXTimeToSlotLength ::
+    Ledger.POSIXTime ->
+    PABEffect w (Either TimeSlot.TimeSlotConversionError NominalDiffTime)
   GetInMemCollateral :: PABEffect w (Maybe CollateralUtxo)
   SetInMemCollateral :: CollateralUtxo -> PABEffect w ()
   MinUtxo :: Ledger.TxOut -> PABEffect w (Either Text Ledger.TxOut)
@@ -157,7 +164,8 @@ handlePABEffect ::
 handlePABEffect contractEnv =
   interpretM
     ( \case
-        CallCommand shellArgs ->
+        CallCommand shellArgs -> do
+          print (cmdName shellArgs, cmdArgs shellArgs)
           case contractEnv.cePABConfig.pcCliLocation of
             Local -> callLocalCommand shellArgs
             Remote ipAddr -> callRemoteCommand ipAddr shellArgs
@@ -181,14 +189,14 @@ handlePABEffect contractEnv =
             modifyTVar contractEnv.ceContractState $
               \(ContractState s w') -> ContractState s (w' <> w)
         ThreadDelay microSeconds -> Concurrent.threadDelay microSeconds
-        ReadFileTextEnvelope asType filepath -> Cardano.Api.readFileTextEnvelope asType filepath
-        WriteFileJSON filepath value -> Cardano.Api.writeFileJSON filepath value
+        ReadFileTextEnvelope asType filepath -> CApi.readFileTextEnvelope asType filepath
+        WriteFileJSON filepath value -> CApi.writeFileJSON filepath value
         WriteFileRaw filepath (BuiltinByteString value) ->
           runExceptT $
             handleIOExceptT (FileIOError filepath) $
               ByteString.writeFile filepath value
         WriteFileTextEnvelope filepath envelopeDescr contents ->
-          Cardano.Api.writeFileTextEnvelope filepath envelopeDescr contents
+          CApi.writeFileTextEnvelope filepath envelopeDescr contents
         ListDirectory filepath -> Directory.listDirectory filepath
         UploadDir dir ->
           case contractEnv.cePABConfig.pcCliLocation of
@@ -202,8 +210,8 @@ handlePABEffect contractEnv =
             (handleChainIndexReq contractEnv)
             query
         QueryNode query -> runNodeQuery contractEnv.cePABConfig (send query)
-        EstimateBudget txPath ->
-          ExBudget.estimateBudget contractEnv.cePABConfig txPath
+        EstimateBudget eCtx txPath ->
+          ExBudget.estimateBudget contractEnv.cePABConfig eCtx txPath
         SaveBudget txId exBudget -> saveBudgetImpl contractEnv txId exBudget
         SlotToPOSIXTime slot ->
           TimeSlot.slotToPOSIXTimeIO contractEnv.cePABConfig slot
@@ -211,6 +219,8 @@ handlePABEffect contractEnv =
           TimeSlot.posixTimeToSlotIO contractEnv.cePABConfig pTime
         POSIXTimeRangeToSlotRange pTimeRange ->
           TimeSlot.posixTimeRangeToContainedSlotRangeIO contractEnv.cePABConfig pTimeRange
+        POSIXTimeToSlotLength time ->
+          TimeSlot.posixTimeToSlotLengthIO contractEnv.cePABConfig time
         GetInMemCollateral -> Collateral.getInMemCollateral contractEnv
         SetInMemCollateral c -> Collateral.setInMemCollateral contractEnv c
         MinUtxo utxo -> return $ calcMinUtxo contractEnv.cePABConfig utxo
@@ -287,25 +297,28 @@ saveBudgetImpl contractEnv txId budget =
     modifyTVar' contractEnv.ceContractStats (addBudget txId budget)
 
 calcMinUtxo :: PABConfig -> Ledger.TxOut -> Either Text Ledger.TxOut
-calcMinUtxo pabconf txout = do
+calcMinUtxo pabconf txOut = do
   params <- maybeToEither "Expected protocol parameters." $ pcProtocolParams pabconf
 
   let pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage params
-      netId = pcNetwork pabconf
-
-  ctxout <-
-    mapLeft (Text.pack . show) $
-      BPI.CApi.toCardanoTxOut' netId TxApi.toCardanoTxOutDatumHash txout
-
-  let (Coin minTxOut) =
+      (Coin minTxOut) =
         evaluateMinLovelaceOutput pparamsInEra $
-          CApi.S.toShelleyTxOut CApi.ShelleyBasedEraBabbage ctxout
+          CApi.S.toShelleyTxOut CApi.ShelleyBasedEraBabbage $
+            CApi.toCtxUTxOTxOut $
+              Ledger.getTxOut txOut
 
-      missingLovelace = Ada.lovelaceOf minTxOut - Ada.fromValue (Ledger.txOutValue txout)
+      missingLovelace = Ada.lovelaceOf minTxOut - Ada.fromValue (Ledger.txOutValue txOut)
 
   if missingLovelace > 0
-    then calcMinUtxo pabconf (txout {Ledger.txOutValue = Ledger.txOutValue txout <> Ada.toValue missingLovelace})
-    else return txout
+    then calcMinUtxo pabconf $ addValue (adaToCApiValue missingLovelace) txOut
+    else return txOut
+
+adaToCApiValue :: Ada.Ada -> CApi.Value
+adaToCApiValue = CApi.lovelaceToValue . CApi.Lovelace . Ada.getLovelace
+
+addValue :: CApi.Value -> Ledger.TxOut -> Ledger.TxOut
+addValue v' (Ledger.TxOut (CApi.TxOut addr (CApi.TxOutValue era v) datum rScript)) = Ledger.TxOut $ CApi.TxOut addr (CApi.TxOutValue era $ v <> v') datum rScript
+addValue _ (Ledger.TxOut (CApi.TxOut _ (CApi.TxOutAdaOnly eraProof _) _ _)) = case eraProof of -- Formatter removes {}?
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@
@@ -320,9 +333,10 @@ callCommand = send @(PABEffect w) . CallCommand
 estimateBudget ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
+  EstimationContext ->
   TxFile ->
   Eff effs (Either BudgetEstimationError TxBudget)
-estimateBudget = send @(PABEffect w) . EstimateBudget
+estimateBudget eCtx path = send @(PABEffect w) $ EstimateBudget eCtx path
 
 createDirectoryIfMissing ::
   forall (w :: Type) (effs :: [Type -> Type]).
@@ -453,6 +467,13 @@ posixTimeRangeToContainedSlotRange ::
   Eff effs (Either TimeSlot.TimeSlotConversionError Ledger.SlotRange)
 posixTimeRangeToContainedSlotRange = send @(PABEffect w) . POSIXTimeRangeToSlotRange
 
+posixTimeToSlotLength ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Ledger.POSIXTime ->
+  Eff effs (Either TimeSlot.TimeSlotConversionError NominalDiffTime)
+posixTimeToSlotLength = send @(PABEffect w) . POSIXTimeToSlotLength
+
 getInMemCollateral ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
@@ -479,3 +500,16 @@ minUtxo ::
   Ledger.TxOut ->
   Eff effs (Either Text Ledger.TxOut)
 minUtxo = send @(PABEffect w) . MinUtxo
+
+-- | Generates the estimation context needed for budget estimation, taking in a current known set of inputs to lookup
+getEstimationContext ::
+  forall (w :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Set.Set Ledger.TxOutRef ->
+  Eff effs (Either NodeQueryError EstimationContext)
+getEstimationContext txOutRefs = do
+  params <- queryNode @w PParams
+  systemStart <- queryNode @w QuerySystemStart
+  eraHistory <- queryNode @w QueryEraHistory
+  utxos <- queryNode @w $ UtxosFromTxOutRefs txOutRefs
+  pure $ EstimationContext <$> (SystemContext <$> params <*> systemStart <*> eraHistory) <*> utxos

@@ -1,5 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.CardanoCLI (
   submitTx,
@@ -7,24 +7,24 @@ module BotPlutusInterface.CardanoCLI (
   buildTx,
   signTx,
   validatorScriptFilePath,
-  unsafeSerialiseAddress,
   policyScriptFilePath,
   queryTip,
 ) where
 
 import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand)
 import BotPlutusInterface.Files (
-  DummyPrivKey (FromSKey, FromVKey),
   datumJsonFilePath,
-  -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-  -- metadataFilePath,
+  metadataFilePath,
   policyScriptFilePath,
   redeemerJsonFilePath,
+  referenceScriptFilePath,
   signingKeyFilePath,
   txFilePath,
   validatorScriptFilePath,
  )
+import BotPlutusInterface.Helpers (isZero)
 import BotPlutusInterface.Types (
+  EstimationContext (ecUtxos),
   MintBudgets,
   PABConfig,
   SpendBudgets,
@@ -34,21 +34,24 @@ import BotPlutusInterface.Types (
   spendBudgets,
  )
 import BotPlutusInterface.UtxoParser qualified as UtxoParser
+import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley (
   NetworkId (Mainnet, Testnet),
   NetworkMagic (NetworkMagic),
+  ReferenceScript (ReferenceScript),
   serialiseAddress,
  )
+import Cardano.Prelude (note)
 import Control.Monad (join)
 import Control.Monad.Freer (Eff, Member)
+import Control.Monad.Freer.State (State, get)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Attoparsec.Text (parseOnly)
-import Data.Bifunctor (first)
 import Data.Bool (bool)
+import Data.ByteString qualified as BS
 import Data.ByteString.Lazy.Char8 qualified as Char8
 import Data.Either.Combinators (mapLeft)
-import Data.Hex (hex)
 import Data.Kind (Type)
 import Data.List (sort)
 import Data.Map (Map)
@@ -56,12 +59,9 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Encoding (decodeUtf8)
-import Ledger (Slot (Slot), SlotRange, TxInType (ConsumeScriptAddress))
+import Ledger (Slot (Slot), SlotRange, Tx (txCollateralInputs, txMintingWitnesses))
 import Ledger qualified
 import Ledger.Ada (fromValue, getLovelace)
-import Ledger.Ada qualified as Ada
-import Ledger.Address (Address (..))
 import Ledger.Crypto (PubKey, PubKeyHash (getPubKeyHash))
 import Ledger.Interval (
   Extended (Finite),
@@ -72,40 +72,34 @@ import Ledger.Interval (
 import Ledger.Scripts (Datum, DatumHash (..))
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
-  RedeemerPtr (RedeemerPtr),
-  Redeemers,
-  ScriptTag (Mint),
   Tx (
-    txCollateral,
     txData,
     txFee,
     txInputs,
+    txMetadata,
     txMint,
-    txMintScripts,
     txOutputs,
-    txRedeemers,
+    txReferenceInputs,
     txSignatures,
     txValidRange
   ),
   TxId (TxId),
-  TxIn (TxIn),
-  TxInType (ConsumePublicKeyAddress, ConsumeSimpleScriptAddress),
+  TxInput (TxInput),
+  TxInputType (TxScriptAddress),
   TxOut (TxOut),
   TxOutRef (TxOutRef),
   txId,
  )
-import Ledger.Tx.CardanoAPI (toCardanoAddressInEra)
-import Ledger.Value (Value)
+import Ledger.Tx.CardanoAPI (fromCardanoScriptInAnyLang, toCardanoValue)
 import Ledger.Value qualified as Value
 import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
-  CurrencySymbol (unCurrencySymbol),
   ExBudget (ExBudget),
   ExCPU (ExCPU),
   ExMemory (ExMemory),
-  TokenName (unTokenName),
  )
-import PlutusTx.Builtins (fromBuiltin)
+import Plutus.V1.Ledger.Bytes qualified as Bytes
+import PlutusTx.Builtins (BuiltinByteString, fromBuiltin, toBuiltin)
 import Prelude
 
 -- | Getting information of the latest block
@@ -147,50 +141,61 @@ calculateMinFee pabConf tx =
         , cmdOutParser = mapLeft Text.pack . parseOnly UtxoParser.feeParser . Text.pack
         }
 
+{- | The transaction type we must work with (provided by plutus-apps) stores required signatures as a mapping of `Map PubKey Signature`
+ However, in the case of partial signatures (keys to be added to required signers as Pubkeyhash, but not signed by BPI),
+ we do not know, nor do we need, the full Pubkey. Unfortunately, this forces us to put a Pubkeyhash into the Pubkey data type,
+ to get it past the plutus-apps -> BPI layer (via the Tx type).
+ This function takes a Pubkey that we know may have this intentionally malformed encoding and:
+   If the pubkey inside is a real pubkey, hash it using the Ledger function
+   if the "pubkey" inside is actually a pubkeyhash, return this directly
+ We test for this using the length. A pubkeyhash is 28 bytes, whereas a pubkey is longer.
+-}
+pubKeyToPubKeyHashHack :: Ledger.PubKey -> Ledger.PubKeyHash
+pubKeyToPubKeyHashHack pk@(Ledger.PubKey ledgerBytes) =
+  let bytes = Bytes.bytes ledgerBytes
+   in if BS.length bytes > 28
+        then Ledger.pubKeyHash pk
+        else Ledger.PubKeyHash $ toBuiltin bytes
+
 -- | Build a tx body and write it to disk
 buildTx ::
   forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
+  ( Member (PABEffect w) effs
+  , Member (State EstimationContext) effs
+  ) =>
   PABConfig ->
-  Map PubKeyHash DummyPrivKey ->
   TxBudget ->
   Tx ->
-  Eff effs (Either Text ExBudget)
-buildTx pabConf privKeys txBudget tx = do
-  let (ins, valBudget) = txInOpts (spendBudgets txBudget) pabConf (txInputs tx)
-      (mints, mintBudget) = mintOpts (mintBudgets txBudget) pabConf (txMintScripts tx) (txRedeemers tx) (txMint tx)
-  callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const $ valBudget <> mintBudget)
-  where
-    requiredSigners =
-      concatMap
-        ( \pubKey ->
-            let pkh = Ledger.pubKeyHash pubKey
-             in case Map.lookup pkh privKeys of
-                  Just (FromSKey _) ->
-                    ["--required-signer", signingKeyFilePath pabConf pkh]
-                  Just (FromVKey _) ->
-                    ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash pkh]
-                  Nothing ->
-                    []
-        )
-        (Map.keys (Ledger.txSignatures tx))
-    opts ins mints =
-      mconcat
-        [ ["transaction", "build-raw", "--babbage-era"]
-        , ins
-        , txInCollateralOpts (txCollateral tx)
-        , txOutOpts pabConf (txData tx) (txOutputs tx)
-        , mints
-        , validRangeOpts (txValidRange tx)
-        , -- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
-          -- , metadataOpts pabConf (txMetadata tx)
-          requiredSigners
-        , ["--fee", showText . getLovelace . fromValue $ txFee tx]
-        , mconcat
-            [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
-            , ["--out-file", txFilePath pabConf "raw" (txId tx)]
-            ]
-        ]
+  Eff effs (Either Text ())
+buildTx pabConf txBudget tx = do
+  utxos <- ecUtxos <$> get
+  let requiredSigners =
+        concatMap
+          (\pubKey -> ["--required-signer-hash", encodeByteString $ fromBuiltin $ getPubKeyHash $ pubKeyToPubKeyHashHack pubKey])
+          (Map.keys (Ledger.txSignatures tx))
+      opts ins mints =
+        mconcat
+          [ ["transaction", "build-raw", "--babbage-era"]
+          , ins
+          , txRefInputOpts (txReferenceInputs tx)
+          , txInputCollateralOpts (txCollateralInputs tx)
+          , txOutOpts pabConf (txData tx) (txOutputs tx)
+          , mints
+          , validRangeOpts (txValidRange tx)
+          , metadataOpts pabConf (txMetadata tx)
+          , requiredSigners
+          , ["--fee", showText . getLovelace . fromValue $ txFee tx]
+          , mconcat
+              [ ["--protocol-params-file", pabConf.pcProtocolParamsFile]
+              , ["--out-file", txFilePath pabConf "raw" (txId tx)]
+              ]
+          ]
+  case toCardanoValue $ txMint tx of
+    Right mintValue -> do
+      let eIns = txInputOpts (spendBudgets txBudget) pabConf utxos (txInputs tx)
+          mints = mintOpts (mintBudgets txBudget) pabConf (fst <$> txMintingWitnesses tx) mintValue
+      either (pure . Left) (\ins -> callCommand @w $ ShellArgs "cardano-cli" (opts ins mints) (const ())) eIns
+    Left err -> pure $ Left $ showText err
 
 -- Signs and writes a tx (uses the tx body written to disk as input)
 signTx ::
@@ -235,90 +240,113 @@ submitTx pabConf tx =
       )
       (const ())
 
-txInOpts :: SpendBudgets -> PABConfig -> [TxIn] -> ([Text], ExBudget)
-txInOpts spendIndex pabConf =
-  foldMap
-    ( \(TxIn txOutRef txInType) ->
-        let (opts, exBudget) =
-              scriptInputs
-                txInType
-                (Map.findWithDefault mempty txOutRef spendIndex)
-         in (,exBudget) $
-              mconcat
-                [ ["--tx-in", txOutRefToCliArg txOutRef]
-                , opts
-                ]
-    )
-  where
-    scriptInputs :: Maybe TxInType -> ExBudget -> ([Text], ExBudget)
-    scriptInputs txInType exBudget =
-      case txInType of
-        Just (ConsumeScriptAddress _lang validator redeemer datum) ->
-          (,exBudget) $
+txInputOpts :: SpendBudgets -> PABConfig -> Map TxOutRef (CApi.TxOut CApi.CtxUTxO CApi.BabbageEra) -> [TxInput] -> Either Text [Text]
+txInputOpts spendIndex pabConf utxos =
+  fmap mconcat
+    . traverse
+      ( \(TxInput txOutRef txInputType) -> do
+          scriptInputs <- mkScriptInputs txInputType txOutRef (Map.findWithDefault mempty txOutRef spendIndex)
+          pure $
             mconcat
-              [
-                [ "--tx-in-script-file"
-                , validatorScriptFilePath pabConf (Scripts.validatorHash validator)
-                ]
+              [ ["--tx-in", txOutRefToCliArg txOutRef]
+              , scriptInputs
+              ]
+      )
+  where
+    mkScriptInputs :: TxInputType -> TxOutRef -> ExBudget -> Either Text [Text]
+    mkScriptInputs txInputType txOutRef exBudget =
+      case txInputType of
+        TxScriptAddress redeemer eVHash dHash -> do
+          let (typeText, prefix) = getTxInTypeAndPrefix eVHash
+          datumOpts <- handleTxInDatum prefix txOutRef dHash
+          pure $
+            mconcat
+              [ typeText
+              , datumOpts
               ,
-                [ "--tx-in-datum-file"
-                , datumJsonFilePath pabConf (ScriptUtils.datumHash datum)
-                ]
-              ,
-                [ "--tx-in-redeemer-file"
+                [ prefix <> "tx-in-redeemer-file"
                 , redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)
                 ]
               ,
-                [ "--tx-in-execution-units"
+                [ prefix <> "tx-in-execution-units"
                 , exBudgetToCliArg exBudget
                 ]
               ]
-        Just ConsumePublicKeyAddress -> mempty
-        Just ConsumeSimpleScriptAddress -> mempty
-        Nothing -> mempty
+        _ -> pure []
 
-txInCollateralOpts :: [TxIn] -> [Text]
-txInCollateralOpts =
-  concatMap (\(TxIn txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef])
+    getTxInTypeAndPrefix :: Either Scripts.ValidatorHash (ScriptUtils.Versioned TxOutRef) -> ([Text], Text)
+    getTxInTypeAndPrefix = \case
+      Left vHash ->
+        (
+          [ "--tx-in-script-file"
+          , validatorScriptFilePath pabConf vHash
+          ]
+        , "--"
+        )
+      Right versionedTxOutRef ->
+        ( [ "--spending-tx-in-reference"
+          , txOutRefToCliArg $ ScriptUtils.unversioned versionedTxOutRef
+          ]
+            ++ case ScriptUtils.version versionedTxOutRef of
+              ScriptUtils.PlutusV1 -> []
+              ScriptUtils.PlutusV2 -> ["--spending-plutus-script-v2"]
+        , "--spending-reference-"
+        )
+
+    txOutDatumIsInline :: CApi.TxOut CApi.CtxUTxO CApi.BabbageEra -> Bool
+    txOutDatumIsInline (CApi.TxOut _ _ (CApi.TxOutDatumInline _ _) _) = True
+    txOutDatumIsInline _ = False
+
+    handleTxInDatum :: Text -> TxOutRef -> Maybe DatumHash -> Either Text [Text]
+    handleTxInDatum prefix txOutRef mDHash =
+      if maybe False txOutDatumIsInline (Map.lookup txOutRef utxos)
+        then pure [prefix <> "tx-in-inline-datum-present"]
+        else do
+          dHash <- note "CLI Cannot handle TxOutDatumNone" mDHash
+          pure
+            [ prefix <> "tx-in-datum-file"
+            , datumJsonFilePath pabConf dHash
+            ]
+
+txRefInputOpts :: [TxInput] -> [Text]
+txRefInputOpts =
+  foldMap $
+    \(TxInput txOutRef _) ->
+      ["--read-only-tx-in-reference", txOutRefToCliArg txOutRef]
+
+txInputCollateralOpts :: [TxInput] -> [Text]
+txInputCollateralOpts =
+  concatMap (\(TxInput txOutRef _) -> ["--tx-in-collateral", txOutRefToCliArg txOutRef])
 
 -- Minting options
 mintOpts ::
   MintBudgets ->
   PABConfig ->
-  Map Ledger.MintingPolicyHash Ledger.MintingPolicy ->
-  Redeemers ->
-  Value ->
-  ([Text], ExBudget)
-mintOpts mintIndex pabConf mintingPolicies redeemers mintValue =
+  Map Scripts.MintingPolicyHash Ledger.Redeemer ->
+  CApi.Value ->
+  [Text]
+mintOpts mintIndex pabConf redeemers mintValue =
   let scriptOpts =
-        foldMap
-          ( \(idx, policy) ->
-              let redeemerPtr = RedeemerPtr Mint idx
-                  redeemer = Map.lookup redeemerPtr redeemers
-                  curSymbol = Value.mpsSymbol $ Scripts.mintingPolicyHash policy
+        Map.foldMapWithKey
+          ( \mph redeemer ->
+              let curSymbol = Value.mpsSymbol mph
                   exBudget =
                     Map.findWithDefault
                       mempty
-                      (Scripts.mintingPolicyHash policy)
+                      mph
                       mintIndex
-                  toOpts r =
-                    (,exBudget) $
-                      mconcat
-                        [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
-                        , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash r)]
-                        , ["--mint-execution-units", exBudgetToCliArg exBudget]
-                        ]
-               in orMempty $ fmap toOpts redeemer
+               in mconcat
+                    [ ["--mint-script-file", policyScriptFilePath pabConf curSymbol]
+                    , ["--mint-redeemer-file", redeemerJsonFilePath pabConf (ScriptUtils.redeemerHash redeemer)]
+                    , ["--mint-execution-units", exBudgetToCliArg exBudget]
+                    ]
           )
-          $ zip [0 ..] $ Map.elems mintingPolicies
+          redeemers
       mintOpt =
-        if not (Value.isZero mintValue)
+        if not (isZero mintValue)
           then ["--mint", valueToCliArg mintValue]
           else []
-   in first (<> mintOpt) scriptOpts
-
-orMempty :: forall (m :: Type). Monoid m => Maybe m -> m
-orMempty = fromMaybe mempty
+   in scriptOpts <> mintOpt
 
 -- | This function does not check if the range is valid, for that see `PreBalance.validateRange`
 validRangeOpts :: SlotRange -> [Text]
@@ -337,24 +365,37 @@ validRangeOpts (Interval lowerBound upperBound) =
 txOutOpts :: PABConfig -> Map DatumHash Datum -> [TxOut] -> [Text]
 txOutOpts pabConf datums =
   concatMap
-    ( \TxOut {txOutAddress, txOutValue, txOutDatumHash} ->
+    ( \(TxOut (CApi.TxOut addr val datum refScript)) ->
         mconcat
           [
             [ "--tx-out"
             , Text.intercalate
                 "+"
-                [ unsafeSerialiseAddress pabConf.pcNetwork txOutAddress
-                , valueToCliArg txOutValue
+                [ serialiseAddress addr
+                , valueToCliArg $ CApi.txOutValueToValue val
                 ]
             ]
-          , case txOutDatumHash of
-              Nothing -> []
-              Just datumHash@(DatumHash dh) ->
-                if Map.member datumHash datums
-                  then ["--tx-out-datum-embed-file", datumJsonFilePath pabConf datumHash]
-                  else ["--tx-out-datum-hash", encodeByteString $ fromBuiltin dh]
+          , case datum of
+              CApi.TxOutDatumNone -> []
+              CApi.TxOutDatumInTx _ scriptData -> datumTextFromScriptDataHash $ CApi.hashScriptData scriptData
+              CApi.TxOutDatumHash _ scriptDataHash -> datumTextFromScriptDataHash scriptDataHash
+              CApi.TxOutDatumInline _ scriptData ->
+                let datumHash = DatumHash $ toBuiltin $ CApi.serialiseToRawBytes $ CApi.hashScriptData scriptData
+                 in ["--tx-out-inline-datum-file", datumJsonFilePath pabConf datumHash]
+          , case refScript of
+              ReferenceScript _ (fromCardanoScriptInAnyLang -> Just vScript) ->
+                ["--tx-out-reference-script-file", referenceScriptFilePath pabConf $ ScriptUtils.scriptHash vScript]
+              _ -> []
           ]
     )
+  where
+    datumTextFromScriptDataHash :: CApi.Hash CApi.ScriptData -> [Text]
+    datumTextFromScriptDataHash scriptDataHash =
+      let dh = CApi.serialiseToRawBytes scriptDataHash
+          datumHash = DatumHash $ toBuiltin dh
+       in if Map.member datumHash datums
+            then ["--tx-out-datum-embed-file", datumJsonFilePath pabConf datumHash]
+            else ["--tx-out-datum-hash", encodeByteString dh]
 
 networkOpt :: PABConfig -> [Text]
 networkOpt pabConf = case pabConf.pcNetwork of
@@ -365,25 +406,18 @@ txOutRefToCliArg :: TxOutRef -> Text
 txOutRefToCliArg (TxOutRef (TxId tId) txIx) =
   encodeByteString (fromBuiltin tId) <> "#" <> showText txIx
 
-flatValueToCliArg :: (CurrencySymbol, TokenName, Integer) -> Text
-flatValueToCliArg (curSymbol, name, amount)
-  | curSymbol == Ada.adaSymbol = amountStr
-  | Text.null tokenNameStr = amountStr <> " " <> curSymbolStr
-  | otherwise = amountStr <> " " <> curSymbolStr <> "." <> tokenNameStr
+flatValueToCliArg :: (CApi.AssetId, CApi.Quantity) -> Text
+flatValueToCliArg (CApi.AdaAssetId, qty) = showText qty
+flatValueToCliArg (CApi.AssetId policyId assetName, qty)
+  | assetName == "" = showText qty <> " " <> serialise policyId
+  | otherwise = showText qty <> " " <> serialise policyId <> "." <> serialise assetName
   where
-    amountStr = showText amount
-    curSymbolStr = encodeByteString $ fromBuiltin $ unCurrencySymbol curSymbol
-    tokenNameStr = decodeUtf8 $ hex $ fromBuiltin $ unTokenName name
+    serialise :: forall (a :: Type). CApi.SerialiseAsRawBytes a => a -> Text
+    serialise = Text.toLower . CApi.serialiseToRawBytesHexText
 
-valueToCliArg :: Value -> Text
+valueToCliArg :: CApi.Value -> Text
 valueToCliArg val =
-  Text.intercalate " + " $ map flatValueToCliArg $ sort $ Value.flattenValue val
-
-unsafeSerialiseAddress :: NetworkId -> Address -> Text
-unsafeSerialiseAddress network address =
-  case serialiseAddress <$> toCardanoAddressInEra network address of
-    Right a -> a
-    Left _ -> error "Couldn't create address"
+  Text.intercalate " + " $ map flatValueToCliArg $ sort $ CApi.valueToList val
 
 exBudgetToCliArg :: ExBudget -> Text
 exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
@@ -392,8 +426,7 @@ exBudgetToCliArg (ExBudget (ExCPU steps) (ExMemory memory)) =
 showText :: forall (a :: Type). Show a => a -> Text
 showText = Text.pack . show
 
--- TODO: Removed for now, as the main iohk branch doesn't support metadata yet
--- metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]
--- metadataOpts _ Nothing = mempty
--- metadataOpts pabConf (Just meta) =
---   ["--metadata-json-file", metadataFilePath pabConf meta]
+metadataOpts :: PABConfig -> Maybe BuiltinByteString -> [Text]
+metadataOpts _ Nothing = mempty
+metadataOpts pabConf (Just meta) =
+  ["--metadata-json-file", metadataFilePath pabConf meta]

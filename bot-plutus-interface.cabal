@@ -86,11 +86,13 @@ library
     BotPlutusInterface.CoinSelection
     BotPlutusInterface.Collateral
     BotPlutusInterface.Config
+    BotPlutusInterface.Constraints
     BotPlutusInterface.Contract
     BotPlutusInterface.Effects
     BotPlutusInterface.ExBudget
     BotPlutusInterface.Files
     BotPlutusInterface.Helpers
+    BotPlutusInterface.Metadata
     BotPlutusInterface.Server
     BotPlutusInterface.TimeSlot
     BotPlutusInterface.Types
@@ -105,15 +107,20 @@ library
   build-depends:
     , aeson
     , attoparsec                 >=0.13.2.2
+    , base16
+    , basement
     , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto
+    , cardano-crypto-class
+    , cardano-crypto-wrapper
     , cardano-ledger-alonzo
     , cardano-ledger-babbage
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-prelude
     , cardano-slotting
+    , cborg
     , config-schema
     , config-value
     , containers
@@ -200,6 +207,8 @@ test-suite bot-plutus-interface-test
     , bytestring                 ^>=0.10.12.0
     , cardano-api
     , cardano-crypto-class
+    , cardano-prelude
+    , cardano-slotting
     , containers
     , data-default
     , data-default-class
@@ -241,6 +250,7 @@ test-suite bot-plutus-interface-test
     , tasty-quickcheck
     , temporary
     , text                       ^>=1.2.4.0
+    , transformers-either
     , utf8-string
     , uuid
     , vector

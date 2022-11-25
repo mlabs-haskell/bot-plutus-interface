@@ -77,10 +77,6 @@
       url = "github:input-output-hk/hedgehog-extras/714ee03a5a786a05fc57ac5d2f1c2edce4660d85";
       flake = false;
     };
-    hysterical-screams = {
-      url = "github:raduom/hysterical-screams/4c523469e9efd3f0d10d17da3304923b7b0e0674";
-      flake = false;
-    };
     hw-aeson = {
       url = "github:haskell-works/hw-aeson/b5ef03a7d7443fcd6217ed88c335f0c411a05408";
       flake = false;
@@ -105,14 +101,14 @@
         "github:input-output-hk/ouroboros-network/cb9eba406ceb2df338d8384b35c8addfe2067201";
       flake = false;
     };
-    plutus = {
+    plutus-core = {
       url =
         "github:input-output-hk/plutus/a56c96598b4b25c9e28215214d25189331087244";
       flake = false;
     };
     plutus-apps = {
       url =
-        "github:mlabs-haskell/plutus-apps/31bfd4c7fff5158c9f2618b76b68dbbae410221d";
+        "github:input-output-hk/plutus-apps/a2045141fc0b4f14470ebf4679c6abe40aac4db7";
       flake = false;
     };
     purescript-bridge = {
@@ -291,10 +287,6 @@
           subdirs = [ "." ];
         }
         {
-          src = inputs.hysterical-screams;
-          subdirs = [ "." ];
-        }
-        {
           src = inputs.hw-aeson;
           subdirs = [ "." ];
         }
@@ -339,7 +331,7 @@
           ];
         }
         {
-          src = inputs.plutus;
+          src = inputs.plutus-core;
           subdirs = [
             "plutus-core"
             "plutus-ledger-api"
@@ -353,22 +345,27 @@
         {
           src = inputs.plutus-apps;
           subdirs = [
+            "cardano-streaming"
             "doc"
             "freer-extras"
+            "marconi"
+            "marconi-mamba"
             "playground-common"
+            "pab-blockfrost"
             "plutus-chain-index"
             "plutus-chain-index-core"
-            "plutus-hysterical-screams"
             "plutus-contract"
             "plutus-contract-certification"
+            "plutus-example"
             "plutus-ledger"
             "plutus-ledger-constraints"
             "plutus-pab"
+            "plutus-pab-executables"
             "plutus-playground-server"
             "plutus-script-utils"
-            "plutus-streaming"
             "plutus-tx-constraints"
             "plutus-use-cases"
+            "rewindable-index"
             "web-ghc"
           ];
         }
@@ -402,33 +399,36 @@
         let
           pkgs = nixpkgsFor system;
           pkgs' = nixpkgsFor' system;
-        in
-        pkgs.haskell-nix.cabalProject' {
-          src = ./.;
-          inherit cabalProjectLocal extraSources;
-          name = "bot-plutus-interface";
-          compiler-nix-name = "ghc8107";
-          shell = {
-            additional = ps: [
-              ps.plutus-pab
-            ];
-            withHoogle = true;
-            tools.haskell-language-server = { };
-            exactDeps = true;
-            nativeBuildInputs = with pkgs'; [
-              cabal-install
-              haskellPackages.cabal-fmt
-              haskellPackages.implicit-hie
-              haskellPackages.fourmolu
-              hlint
-              jq
-              websocat
-              fd
-              nixpkgs-fmt
-            ];
+          project = pkgs.haskell-nix.cabalProject' {
+            src = ./.;
+            inherit cabalProjectLocal extraSources;
+            name = "bot-plutus-interface";
+            compiler-nix-name = "ghc8107";
+            shell = {
+              additional = ps: [
+                ps.plutus-pab
+              ];
+              withHoogle = true;
+              tools.haskell-language-server = { };
+              exactDeps = true;
+              nativeBuildInputs = with pkgs'; [
+                cabal-install
+                haskellPackages.cabal-fmt
+                haskellPackages.implicit-hie
+                haskellPackages.fourmolu
+                haskellPackages.apply-refact
+                hlint
+                jq
+                websocat
+                fd
+                nixpkgs-fmt
+                project.hsPkgs.cardano-cli.components.exes.cardano-cli
+              ];
+            };
+            modules = haskellModules;
           };
-          modules = haskellModules;
-        };
+        in
+        project;
 
       formatCheckFor = system:
         let
@@ -441,7 +441,7 @@
           export LC_ALL=C.UTF-8
           export LANG=C.UTF-8
           export IN_NIX_SHELL='pure'
-          make format_check cabalfmt_check nixpkgsfmt_check lint
+          make format_check cabalfmt_check nixpkgsfmt_check lint_check
           mkdir $out
         '';
 
@@ -475,5 +475,11 @@
       checks = perSystem (system: self.flake.${system}.checks // {
         formatCheck = formatCheckFor system;
       });
+
+      hydraJobs = {
+        checks = { inherit (self.checks) x86_64-linux; };
+        packages = { inherit (self.packages) x86_64-linux; };
+        devShells = { inherit (self.devShells) x86_64-linux; };
+      };
     };
 }

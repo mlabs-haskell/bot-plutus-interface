@@ -14,7 +14,6 @@ import BotPlutusInterface.Effects (
   ShellArgs (..),
   callCommand,
   createDirectoryIfMissing,
-  estimateBudget,
   getInMemCollateral,
   handleContractLog,
   handlePABEffect,
@@ -22,6 +21,7 @@ import BotPlutusInterface.Effects (
   minUtxo,
   posixTimeRangeToContainedSlotRange,
   posixTimeToSlot,
+  posixTimeToSlotLength,
   printBpiLog,
   queryChainIndex,
   queryNode,
@@ -39,9 +39,10 @@ import BotPlutusInterface.Types (
   ContractEnvironment (..),
   LogLevel (Debug, Notice, Warn),
   LogType (CollateralLog, PABLog),
+  PABConfig (pcNetwork, pcProtocolParams),
   Tip (block, slot),
-  TxFile (Signed),
   collateralValue,
+  ownAddress,
   pcCollateralSize,
   pcOwnPubKeyHash,
  )
@@ -49,10 +50,12 @@ import Cardano.Api (
   AsType (..),
   EraInMode (..),
   Tx (Tx),
+  TxOut (TxOut),
+  txOutValueToValue,
  )
-import Cardano.Prelude (liftA2)
+import Cardano.Prelude (fromMaybe, liftA2)
 import Control.Lens (preview, (.~), (^.))
-import Control.Monad (join, void, when)
+import Control.Monad (join, unless, void, when)
 import Control.Monad.Freer (Eff, Member, interpret, reinterpret, runM, subsume, type (~>))
 import Control.Monad.Freer.Error (runError)
 import Control.Monad.Freer.Extras.Modify (raiseEnd)
@@ -63,9 +66,13 @@ import Control.Monad.Trans.Except (ExceptT, throwE)
 import Data.Aeson (ToJSON, Value (Array, Bool, Null, Number, Object, String))
 import Data.Aeson.Extras (encodeByteString)
 import Data.Aeson.KeyMap qualified as KeyMap
+import Data.Bifunctor (first)
+import Data.Default (Default (def))
+import Data.Either (fromRight)
 import Data.Either.Combinators (maybeToLeft, swapEither)
 import Data.Function (fix, (&))
 import Data.Kind (Type)
+import Data.List (partition)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map qualified as Map
 import Data.Row (Row)
@@ -73,13 +80,15 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Vector qualified as V
-import Ledger (POSIXTime, getCardanoTxId)
+import Ledger (POSIXTime, Params (Params), getCardanoTxId)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
 import Ledger.Slot (Slot (Slot))
+import Ledger.TimeSlot (nominalDiffTimeToPOSIXTime)
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
 import Ledger.Tx qualified as Tx
+import Ledger.Tx.CardanoAPI.Internal (fromCardanoValue)
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
 import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
 import Plutus.Contract.Checkpoint (Checkpoint (..))
@@ -94,7 +103,7 @@ import Plutus.Contract.Effects (
 import Plutus.Contract.Resumable (Resumable (..))
 import Plutus.Contract.Types (Contract (..), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
-import Prettyprinter (Pretty (pretty), (<+>))
+import Prettyprinter (Pretty (pretty), viaShow, (<+>))
 import Prettyprinter qualified as PP
 import Wallet.API qualified as WAPI
 import Wallet.Emulator.Error (WalletAPIError (..))
@@ -212,6 +221,14 @@ handlePABReq contractEnv req = do
     ----------------------
     -- Handled requests --
     ----------------------
+    GetParamsReq ->
+      let pabConfig = cePABConfig contractEnv
+          pparams = fromMaybe (error "GetParamsReq: Must have ProtocolParamaneters in PABConfig") $ pcProtocolParams pabConfig
+          netId = pcNetwork pabConfig
+          -- FIXME: Compute SlotConfig properly
+          -- Ideally plutus-apps drops slotConfig from the env, as it shouldn't exist
+          slotConfig = def
+       in return $ GetParamsResp $ Params slotConfig pparams netId
     OwnAddressesReq ->
       pure
         . OwnAddressesResp
@@ -229,13 +246,17 @@ handlePABReq contractEnv req = do
       WriteBalancedTxResp <$> writeBalancedTx @w contractEnv tx'
     AwaitSlotReq s -> AwaitSlotResp <$> awaitSlot @w contractEnv s
     AwaitTimeReq t -> AwaitTimeResp <$> awaitTime @w contractEnv t
-    CurrentPABSlotReq -> CurrentPABSlotResp <$> currentSlot @w contractEnv
+    CurrentNodeClientSlotReq -> CurrentNodeClientSlotResp <$> currentSlot @w contractEnv
     CurrentTimeReq -> CurrentTimeResp <$> currentTime @w contractEnv
     PosixTimeRangeToContainedSlotRangeReq posixTimeRange ->
       either (error . show) (PosixTimeRangeToContainedSlotRangeResp . Right)
         <$> posixTimeRangeToContainedSlotRange @w posixTimeRange
     AwaitTxStatusChangeReq txId -> AwaitTxStatusChangeResp txId <$> awaitTxStatusChange @w contractEnv txId
     AdjustUnbalancedTxReq unbalancedTx -> AdjustUnbalancedTxResp <$> adjustUnbalancedTx' @w @effs unbalancedTx
+    CurrentNodeClientTimeRangeReq -> do
+      t <- currentTime @w contractEnv
+      slotLength <- fromRight (error "Failed to query slot length") <$> posixTimeToSlotLength @w t
+      return $ CurrentNodeClientTimeRangeResp (t, t + nominalDiffTimeToPOSIXTime slotLength)
     ------------------------
     -- Unhandled requests --
     ------------------------
@@ -342,8 +363,8 @@ balanceTx ::
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTx _ (UnbalancedTx (Left _) _ _ _) = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
-balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
+balanceTx _ UnbalancedCardanoTx {} = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
+balanceTx contractEnv unbalancedTx@UnbalancedEmulatorTx {} = do
   let pabConf = contractEnv.cePABConfig
 
   result <- handleCollateral @w contractEnv
@@ -352,21 +373,15 @@ balanceTx contractEnv unbalancedTx@(UnbalancedTx (Right tx') _ _ _) = do
     Left e -> pure $ BalanceTxFailed e
     _ -> do
       uploadDir @w pabConf.pcSigningKeyFileDir
-      eitherBalancedTx <-
-        Balance.balanceTxIO' @w
-          Balance.defaultBalanceConfig
-            { Balance.bcHasScripts = Balance.txUsesScripts tx'
-            }
+      eitherT (pure . BalanceTxFailed) (pure . BalanceTxSuccess . EmulatorTx) $
+        Balance.balanceTxIO @w
           pabConf
           pabConf.pcOwnPubKeyHash
           unbalancedTx
 
-      pure $ either BalanceTxFailed (BalanceTxSuccess . EmulatorTx) eitherBalancedTx
-
 fromCardanoTx :: CardanoTx -> Tx.Tx
 fromCardanoTx (CardanoApiTx _) = error "Cannot handle cardano api tx"
 fromCardanoTx (EmulatorTx tx') = tx'
-fromCardanoTx (Tx.Both tx' _) = tx'
 
 -- | This step would build tx files, write them to disk and submit them to the chain
 writeBalancedTx ::
@@ -389,9 +404,9 @@ writeBalancedTx contractEnv cardanoTx = do
 
     let requiredSigners = Map.keys $ tx' ^. Tx.signatures
         skeys = Map.filter (\case FromSKey _ -> True; FromVKey _ -> False) privKeys
-        signable = all ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
+        (presentPubKeys, missingPubKeys) = partition ((`Map.member` skeys) . Ledger.pubKeyHash) requiredSigners
 
-    void $ newEitherT $ BodyBuilder.buildAndEstimateBudget @w pabConf privKeys tx'
+    txBudget <- BodyBuilder.runInEstimationEffect @w tx' id $ BodyBuilder.buildAndEstimateBudget @w pabConf tx'
 
     -- TODO: This whole part is hacky and we should remove it.
     let path = Text.unpack $ Files.txFilePath pabConf "raw" (Tx.txId tx')
@@ -399,27 +414,39 @@ writeBalancedTx contractEnv cardanoTx = do
     babbageBody <- firstEitherT (Text.pack . show) $ newEitherT $ readFileTextEnvelope @w (AsTxBody AsBabbageEra) path
     let cardanoApiTx = Tx.SomeTx (Tx babbageBody []) BabbageEraInCardanoMode
 
-    if signable
-      then newEitherT $ CardanoCLI.signTx @w pabConf tx' requiredSigners
-      else
-        lift . printBpiLog @w (Warn [PABLog]) . PP.vsep $
-          [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
-          , "Tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx'))
-          , "Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText requiredSigners))
-          ]
+    lift . printBpiLog @w (Debug [PABLog]) $ viaShow presentPubKeys
+    lift . printBpiLog @w (Debug [PABLog]) $ viaShow missingPubKeys
+    lift . printBpiLog @w (Debug [PABLog]) $ viaShow requiredSigners
 
-    when (pabConf.pcCollectStats && signable) $
-      collectBudgetStats (Tx.txId tx') pabConf
+    let signingHappened = not $ null presentPubKeys
+    when signingHappened $
+      newEitherT $ CardanoCLI.signTx @w pabConf tx' presentPubKeys
 
-    when (not pabConf.pcDryRun && signable) $ do
+    let fullySignable = null missingPubKeys
+        cardanoTxId = Ledger.getCardanoTxId $ Tx.CardanoApiTx cardanoApiTx
+
+    unless fullySignable $
+      lift . printBpiLog @w (Warn [PABLog]) . PP.vsep $
+        [ "Not all required signatures have signing key files. Please sign and submit the tx manually:"
+        , "Unsigned tx file:" <+> pretty (Files.txFilePath pabConf "raw" (Tx.txId tx'))
+        ]
+          ++ if not $ null presentPubKeys
+            then
+              [ "Some signatures were able to sign, partially signed tx available here:"
+              , "Partially signed tx file:" <+> pretty (Files.txFilePath pabConf "signed" cardanoTxId)
+              ]
+            else ["Missing Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText missingPubKeys))]
+
+    when (pabConf.pcCollectStats && fullySignable) $
+      lift $ saveBudget @w (Tx.txId tx') txBudget
+
+    when (not pabConf.pcDryRun && fullySignable) $ do
       newEitherT $ CardanoCLI.submitTx @w pabConf tx'
 
     -- We need to replace the outfile we created at the previous step, as it currently still has the old (incorrect) id
-    let cardanoTxId = Ledger.getCardanoTxId $ Tx.CardanoApiTx cardanoApiTx
-        signedSrcPath = Files.txFilePath pabConf "signed" (Tx.txId tx')
-        signedDstPath = Files.txFilePath pabConf "signed" cardanoTxId
     mvFiles (Files.txFilePath pabConf "raw" (Tx.txId tx')) (Files.txFilePath pabConf "raw" cardanoTxId)
-    when signable $ mvFiles signedSrcPath signedDstPath
+    when signingHappened $
+      cpFiles (Files.txFilePath pabConf "signed" (Tx.txId tx')) (Files.txFilePath pabConf "signed" cardanoTxId)
 
     pure cardanoApiTx
   where
@@ -432,18 +459,15 @@ writeBalancedTx contractEnv cardanoTx = do
             , cmdArgs = [src, dst]
             , cmdOutParser = const ()
             }
-
-    collectBudgetStats txId pabConf = do
-      let path = Text.unpack (Files.txFilePath pabConf "signed" txId)
-      txBudget <-
-        firstEitherT toBudgetSaveError $
-          newEitherT $ estimateBudget @w (Signed path)
-      void $ newEitherT (Right <$> saveBudget @w txId txBudget)
-
-    toBudgetSaveError =
-      Text.pack
-        . ("Failed to save Tx budgets statistics: " ++)
-        . show
+    cpFiles :: Text -> Text -> EitherT Text (Eff effs) ()
+    cpFiles src dst =
+      newEitherT $
+        callCommand @w
+          ShellArgs
+            { cmdName = "cp"
+            , cmdArgs = [src, dst]
+            , cmdOutParser = const ()
+            }
 
 pkhToText :: Ledger.PubKey -> Text
 pkhToText = encodeByteString . fromBuiltin . Ledger.getPubKeyHash . Ledger.pubKeyHash
@@ -585,16 +609,19 @@ makeCollateral cEnv = runEitherT $ do
   lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
   let pabConf = cEnv.cePABConfig
+
+  -- TODO: Enforce existence of pparams at the beginning
+  pparams <- maybe (error "Must have ProtocolParameters in PABConfig") return (pcProtocolParams pabConf)
+
   unbalancedTx <-
     firstEitherT (WAPI.OtherError . Text.pack . show) $
-      hoistEither $ Collateral.mkCollateralTx pabConf
-
+      hoistEither $ Collateral.mkCollateralTx pabConf (error "We should not use SlotConfig anywhere") pparams -- FIXME: SlotConfig shennanigans
   balancedTx <-
-    newEitherT $
-      Balance.balanceTxIO' @w
-        Balance.defaultBalanceConfig {Balance.bcHasScripts = False, Balance.bcSeparateChange = True}
-        pabConf
-        pabConf.pcOwnPubKeyHash unbalancedTx
+    Balance.balanceTxIO' @w
+      Balance.defaultBalanceConfig {Balance.bcSeparateChange = True}
+      pabConf
+      pabConf.pcOwnPubKeyHash
+      unbalancedTx
 
   wbr <- lift $ writeBalancedTx cEnv (EmulatorTx balancedTx)
   case wbr of
@@ -614,20 +641,19 @@ findCollateralAtOwnPKH cEnv =
   runEitherT $
     CollateralUtxo <$> do
       let pabConf = cePABConfig cEnv
-          changeAddr =
-            Ledger.pubKeyHashAddress
-              (PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
-              pabConf.pcOwnStakePubKeyHash
+
+      changeAddr <- hoistEither $ first WAPI.ToCardanoError $ ownAddress pabConf
 
       r <-
         firstEitherT (WAPI.OtherError . Text.pack . show) $
           newEitherT $ queryNode @w (UtxosAt changeAddr)
-      let refsAndOuts = Map.toList $ Tx.toTxOut <$> r
-      hoistEither $ case filter check refsAndOuts of
+      let refsAndValues = Map.toList $ txOutvalue <$> r
+      hoistEither $ case filter isAcceptableCollateral refsAndValues of
         [] -> Left $ WAPI.OtherError "Couldn't find collateral UTxO"
         ((oref, _) : _) -> Right oref
   where
-    check (_, txOut) = Tx.txOutValue txOut == collateralValue (cePABConfig cEnv)
+    isAcceptableCollateral (_, v) = fromCardanoValue v == collateralValue (cePABConfig cEnv)
+    txOutvalue (TxOut _ v _ _) = txOutValueToValue v
 
 {- | Construct a 'NonEmpty' list from a single element.
  Should be replaced by NonEmpty.singleton after updating to base 4.15

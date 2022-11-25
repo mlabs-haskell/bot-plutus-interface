@@ -34,6 +34,7 @@ import Data.Kind (Type)
 import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (isJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text, pack)
@@ -41,15 +42,12 @@ import Data.Vector (Vector)
 import Data.Vector qualified as Vec
 import Ledger qualified
 import Ledger.Tx (
-  TxIn (txInRef),
+  TxInput (txInputRef),
   TxOut (..),
   TxOutRef (..),
  )
 import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value
-import Plutus.V1.Ledger.Api (
-  Credential (PubKeyCredential, ScriptCredential),
- )
 import Prettyprinter (pretty, (<+>))
 import Wallet.API qualified as WAPI
 import Prelude
@@ -182,31 +180,31 @@ type ValueVector = Vector Integer
 selectTxIns ::
   forall (w :: Type) (effs :: [Type -> Type]).
   Member (PABEffect w) effs =>
-  Set TxIn -> -- Inputs `TxIn` of the transaction.
+  Set TxInput -> -- Inputs `TxIn` of the transaction.
   Map TxOutRef TxOut -> -- Map of utxos that can be spent
   Value -> -- total output value of the Tx.
-  Eff effs (Either WAPI.WalletAPIError (Set TxIn))
+  Eff effs (Either WAPI.WalletAPIError (Set TxInput))
 selectTxIns originalTxIns utxosIndex outValue =
   runEitherT $ do
     let -- This represents the input value.
         txInsValue :: Value
         txInsValue =
-          foldOf (folded . to ((`Map.lookup` utxosIndex) . txInRef) . folded . to txOutValue) originalTxIns
+          foldOf (folded . to ((`Map.lookup` utxosIndex) . txInputRef) . folded . to Ledger.txOutValue) originalTxIns
 
         -- This is set of all the asset classes present in outValue, inputValue and all the utxos combined
         allAssetClasses :: Set AssetClass
         allAssetClasses =
-          uniqueAssetClasses $ txInsValue : outValue : utxosIndex ^.. folded . to txOutValue
+          uniqueAssetClasses $ txInsValue : outValue : utxosIndex ^.. folded . to Ledger.txOutValue
 
-        txInRefs :: [TxOutRef]
-        txInRefs = originalTxIns ^.. folded . to txInRef
+        txInputRefs :: [TxOutRef]
+        txInputRefs = originalTxIns ^.. folded . to txInputRef
 
         -- All the remainingUtxos that has not been used as an input to the transaction yet.
         remainingUtxos :: [(TxOutRef, TxOut)]
         remainingUtxos =
           Map.toList $
             Map.filterWithKey
-              (\k v -> k `notElem` txInRefs && isRight (txOutToTxIn (k, v)))
+              (\k v -> k `notElem` txInputRefs && isRight (txOutToTxIn (k, v)))
               utxosIndex
 
     lift $ printBpiLog @w (Debug [CoinSelectionLog]) $ "Remaining UTxOs: " <+> pretty remainingUtxos
@@ -223,7 +221,7 @@ selectTxIns originalTxIns utxosIndex outValue =
     outVec <- hoistEither $ valueToVec allAssetClasses outValue
 
     -- all the remainingUtxos converted to the vectors.
-    remainingUtxosVec <- hoistEither $ mapM (valueToVec allAssetClasses . txOutValue . snd) remainingUtxos
+    remainingUtxosVec <- hoistEither $ mapM (valueToVec allAssetClasses . Ledger.txOutValue . snd) remainingUtxos
 
     -- we use the default search strategy to get indexes of optimal utxos, these indexes are for the
     -- remainingUtxos, as we are sampling utxos from that set.
@@ -471,11 +469,11 @@ uniqueAssetClasses = Set.fromList . concatMap valueToAssetClass
     valueToAssetClass = map (\(cs, tn, _) -> Value.assetClass cs tn) . Value.flattenValue
 
 -- Converting a chain index transaction output to a transaction input type
-txOutToTxIn :: (TxOutRef, TxOut) -> Either Text TxIn
+txOutToTxIn :: (TxOutRef, TxOut) -> Either Text TxInput
 txOutToTxIn (txOutRef, txOut) =
-  case Ledger.addressCredential (txOutAddress txOut) of
-    PubKeyCredential _ -> Right $ Ledger.pubKeyTxIn txOutRef
-    ScriptCredential _ -> Left "Cannot covert a script output to TxIn"
+  if isJust $ Ledger.txOutPubKey txOut
+    then Right $ Ledger.pubKeyTxInput txOutRef
+    else Left "Cannot covert a script output to TxIn"
 
 -- Apply a binary operation on two vectors of same length.
 opVec ::

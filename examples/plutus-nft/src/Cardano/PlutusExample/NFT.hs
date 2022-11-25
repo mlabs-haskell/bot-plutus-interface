@@ -3,7 +3,9 @@
 
 module Cardano.PlutusExample.NFT where
 
-import Cardano.Api.Shelley (PlutusScript (..), PlutusScriptV1)
+import BotPlutusInterface.Constraints (mustIncludeMetadata, submitBpiTxConstraintsWith)
+import BotPlutusInterface.Metadata (NftMetadata (NftMetadata), NftMetadataToken (NftMetadataToken), TxMetadata (TxMetadata))
+import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised), PlutusScriptV1)
 import Codec.Serialise (serialise)
 import Control.Monad (void)
 import Data.Aeson.TH (defaultOptions, deriveJSON)
@@ -31,7 +33,7 @@ import Ledger.Constraints as Constraints
 import Ledger.Scripts qualified as Scripts
 import Ledger.Typed.Scripts qualified as TypedScripts
 import Ledger.Value (flattenValue, singleton)
-import Plutus.Contract (Contract, Endpoint, submitTxConstraintsWith, tell, utxosAt)
+import Plutus.Contract (Contract, Endpoint, tell, utxosAt)
 import Plutus.Contract qualified as Contract
 import Plutus.Script.Utils.V1.Scripts qualified as ScriptUtils
 import PlutusTx qualified
@@ -100,8 +102,6 @@ mintNft MintParams {..} = do
       tell $ Last $ Just $ "Using oref:" Hask.<> Text.pack (Hask.show oref)
       let cs = curSymbol oref mpTokenName
           val = singleton cs mpTokenName 1
-          -- TODO: Add metadata in the tx.
-          --       Currently this is not possible, as metadata is not supported.
           lookups =
             Hask.mconcat
               [ Constraints.plutusV1MintingPolicy (policy oref mpTokenName)
@@ -113,6 +113,10 @@ mintNft MintParams {..} = do
               , Constraints.mustSpendPubKeyOutput oref
               , Constraints.mustPayToPubKeyAddress mpPubKeyHash mpStakeHash val
               ]
-      void $ submitTxConstraintsWith @Void lookups tx
+          tokenMetadata = NftMetadataToken mpName mpImage (Just "image/jpeg") mpDescription Hask.mempty Hask.mempty
+          txMetadata = TxMetadata (Just $ NftMetadata $ Map.singleton cs $ Map.singleton mpTokenName tokenMetadata) Hask.mempty
+          bpiConstraints = mustIncludeMetadata txMetadata
+
+      void $ submitBpiTxConstraintsWith @Void lookups tx bpiConstraints
       Contract.logInfo @Hask.String $ printf "forged %s" (Hask.show val)
       tell $ Last $ Just "Finished"

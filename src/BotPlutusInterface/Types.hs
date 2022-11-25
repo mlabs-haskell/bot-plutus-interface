@@ -29,14 +29,19 @@ module BotPlutusInterface.Types (
   LogsList (..),
   CollateralUtxo (..),
   CollateralVar (..),
+  SystemContext (..),
+  EstimationContext (..),
   addBudget,
   readCollateralUtxo,
   collateralValue,
   sufficientLogLevel,
+  ownAddress,
+  toExBudget,
 ) where
 
-import Cardano.Api (NetworkId (Testnet), NetworkMagic (..), ScriptExecutionError, ScriptWitnessIndex)
-import Cardano.Api.Shelley (ProtocolParameters)
+import Cardano.Api (AddressInEra, BabbageEra, EraHistory, NetworkId (Testnet), NetworkMagic (NetworkMagic), ScriptExecutionError, ScriptWitnessIndex, TxOut)
+import Cardano.Api.Shelley (CardanoMode, CtxUTxO, ProtocolParameters)
+import Cardano.Slotting.Time (SystemStart)
 import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
@@ -59,6 +64,7 @@ import Ledger (
  )
 import Ledger qualified
 import Ledger.Ada qualified as Ada
+import Ledger.Tx.CardanoAPI.Internal (toCardanoAddressInEra)
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import Plutus.PAB.Core.ContractInstance.STM (Activity)
@@ -70,7 +76,7 @@ import Plutus.PAB.Effects.Contract.Builtin (
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as PP
 import Servant.Client (BaseUrl (BaseUrl), Scheme (Http))
-import Wallet.Types (ContractInstanceId (..))
+import Wallet.Types (ContractInstanceId)
 import Prelude
 
 data PABConfig = PABConfig
@@ -110,6 +116,13 @@ data PABConfig = PABConfig
 
 collateralValue :: PABConfig -> Ledger.Value
 collateralValue = Ada.lovelaceValueOf . toInteger . pcCollateralSize
+
+ownAddress :: PABConfig -> Either Ledger.ToCardanoError (AddressInEra BabbageEra)
+ownAddress pabConf =
+  toCardanoAddressInEra pabConf.pcNetwork $
+    Ledger.pubKeyHashAddress
+      (Ledger.PaymentPubKeyHash pabConf.pcOwnPubKeyHash)
+      pabConf.pcOwnStakePubKeyHash
 
 {- | Settings for `Contract.awaitTxStatusChange` implementation.
  See also `BotPlutusInterface.Contract.awaitTxStatusChange`
@@ -169,6 +182,9 @@ instance Monoid TxBudget where
 type SpendBudgets = Map TxOutRef ExBudget
 
 type MintBudgets = Map MintingPolicyHash ExBudget
+
+toExBudget :: TxBudget -> ExBudget
+toExBudget (TxBudget spends mints) = mconcat $ Map.elems spends <> Map.elems mints
 
 {- | Collection of stats that could be collected py `bpi`
    about contract it runs
@@ -363,3 +379,20 @@ data RawTx = RawTx
 -- type is a reserved keyword in haskell and can not be used as a field name
 -- when converting this to JSON we drop the _ prefix from each field
 deriveJSON defaultOptions {fieldLabelModifier = drop 1} ''RawTx
+
+{- | System context needed by estimation to calculate budgets on a given transaction
+  All fields here should be relatively static, and as such, don't need to be calculated often
+-}
+data SystemContext = SystemContext
+  { scParams :: ProtocolParameters
+  , scSystemStart :: SystemStart
+  , scEraHistory :: EraHistory CardanoMode
+  }
+
+{- | Full estimation context for budgetting
+  Includes system context above and more transaction dependent utxo context for estimation and buildTx in the CLI
+-}
+data EstimationContext = EstimationContext
+  { ecSystemContext :: SystemContext
+  , ecUtxos :: Map TxOutRef (TxOut CtxUTxO BabbageEra)
+  }

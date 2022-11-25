@@ -101,8 +101,11 @@ nixpkgsfmt: requires_nix_shell
 nixpkgsfmt_check: requires_nix_shell
 	nixpkgs-fmt --check $(NIX_SOURCES)
 
-# Check with hlint, currently I couldn't get --refactor to work
+# Check with hlint
 lint: requires_nix_shell
+	echo "$(FORMAT_SOURCES)" | xargs -n 1 -t hlint --refactor --refactor-options="--inplace"
+
+lint_check: requires_nix_shell
 	hlint $(FORMAT_SOURCES)
 
 readme_contents:

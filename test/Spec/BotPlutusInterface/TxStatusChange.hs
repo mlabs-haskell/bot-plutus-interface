@@ -5,7 +5,7 @@ import BotPlutusInterface.Types (
   PABConfig (pcOwnPubKeyHash, pcTxStatusPolling),
   TxStatusPolling (spBlocksTimeOut),
  )
-import Control.Lens ((&), (.~), (^.))
+import Control.Lens (views, (%~), (&), (.~), (^.))
 import Data.Default (def)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -31,6 +31,7 @@ import Spec.MockContract (
   pkhAddr1,
   runContractPure,
   tip,
+  updatePabConfig,
   utxos,
  )
 import Test.Tasty (TestTree, testGroup)
@@ -51,9 +52,9 @@ testTxFoundAndConfirmed = do
       txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState =
         def & utxos .~ [(txOutRef, txOut)]
-          & contractEnv .~ contractEnv'
-      pabConf = def {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1}
-      contractEnv' = def {cePABConfig = pabConf}
+          & contractEnv
+            %~ updatePabConfig
+              (\conf -> conf {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1})
 
       contract :: Contract () (Endpoint "SendAda" ()) Text TxStatus
       contract = do
@@ -70,10 +71,11 @@ testTxFoundAndConfirmed = do
 testStopWaitingByTimeout :: Assertion
 testStopWaitingByTimeout = do
   let initState =
-        def & contractEnv .~ contractEnv'
-      pabConf = def {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1}
+        def & contractEnv
+          %~ updatePabConfig
+            (\conf -> conf {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1})
+      pabConf = views contractEnv cePABConfig initState
       timeoutBlocks = fromIntegral . spBlocksTimeOut . pcTxStatusPolling $ pabConf
-      contractEnv' = def {cePABConfig = pabConf}
 
       contract :: Contract () (Endpoint "SendAda" ()) Text (Tip, TxStatus)
       contract = do

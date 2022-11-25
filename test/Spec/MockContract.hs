@@ -51,16 +51,18 @@ module Spec.MockContract (
   nonExistingTxId,
   theCollateralUtxo,
   theCollateralTxId,
+  testingNetwork,
+  updatePabConfig,
 ) where
 
-import BotPlutusInterface.CardanoCLI (unsafeSerialiseAddress)
-import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, UtxosAt, UtxosAtExcluding))
+import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, QueryEraHistory, QuerySystemStart, UtxosAt, UtxosAtExcluding, UtxosFromTxOutRefs))
 import BotPlutusInterface.CardanoNode.Query (toQueryError)
 
 import BotPlutusInterface.Collateral (withCollateralHandling)
 import BotPlutusInterface.Contract (handleContract)
 import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
 import BotPlutusInterface.Files qualified as Files
+import BotPlutusInterface.Helpers (unsafeSerialiseAddress)
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
 import BotPlutusInterface.Types (
   BudgetEstimationError,
@@ -68,6 +70,7 @@ import BotPlutusInterface.Types (
   CollateralVar (CollateralVar),
   ContractEnvironment (..),
   ContractState (ContractState, csActivity, csObservableState),
+  EstimationContext,
   LogContext,
   LogLevel (..),
   PABConfig (..),
@@ -76,10 +79,13 @@ import BotPlutusInterface.Types (
  )
 import Cardano.Api (
   AsType,
+  BabbageEra,
+  CtxUTxO,
   FileError (FileError, FileIOError),
   HasTextEnvelope,
   Key (VerificationKey, getVerificationKey),
-  NetworkId (Mainnet),
+  NetworkId (Testnet),
+  NetworkMagic (NetworkMagic),
   PaymentKey,
   PlutusScriptVersion (PlutusScriptV2),
   Script (PlutusScript),
@@ -87,14 +93,17 @@ import Cardano.Api (
   TextEnvelope (TextEnvelope, teDescription, teRawCBOR, teType),
   TextEnvelopeDescr,
   TextEnvelopeError (TextEnvelopeAesonDecodeError),
+  TxOut,
   deserialiseFromTextEnvelope,
   getVerificationKey,
   serialiseToTextEnvelope,
+  toCtxUTxOTxOut,
   toScriptInAnyLang,
  )
 import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
+import Cardano.Slotting.Time (SystemStart (..))
 import Codec.Serialise (serialise)
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
@@ -105,7 +114,7 @@ import Control.Monad.Freer (Eff, reinterpret2, run)
 import Control.Monad.Freer.Error (Error, runError, throwError)
 import Control.Monad.Freer.Extras.Pagination (pageOf)
 import Control.Monad.Freer.State (State, get, modify, runState)
-import Data.Aeson (Result (Success), ToJSON)
+import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
 import Data.Aeson.Extras (encodeByteString)
 import Data.Bool (bool)
@@ -130,26 +139,30 @@ import Data.Tuple.Extra (first)
 import Data.UUID qualified as UUID
 import GHC.IO.Exception (IOErrorType (NoSuchThing), IOException (IOError))
 import Ledger (
+  DatumFromQuery (DatumInBody, DatumInline, DatumUnknown),
   Extended (NegInf, PosInf),
   Interval (Interval),
   LowerBound (LowerBound),
   POSIXTimeRange,
   SlotRange,
   UpperBound (UpperBound),
+  emulatorEraHistory,
   lowerBound,
   strictUpperBound,
  )
 import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Crypto (PubKey, PubKeyHash)
-import Ledger.Scripts (Datum (Datum), DatumHash (DatumHash))
+import Ledger.Scripts (DatumHash (DatumHash))
 import Ledger.Slot (Slot (getSlot))
+import Ledger.TimeSlot (posixTimeToUTCTime)
 import Ledger.Tx (
   ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
   TxId (TxId),
   TxOutRef (TxOutRef),
   ciTxOutAddress,
   ciTxOutValue,
+  getTxOut,
  )
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
@@ -175,6 +188,9 @@ import System.IO.Unsafe (unsafePerformIO)
 import Text.Read (readMaybe)
 import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
+
+testingNetwork :: NetworkId
+testingNetwork = Testnet $ NetworkMagic 1097911063
 
 currencySymbol1 :: Ledger.CurrencySymbol
 currencySymbol1 = "363d3944282b3d16b239235a112c0f6e2f1195de5067f61c0dfc0f5f"
@@ -215,9 +231,9 @@ pkh2' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh2
 pkh3' = encodeByteString $ fromBuiltin $ Ledger.getPubKeyHash pkh3
 
 addr1, addr2, addr3 :: Text
-addr1 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh1 Nothing)
-addr2 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh2 Nothing)
-addr3 = unsafeSerialiseAddress Mainnet (Ledger.pubKeyHashAddress paymentPkh3 Nothing)
+addr1 = unsafeSerialiseAddress testingNetwork (Ledger.pubKeyHashAddress paymentPkh1 Nothing)
+addr2 = unsafeSerialiseAddress testingNetwork (Ledger.pubKeyHashAddress paymentPkh2 Nothing)
+addr3 = unsafeSerialiseAddress testingNetwork (Ledger.pubKeyHashAddress paymentPkh3 Nothing)
 
 nonExistingTxId :: TxId
 nonExistingTxId = TxId "ff"
@@ -304,7 +320,7 @@ instance Monoid w => Default (MockContractState w) where
 instance Monoid w => Default (ContractEnvironment w) where
   def =
     ContractEnvironment
-      { cePABConfig = def {pcNetwork = Mainnet, pcOwnPubKeyHash = pkh1}
+      { cePABConfig = def {pcNetwork = testingNetwork, pcOwnPubKeyHash = pkh1, pcProtocolParams = Just def}
       , ceContractInstanceId = ContractInstanceId UUID.nil
       , ceContractState = unsafePerformIO $ newTVarIO def
       , ceContractStats = unsafePerformIO $ newTVarIO mempty
@@ -316,6 +332,9 @@ instance Monoid w => Default (ContractState w) where
   def = ContractState {csActivity = Active, csObservableState = mempty}
 
 type MockContract w a = Eff '[Error Text, State (MockContractState w)] a
+
+updatePabConfig :: forall (w :: Type). (PABConfig -> PABConfig) -> ContractEnvironment w -> ContractEnvironment w
+updatePabConfig f env = env {cePABConfig = f $ cePABConfig env}
 
 {- | Run the contract monad in a pure mock runner, and return a tuple of the contract result and
  the contract state
@@ -377,11 +396,12 @@ runPABEffectPure initState req =
         mCollateral
         mockQueryChainIndex
         query
-    go (EstimateBudget file) = mockExBudget file
+    go (EstimateBudget eCtx file) = mockExBudget eCtx file
     go (SaveBudget txId budget) = mockSaveBudget txId budget
     go (SlotToPOSIXTime _) = pure $ Right 1506203091
     go (POSIXTimeToSlot _) = pure $ Right 1
     go (POSIXTimeRangeToSlotRange ptr) = mockSlotRange ptr
+    go (POSIXTimeToSlotLength _) = pure $ Right 1_000
     go GetInMemCollateral = _collateralUtxo <$> get @(MockContractState w)
     go (SetInMemCollateral collateral) = modify @(MockContractState w) $ set collateralUtxo (Just collateral)
     go (QueryNode query) = mockQueryNode query
@@ -444,6 +464,7 @@ mockCallCommand ShellArgs {cmdName, cmdArgs, cmdOutParser} = do
     ("cardano-cli", "transaction" : "submit" : _) ->
       pure $ Right $ cmdOutParser ""
     ("mv", _) -> pure $ Right $ cmdOutParser ""
+    ("cp", _) -> pure $ Right $ cmdOutParser ""
     (unsupportedCmd, unsupportedArgs) ->
       throwError @Text
         ("Unsupported command: " <> Text.intercalate " " (unsupportedCmd : unsupportedArgs))
@@ -510,10 +531,12 @@ txOutToDatum :: ChainIndexTxOut -> Text
 txOutToDatum =
   \case
     PublicKeyChainIndexTxOut _ _ Nothing _ -> "TxOutDatumNone"
-    PublicKeyChainIndexTxOut _ _ (Just (dh, Nothing)) _ -> printDatumHash dh
-    PublicKeyChainIndexTxOut _ _ (Just (_, Just (Datum d))) _ -> printDatum d
-    ScriptChainIndexTxOut _ _ (dh, Nothing) _ _ -> printDatumHash dh
-    ScriptChainIndexTxOut _ _ (_, Just (Datum d)) _ _ -> printDatum d
+    PublicKeyChainIndexTxOut _ _ (Just (dh, DatumUnknown)) _ -> printDatumHash dh
+    PublicKeyChainIndexTxOut _ _ (Just (_, DatumInline d)) _ -> printDatum d
+    PublicKeyChainIndexTxOut _ _ (Just (_, DatumInBody d)) _ -> printDatum d
+    ScriptChainIndexTxOut _ _ (dh, DatumUnknown) _ _ -> printDatumHash dh
+    ScriptChainIndexTxOut _ _ (_, DatumInline d) _ _ -> printDatum d
+    ScriptChainIndexTxOut _ _ (_, DatumInBody d) _ _ -> printDatum d
   where
     printDatumHash (DatumHash dh) =
       "TxDatumHash ScriptDataInBabbageEra " <> encodeByteString (fromBuiltin dh)
@@ -620,6 +643,9 @@ mockUploadDir _ = pure ()
 
 mockQueryChainIndex :: forall (w :: Type). ChainIndexQuery -> MockContract w ChainIndexResponse
 mockQueryChainIndex = \case
+  DatumsAtAddress _ _ ->
+    -- pure $ DatumHashResponse Nothing
+    throwError @Text "DatumAtAddress is unimplemented"
   DatumFromHash _ ->
     -- pure $ DatumHashResponse Nothing
     throwError @Text "DatumFromHash is unimplemented"
@@ -726,17 +752,19 @@ convertCiTxOut (PublicKeyChainIndexTxOut addr val dat maybeRefSc) =
   CIT.ChainIndexTxOut addr val (convertMaybeDatum dat) (convertRefScript maybeRefSc)
 convertCiTxOut (ScriptChainIndexTxOut addr val eitherDatum maybeRefSc _) =
   let datum = case eitherDatum of
-        (dh, Nothing) -> OutputDatumHash dh
-        (_, Just d) -> OutputDatum d
+        (dh, DatumUnknown) -> OutputDatumHash dh
+        (_, DatumInline d) -> OutputDatum d
+        (_, DatumInBody d) -> OutputDatum d
    in CIT.ChainIndexTxOut addr val datum (convertRefScript maybeRefSc)
 
-convertMaybeDatum :: Maybe (DatumHash, Maybe Datum) -> OutputDatum
+convertMaybeDatum :: Maybe (DatumHash, DatumFromQuery) -> OutputDatum
 convertMaybeDatum = \case
   Nothing -> NoOutputDatum
-  Just (dh, Nothing) -> OutputDatumHash dh
-  Just (_dh, Just d) -> OutputDatum d
+  Just (dh, DatumUnknown) -> OutputDatumHash dh
+  Just (_dh, DatumInline d) -> OutputDatum d
+  Just (_dh, DatumInBody d) -> OutputDatum d
 
-convertRefScript :: Maybe V1.Script -> ReferenceScript
+convertRefScript :: Maybe (Tx.Versioned V1.Script) -> ReferenceScript
 convertRefScript =
   \case
     Nothing -> ReferenceScriptNone
@@ -750,33 +778,15 @@ convertRefScript =
         . serialise
         $ v
 
+-- Stubbed to return no budgets, as given optimisations, its not possible to know which inputs are used from txfile
+-- Ideal solution is to store a mapping from txfile to boolean of "uses scripts" written in cardano-cli transaction build-raw
 mockExBudget ::
   forall (w :: Type).
+  EstimationContext ->
   TxFile ->
   MockContract w (Either BudgetEstimationError TxBudget)
-mockExBudget _ = pure . Right $ TxBudget inBudgets policyBudgets
-  where
-    inBudgets = Map.singleton (TxOutRef txId 1) someBudget
-    policyBudgets = Map.singleton policy someBudget
+mockExBudget _ _ = pure . Right $ TxBudget Map.empty Map.empty
 
-    someBudget = Ledger.ExBudget (Ledger.ExCPU 500000) (Ledger.ExMemory 2000)
-
-    txId =
-      let txId' =
-            JSON.fromJSON $
-              JSON.object
-                ["getTxId" JSON..= ("e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" :: Text)]
-       in case txId' of
-            Success tid -> tid
-            _ -> error "Could not parse TxId"
-
-    policy =
-      let policy' =
-            JSON.fromJSON . JSON.String $
-              "648823ffdad1610b4162f4dbc87bd47f6f9cf45d772ddef661eff198"
-       in case policy' of
-            Success p -> p
-            _ -> error "Could not parse MintingPolicyHash"
 dummyTxRawFile :: TextEnvelope
 dummyTxRawFile =
   TextEnvelope
@@ -806,6 +816,10 @@ mockSlotRange =
   where
     slotRange = Interval (lowerBound 47577202) (strictUpperBound 50255602)
 
+-- Pure as we know our own mock values are safe
+fromCardanoTxOutUtxo :: ChainIndexTxOut -> TxOut CtxUTxO BabbageEra
+fromCardanoTxOutUtxo txOut = toCtxUTxOTxOut . getTxOut . fromRight undefined $ Tx.toTxOut testingNetwork txOut
+
 mockQueryNode ::
   forall (w :: Type) (a :: Type).
   NodeQuery a ->
@@ -813,13 +827,16 @@ mockQueryNode ::
 mockQueryNode = \case
   UtxosAt _addr -> do
     state <- get @(MockContractState w)
-    return $ Right $ Map.fromList (state ^. utxos)
+    return . Right . fmap fromCardanoTxOutUtxo . Map.fromList $ state ^. utxos
   UtxosAtExcluding _addr excluded -> do
     state <- get @(MockContractState w)
     let filterNotExcluded = filter (not . (`Set.member` excluded) . fst)
-    return . Right . Map.fromList . filterNotExcluded $ (state ^. utxos)
+    return . Right . fmap fromCardanoTxOutUtxo . Map.fromList . filterNotExcluded $ state ^. utxos
   PParams -> do
     state <- get @(MockContractState w)
     case pcProtocolParams $ cePABConfig $ _contractEnv state of
       Nothing -> return $ Left $ toQueryError @String "Not able to get protocol parameters."
       (Just pparams) -> return $ Right pparams
+  UtxosFromTxOutRefs _txOutRefs -> pure $ Right Map.empty
+  QuerySystemStart -> pure $ Right $ SystemStart $ posixTimeToUTCTime 0
+  QueryEraHistory -> pure $ Right $ emulatorEraHistory def

@@ -3,25 +3,41 @@
 {- | Module provides the way of building ".raw" transactions with execution budget
  estimated with `Cardano.Api` tools.
 -}
-module BotPlutusInterface.BodyBuilder (buildAndEstimateBudget) where
+module BotPlutusInterface.BodyBuilder (buildAndEstimateBudget, runInEstimationEffect) where
 
 import BotPlutusInterface.CardanoCLI qualified as CardanoCLI
-import BotPlutusInterface.Effects (PABEffect, estimateBudget)
+import BotPlutusInterface.Effects (PABEffect, estimateBudget, getEstimationContext)
 
-import BotPlutusInterface.Files (
-  DummyPrivKey,
-  txFilePath,
- )
-import BotPlutusInterface.Types (PABConfig, TxFile (Raw))
+import BotPlutusInterface.Files (txFilePath)
+import BotPlutusInterface.Types (EstimationContext, PABConfig, TxBudget, TxFile (Raw))
 import Control.Monad.Freer (Eff, Member)
-import Control.Monad.Trans.Either (firstEitherT, newEitherT, runEitherT)
+import Control.Monad.Freer.State (State, evalState, get)
+import Control.Monad.Trans.Either (EitherT, firstEitherT, mapEitherT, newEitherT)
 import Data.Kind (Type)
-import Data.Map (Map)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger (ExBudget, Tx, txId)
-import Ledger.Crypto (PubKeyHash)
+import Ledger (Tx (txInputs, txReferenceInputs), TxInput (txInputRef), txId)
 import Prelude
+
+textShow :: forall (a :: Type). Show a => a -> Text
+textShow = Text.pack . show
+
+{- | We pull out the context needed for estimation and CLI tx building into a state effect.
+  Getting this state is in itself effectful, and as such, we define this helper function that lifts a computation into the state we need,
+  handling the query and error logic for us
+  buildAndEstimateBudget, buildTx and balanceTxIOEstimationContext should all be run within this wrapper
+-}
+runInEstimationEffect ::
+  forall (w :: Type) (a :: Type) (e :: Type) (effs :: [Type -> Type]).
+  Member (PABEffect w) effs =>
+  Tx ->
+  (Text -> e) ->
+  EitherT e (Eff (State EstimationContext ': effs)) a ->
+  EitherT e (Eff effs) a
+runInEstimationEffect tx toErr comp = do
+  context <- firstEitherT (toErr . textShow) $ newEitherT $ getEstimationContext @w $ Set.fromList $ txInputRef <$> (txInputs tx <> txReferenceInputs tx)
+  mapEitherT (evalState context) comp
 
 {- | Build and save raw transaction (transaction body) with estimated execution budgets using `CardanoCLI`.
  It builds first transaction body with 0 budget for all spending inputs and minting policies,
@@ -30,27 +46,26 @@ import Prelude
 -}
 buildAndEstimateBudget ::
   forall (w :: Type) (effs :: [Type -> Type]).
-  Member (PABEffect w) effs =>
+  ( Member (PABEffect w) effs
+  , Member (State EstimationContext) effs
+  ) =>
   PABConfig ->
-  Map PubKeyHash DummyPrivKey ->
   Tx ->
-  Eff effs (Either Text ExBudget)
-buildAndEstimateBudget pabConf privKeys tx = runEitherT $ do
+  EitherT Text (Eff effs) TxBudget
+buildAndEstimateBudget pabConf tx =
   buildDraftTxBody
     >> estimateBudgetByDraftBody (Text.unpack $ txFilePath pabConf "raw" (txId tx))
     >>= buildBodyUsingEstimatedBudget
   where
-    buildDraftTxBody = newEitherT $ CardanoCLI.buildTx @w pabConf privKeys mempty tx
+    buildDraftTxBody = newEitherT $ CardanoCLI.buildTx @w pabConf mempty tx
 
     estimateBudgetByDraftBody path =
-      firstEitherT toText . newEitherT $ estimateBudget @w (Raw path)
+      firstEitherT textShow . newEitherT $ get >>= flip (estimateBudget @w) (Raw path)
 
-    buildBodyUsingEstimatedBudget exBudget =
-      newEitherT $
-        CardanoCLI.buildTx @w
-          pabConf
-          privKeys
-          exBudget
-          tx
-
-    toText = Text.pack . show
+    buildBodyUsingEstimatedBudget txBudget =
+      fmap (const txBudget) $
+        newEitherT $
+          CardanoCLI.buildTx @w
+            pabConf
+            txBudget
+            tx

@@ -1,10 +1,9 @@
 module Spec.BotPlutusInterface.ContractStats (tests) where
 
 import BotPlutusInterface.Types (
-  ContractEnvironment (cePABConfig),
   PABConfig (pcCollectStats, pcOwnPubKeyHash),
  )
-import Control.Lens ((&), (.~), (^.))
+import Control.Lens ((%~), (&), (.~), (^.))
 import Data.Default (def)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -25,6 +24,7 @@ import Spec.MockContract (
   pkhAddr1,
   runContractPure,
   statsUpdates,
+  updatePabConfig,
   utxos,
  )
 import Test.Tasty (TestTree, testGroup)
@@ -45,9 +45,9 @@ budgetSavingEnabled = do
       txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
       initState =
         def & utxos .~ [(txOutRef, txOut)]
-          & contractEnv .~ contractEnv'
-      pabConf = def {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1, pcCollectStats = True}
-      contractEnv' = def {cePABConfig = pabConf}
+          & contractEnv
+            %~ updatePabConfig
+              (\pabConf -> pabConf {pcOwnPubKeyHash = unPaymentPubKeyHash paymentPkh1, pcCollectStats = True})
 
       contract :: Contract () (Endpoint "SendAda" ()) Text CardanoTx
       contract = do
