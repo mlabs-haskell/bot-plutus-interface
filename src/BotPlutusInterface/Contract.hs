@@ -305,7 +305,7 @@ awaitTxStatusChange contractEnv txId = do
   printBpiLog @w (Debug [PABLog]) $ pretty $ "Awaiting status change for " ++ show txId
 
   let txStatusPolling = pcTxStatusPolling (cePABConfig contractEnv)
-      pollInterval = fromIntegral $ spInterval $ txStatusPolling
+      pollInterval = fromIntegral $ spInterval txStatusPolling
       pollTimeout = spBlocksTimeOut txStatusPolling
       cutOffBlock = checkStartedBlock + fromIntegral pollTimeout
 
@@ -440,7 +440,7 @@ writeBalancedTx contractEnv cardanoTx = do
               ]
             else ["Missing Signatories (pkh):" <+> pretty (Text.unwords (map pkhToText missingPubKeys))]
 
-    when ((pcCollectStats pabConf) && fullySignable) $
+    when (pcCollectStats pabConf && fullySignable) $
       lift $ saveBudget @w (Tx.txId tx') txBudget
 
     when (not (pcDryRun pabConf) && fullySignable) $ do
@@ -489,7 +489,7 @@ awaitSlot contractEnv s@(Slot n) = do
   tip <- CardanoCLI.queryTip @w $ cePABConfig contractEnv
   case tip of
     Right tip'
-      | n < (slot tip') -> pure $ Slot (slot tip')
+      | n < slot tip' -> pure $ Slot (slot tip')
     _ -> awaitSlot contractEnv s
 
 {- | Wait at least until the given time. Uses the awaitSlot under the hood, so the same constraints
@@ -611,7 +611,7 @@ makeCollateral ::
 makeCollateral cEnv = runEitherT $ do
   lift $ printBpiLog @w (Notice [CollateralLog]) "Making collateral"
 
-  let pabConf = (cePABConfig cEnv)
+  let pabConf = cePABConfig cEnv
 
   -- TODO: Enforce existence of pparams at the beginning
   pparams <- maybe (error "Must have ProtocolParameters in PABConfig") return (pcProtocolParams pabConf)

@@ -9,10 +9,10 @@ import Control.Lens (views, (%~), (&), (.~), (^.))
 import Data.Default (def)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Ledger (ChainIndexTxOut (PublicKeyChainIndexTxOut), PaymentPubKeyHash (unPaymentPubKeyHash), getCardanoTxId)
+import Ledger (PaymentPubKeyHash (unPaymentPubKeyHash), getCardanoTxId)
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
-import Ledger.Tx (TxOutRef (TxOutRef))
+import Ledger.Tx (DecoratedTxOut (PublicKeyDecoratedTxOut), TxOutRef (TxOutRef))
 import Plutus.ChainIndex (RollbackState (Unknown), Tip (TipAtGenesis), TxStatus)
 import Plutus.ChainIndex.Types (Tip (Tip))
 import Plutus.Contract (
@@ -28,7 +28,7 @@ import Spec.MockContract (
   nonExistingTxId,
   paymentPkh1,
   paymentPkh2,
-  pkhAddr1,
+  pkh1,
   runContractPure,
   tip,
   updatePabConfig,
@@ -49,7 +49,7 @@ tests =
 testTxFoundAndConfirmed :: Assertion
 testTxFoundAndConfirmed = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState =
         def & utxos .~ [(txOutRef, txOut)]
           & contractEnv

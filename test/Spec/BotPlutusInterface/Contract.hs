@@ -31,7 +31,7 @@ import Ledger.Slot (Slot)
 import Ledger.Time (POSIXTime (POSIXTime))
 import Ledger.Tx (
   CardanoTx,
-  ChainIndexTxOut (PublicKeyChainIndexTxOut, ScriptChainIndexTxOut),
+  DecoratedTxOut (PublicKeyDecoratedTxOut, ScriptDecoratedTxOut),
   TxOutRef (TxOutRef),
  )
 import Ledger.Tx qualified as Tx
@@ -65,10 +65,10 @@ import Spec.MockContract (
   observableState,
   paymentPkh2,
   paymentPkh3,
+  pkh1,
   pkh1',
   pkh3,
   pkh3',
-  pkhAddr1,
   runContractPure,
   testingNetwork,
   theCollateralTxId,
@@ -112,7 +112,7 @@ toV1 = flip ScriptUtils.Versioned ScriptUtils.PlutusV1
 sendAda :: Assertion
 sendAda = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 13500000) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.lovelaceValueOf 13500000) Nothing Nothing
 
       -- We append the new utxo with the already present collateral utxo present at `pkhAddr1`.
       initState = def & utxos <>~ [(txOutRef, txOut)]
@@ -177,7 +177,7 @@ sendAda = do
 sendAdaNoChange :: Assertion
 sendAdaNoChange = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -207,17 +207,18 @@ sendAdaNoChange = do
 sendAdaStaking :: Assertion
 sendAdaStaking = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
       stakePkh3 = Address.StakePubKeyHash pkh3
-      addr2Staking = unsafeSerialiseAddress testingNetwork (Ledger.pubKeyHashAddress paymentPkh2 (Just stakePkh3))
+      stakeCred3 = Address.stakePubKeyHashCredential stakePkh3
+      addr2Staking = unsafeSerialiseAddress testingNetwork (Ledger.pubKeyHashAddress paymentPkh2 (Just stakeCred3))
 
       contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx
       contract = do
         let constraints =
-              Constraints.mustPayToPubKeyAddress paymentPkh2 stakePkh3 (Ada.lovelaceValueOf 1000)
+              Constraints.mustPayToPubKeyAddress paymentPkh2 stakeCred3 (Ada.lovelaceValueOf 1000)
         Plutus.Contract.submitTx constraints
 
   assertContract contract initState $ \state ->
@@ -272,7 +273,7 @@ sendAdaStaking = do
 multisigSupport :: Assertion
 multisigSupport = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -315,7 +316,7 @@ multisigSupport = do
 withoutSigning :: Assertion
 withoutSigning = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState =
         def
           & utxos <>~ [(txOutRef, txOut)]
@@ -357,14 +358,15 @@ sendTokens :: Assertion
 sendTokens = do
   let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
       txOut1 =
-        PublicKeyChainIndexTxOut
-          pkhAddr1
+        PublicKeyDecoratedTxOut
+          pkh1
+          Nothing
           (Ada.adaValueOf 50 <> Value.singleton currencySymbol1 "testToken" 100)
           Nothing
           Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
-        PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+        PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef1
 
@@ -400,10 +402,10 @@ sendTokensWithoutName :: Assertion
 sendTokensWithoutName = do
   let txOutRef1 = TxOutRef "08b27dbdcff9ab3b432638536ec7eab36c8a2e457703fb1b559dd754032ef431" 0
       txOut1 =
-        PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50 <> Value.singleton currencySymbol1 "" 100) Nothing Nothing
+        PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50 <> Value.singleton currencySymbol1 "" 100) Nothing Nothing
       txOutRef2 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut2 =
-        PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+        PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
       inTxId1 = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef1
 
@@ -438,7 +440,7 @@ sendTokensWithoutName = do
 mintTokens :: Assertion
 mintTokens = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
       collateralTxId = encodeByteString $ fromBuiltin $ Tx.getTxId theCollateralTxId
@@ -517,7 +519,7 @@ mintTokens = do
 spendToValidator :: Assertion
 spendToValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 5) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 5) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -602,15 +604,16 @@ spendToValidator = do
 redeemFromValidator :: Assertion
 redeemFromValidator = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       txOutRef' = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 1
       txOut' =
-        ScriptChainIndexTxOut
-          valAddr
+        ScriptDecoratedTxOut
+          valHash
+          Nothing
           (Ada.lovelaceValueOf 1250)
           (datumHash, DatumUnknown)
           Nothing
-          (validatorHash validatorVersioned, Just validatorVersioned)
+          (Just validatorVersioned)
       initState = def & utxos <>~ [(txOutRef, txOut), (txOutRef', txOut')]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
       collateralTxId = encodeByteString $ fromBuiltin $ Tx.getTxId theCollateralTxId
@@ -712,7 +715,7 @@ redeemFromValidator = do
 multiTx :: Assertion
 multiTx = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
 
       contract :: Plutus.Contract.Contract () (Plutus.Contract.Endpoint "SendAda" ()) Text [CardanoTx]
@@ -741,7 +744,7 @@ multiTx = do
 withValidRange :: Assertion
 withValidRange = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
       inTxId = encodeByteString $ fromBuiltin $ Tx.getTxId $ Tx.txOutRefId txOutRef
 
@@ -787,7 +790,7 @@ withValidRange = do
 useWriter :: Assertion
 useWriter = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
 
       contract :: Plutus.Contract.Contract (Last Text) (Plutus.Contract.Endpoint "SendAda" ()) Text CardanoTx

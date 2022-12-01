@@ -207,7 +207,7 @@ handleContractActivityChange contractInstanceID prevState currentState =
   where
     activityChange =
       if (csActivity <$> prevState) /= Just (csActivity currentState)
-        then case (csActivity currentState) of
+        then case csActivity currentState of
           Done maybeError -> do
             Just $ InstanceUpdate contractInstanceID $ ContractFinished maybeError
           _ -> Nothing

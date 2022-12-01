@@ -12,7 +12,7 @@ import Ledger qualified
 import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Scripts qualified as Scripts
-import Ledger.Tx (CardanoTx, ChainIndexTxOut (PublicKeyChainIndexTxOut), TxOutRef (TxOutRef))
+import Ledger.Tx (CardanoTx, DecoratedTxOut (PublicKeyDecoratedTxOut), TxOutRef (TxOutRef))
 import Ledger.Tx qualified as Tx
 import Ledger.Tx qualified as TxId
 import Ledger.Value qualified as Value
@@ -36,8 +36,8 @@ import Spec.MockContract (
   collateralUtxo,
   contractEnv,
   paymentPkh2,
+  pkh1,
   pkh1',
-  pkhAddr1,
   runContractPure,
   theCollateralUtxo,
   utxos,
@@ -88,9 +88,9 @@ testTxUsesCollateralCorrectly :: Assertion
 testTxUsesCollateralCorrectly = do
   let -- txOutRef1 should be picked up and used as collateral UTxO
       txOutRef1 = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut1 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 10_000_000) Nothing Nothing
+      txOut1 = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.lovelaceValueOf 10_000_000) Nothing Nothing
       txOutRef2 = TxOutRef "d406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e4" 0
-      txOut2 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 90_000_000) Nothing Nothing
+      txOut2 = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.lovelaceValueOf 90_000_000) Nothing Nothing
       cenv' = def {ceCollateral = CollateralVar $ unsafePerformIO $ newTVarIO Nothing}
       initState =
         def & utxos .~ [(txOutRef1, txOut1), (txOutRef2, txOut2)]
@@ -132,7 +132,7 @@ testTxUsesCollateralCorrectly = do
 testTxCreatesCollateralCorrectly :: Assertion
 testTxCreatesCollateralCorrectly = do
   let txOutRef1 = TxOutRef "d406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e4" 0
-      txOut1 = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 90_000_000) Nothing Nothing
+      txOut1 = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.lovelaceValueOf 90_000_000) Nothing Nothing
       cenv' = def {ceCollateral = CollateralVar $ unsafePerformIO $ newTVarIO Nothing}
       initState = def & utxos .~ [(txOutRef1, txOut1)] & contractEnv .~ cenv' & collateralUtxo .~ Nothing
 
@@ -183,17 +183,17 @@ mintingPolicy =
     $$(PlutusTx.compile [||(\_ _ -> ())||])
 
 type ContractResult =
-  ( Maybe TxId.ChainIndexTxOut
-  , Maybe TxId.ChainIndexTxOut
+  ( Maybe DecoratedTxOut
+  , Maybe DecoratedTxOut
   , IsUtxoResponse
   , UtxosResponse
   , UtxosResponse
-  , Map TxOutRef TxId.ChainIndexTxOut
+  , Map TxOutRef DecoratedTxOut
   )
 testCollateralFiltering :: Assertion
 testCollateralFiltering = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.adaValueOf 50) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.adaValueOf 50) Nothing Nothing
       initState = def & utxos <>~ [(txOutRef, txOut)]
 
       collateralOref = collateralTxOutRef theCollateralUtxo
@@ -260,7 +260,7 @@ testCollateralFiltering = do
     assertNotFoundIn what collateralOref outs =
       assertBool (what <> " should not contain collateral") (isNothing $ find (== collateralOref) outs)
 
-    assertCollateralInDistribution :: TxOutRef -> [(TxOutRef, Ledger.Tx.ChainIndexTxOut)] -> Assertion
+    assertCollateralInDistribution :: TxOutRef -> [(TxOutRef, DecoratedTxOut)] -> Assertion
     assertCollateralInDistribution collateralOref utxs =
       let collateral = lookup collateralOref utxs
        in if isJust collateral

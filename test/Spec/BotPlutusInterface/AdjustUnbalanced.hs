@@ -4,12 +4,13 @@ import BotPlutusInterface.Types (
   ContractEnvironment (cePABConfig),
   PABConfig (pcNetwork, pcOwnPubKeyHash, pcProtocolParams),
  )
+import Cardano.Api qualified as CApi
 import Cardano.Prelude (note)
 import Control.Lens ((%~), (&), (.~), (^.))
 import Data.Default (def)
 import Data.Text (Text, pack)
 import Ledger (
-  ChainIndexTxOut (PublicKeyChainIndexTxOut),
+  DecoratedTxOut (PublicKeyDecoratedTxOut),
   Params (Params),
   PaymentPubKeyHash (unPaymentPubKeyHash),
   TxOut (..),
@@ -33,7 +34,7 @@ import Spec.MockContract (
   paymentPkh1,
   paymentPkh2,
   paymentPkh3,
-  pkhAddr1,
+  pkh1,
   runContractPure,
   updatePabConfig,
   utxos,
@@ -53,7 +54,7 @@ tests = testCase "Adjusting unbalanced transaction" testOutsGetAdjusted
 testOutsGetAdjusted :: Assertion
 testOutsGetAdjusted = do
   let txOutRef = TxOutRef "e406b0cf676fc2b1a9edb0617f259ad025c20ea6f0333820aa7cef1bfe7302e5" 0
-      txOut = PublicKeyChainIndexTxOut pkhAddr1 (Ada.lovelaceValueOf 1350) Nothing Nothing
+      txOut = PublicKeyDecoratedTxOut pkh1 Nothing (Ada.lovelaceValueOf 1350) Nothing Nothing
       initState =
         def & utxos .~ [(txOutRef, txOut)]
           & contractEnv
@@ -71,11 +72,12 @@ testOutsGetAdjusted = do
       contract = do
         pparams <- note "Must have ProtocolParams set in PABConfig" $ pcProtocolParams pabConf
 
-        let constraints = foldMap toPayConstraint [shouldBeAdjusted, shouldNotBeAdjusted]
+        let pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage pparams
+            constraints = foldMap toPayConstraint [shouldBeAdjusted, shouldNotBeAdjusted]
         utx <-
           either (throwError . pack . show) pure $
             Constraints.mkTxWithParams @Void
-              (Params def pparams (pcNetwork pabConf))
+              (Params def pparamsInEra (pcNetwork pabConf))
               mempty
               constraints
         adjustedUtx <- adjustUnbalancedTx utx

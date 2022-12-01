@@ -13,6 +13,7 @@ import BotPlutusInterface.Types (
   PABConfig (pcNetwork, pcOwnPubKeyHash, pcProtocolParams),
  )
 import Cardano.Api (AddressInEra, BabbageEra)
+import Cardano.Api qualified as CApi
 import Control.Lens (views, (%~), (&), (.~), (^.))
 import Control.Monad.Trans.Either (runEitherT)
 import Data.Default (Default (def))
@@ -32,13 +33,14 @@ import Ledger.Constraints.OffChain qualified as OffChain
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
-  ChainIndexTxOut (..),
   DatumFromQuery (DatumInline),
+  DecoratedTxOut (..),
   Tx (..),
   TxInput (..),
   TxInputType (..),
   TxOut (..),
   TxOutRef (..),
+  decoratedTxOutValue,
  )
 import Ledger.Value qualified as Value
 
@@ -55,7 +57,6 @@ import Spec.MockContract (
   currencySymbol1,
   paymentPkh3,
   pkh3,
-  pkhAddr3,
   runPABEffectPure,
   testingNetwork,
   updatePabConfig,
@@ -141,7 +142,7 @@ lovelaceInValue = acValueOf (Value.assetClass Api.adaSymbol Api.adaToken)
 tokenAsset :: Value.AssetClass
 tokenAsset = Value.assetClass currencySymbol1 "Token"
 
-unsafeToTxOut :: ChainIndexTxOut -> TxOut
+unsafeToTxOut :: DecoratedTxOut -> TxOut
 unsafeToTxOut = fromRight undefined . Ledger.toTxOut testingNetwork
 
 addUtxosForFees :: Assertion
@@ -192,16 +193,18 @@ addUtxosForChange = do
 dontAddChangeToDatum :: Assertion
 dontAddChangeToDatum = do
   let scrTxOut =
-        ScriptChainIndexTxOut
-          valAddr
+        ScriptDecoratedTxOut
+          valHash
+          Nothing
           scrValue
           (toHashAndDatum scrDatum)
           Nothing
           (toHashAndValidator validator)
       -- scrTxOut = Ledger.toTxOut scrTxOut'
       usrTxOut =
-        PublicKeyChainIndexTxOut
-          pkhAddr3
+        PublicKeyDecoratedTxOut
+          pkh3
+          Nothing
           (Ada.lovelaceValueOf 1_001_000)
           Nothing
           Nothing
@@ -235,7 +238,6 @@ dontAddChangeToDatum = do
 
       scrLkups =
         Constraints.unspentOutputs (Map.fromList [(txOutRef6, scrTxOut), (txOutRef7, usrTxOut)])
-          <> Constraints.ownPaymentPubKeyHash paymentPkh3
           <> Constraints.plutusV1OtherScript validator
 
       payToScriptValue = Ada.lovelaceValueOf 1_500_000
@@ -248,9 +250,11 @@ dontAddChangeToDatum = do
           <> Constraints.mustSpendPubKeyOutput txOutRef7
 
   pparams <- maybe (assertFailure "Must have ProtocolParams set in PABConfig") return $ pcProtocolParams pabConf
-  let eunbalancedTx =
+
+  let pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage pparams
+      eunbalancedTx =
         Constraints.mkTxWithParams @Void
-          (Params def pparams (pcNetwork pabConf))
+          (Params def pparamsInEra (pcNetwork pabConf))
           scrLkups
           txConsts
 
@@ -258,7 +262,7 @@ dontAddChangeToDatum = do
   let (eRslt, _finalState) = runPABEffectPure initState (runEitherT $ balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
   eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> show txt)
   trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> show txt)
-  let scrTxOut'' = scrTxOut & Ledger.ciTxOutValue .~ payToScriptValue
+  let scrTxOut'' = scrTxOut & decoratedTxOutValue .~ payToScriptValue
       scrTxOutExpected = unsafeToTxOut scrTxOut''
       isScrUtxo :: TxOut -> Bool
       isScrUtxo utxo = Ledger.txOutAddress utxo == Ledger.txOutAddress scrTxOutExpected
@@ -281,8 +285,9 @@ dontAddChangeToDatum = do
 dontAddChangeToDatum2 :: Assertion
 dontAddChangeToDatum2 = do
   let scrTxOut =
-        ScriptChainIndexTxOut
-          valAddr
+        ScriptDecoratedTxOut
+          valHash
+          Nothing
           (scrValue <> Ada.lovelaceValueOf 1_500_000)
           (toHashAndDatum scrDatum)
           Nothing
@@ -311,7 +316,6 @@ dontAddChangeToDatum2 = do
 
       scrLkups =
         Constraints.unspentOutputs (Map.fromList [(txOutRef6, scrTxOut)])
-          <> Constraints.ownPaymentPubKeyHash paymentPkh3
           <> Constraints.plutusV1OtherScript validator
       txConsts =
         -- Pay the same datum to the script, but with LESS ada
@@ -323,9 +327,11 @@ dontAddChangeToDatum2 = do
           <> Constraints.mustSpendScriptOutput txOutRef6 Ledger.unitRedeemer
 
   pparams <- maybe (assertFailure "Must have ProtocolParams set in PABConfig") return $ pcProtocolParams pabConf
-  let eunbalancedTx =
+
+  let pparamsInEra = CApi.toLedgerPParams CApi.ShelleyBasedEraBabbage pparams
+      eunbalancedTx =
         Constraints.mkTxWithParams @Void
-          (Params def pparams (pcNetwork pabConf))
+          (Params def pparamsInEra (pcNetwork pabConf))
           scrLkups
           txConsts
 
@@ -333,7 +339,7 @@ dontAddChangeToDatum2 = do
   let (eRslt, _finalState) = runPABEffectPure initState (runEitherT $ balanceTxIO @() @'[PABEffect ()] pabConf pkh3 unbalancedTx)
   eRslt' <- liftAssertFailure eRslt (\txt -> "PAB effect error: " <> show txt)
   trx <- liftAssertFailure eRslt' (\txt -> "Balancing error: " <> show txt)
-  let scrTxOut'' = scrTxOut & Ledger.ciTxOutValue .~ payToScrValue
+  let scrTxOut'' = scrTxOut & decoratedTxOutValue .~ payToScrValue
       scrTxOutExpected = unsafeToTxOut scrTxOut''
       isScrUtxo :: TxOut -> Bool
       isScrUtxo utxo = Ledger.txOutAddress utxo == Ledger.txOutAddress scrTxOutExpected
@@ -387,8 +393,8 @@ liftAssertFailure (Right rslt) _ = return rslt
 toHashAndDatum :: ScriptUtils.Datum -> (ScriptUtils.DatumHash, DatumFromQuery)
 toHashAndDatum d = (ScriptUtils.datumHash d, DatumInline d)
 
-toHashAndValidator :: Api.Validator -> (Api.ValidatorHash, Maybe (ScriptUtils.Versioned Api.Validator))
-toHashAndValidator (toV1 -> v) = (Scripts.validatorHash v, Just v)
+toHashAndValidator :: Api.Validator -> (Maybe (ScriptUtils.Versioned Api.Validator))
+toHashAndValidator (toV1 -> v) = Just v
 
 toV1 :: Api.Validator -> ScriptUtils.Versioned Api.Validator
 toV1 = flip ScriptUtils.Versioned ScriptUtils.PlutusV1

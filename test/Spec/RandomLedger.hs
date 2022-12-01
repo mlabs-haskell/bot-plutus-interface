@@ -23,8 +23,9 @@ import Ledger.Tx (TxOut (..), TxOutRef (..))
 import Ledger.Tx.CardanoAPI.Internal (toCardanoAddressInEra, toCardanoScriptDataHash, toCardanoValue)
 import Ledger.Value (AssetClass (AssetClass), CurrencySymbol, TokenName, Value)
 import Ledger.Value qualified as Value
+import Plutus.V1.Ledger.Address (Address (Address))
 import Spec.MockContract (testingNetwork)
-import Test.QuickCheck (Arbitrary (arbitrary), Gen, chooseInt, elements)
+import Test.QuickCheck (Arbitrary (arbitrary), Gen, chooseInt, elements, suchThat)
 import Prelude
 
 -- instances in Plutus.PAB.Instances do not enforce length constraints
@@ -59,7 +60,8 @@ randomValue sampleSize assetClasses = do
 
 randomTxOut :: Int -> Set AssetClass -> Gen TxOut
 randomTxOut sampleSize assetClasses = do
-  addr <- fromRight undefined . toCardanoAddressInEra testingNetwork <$> arbitrary
+  -- `toCardanoAddressInEra` does not support StakingPointers, and StakingHashes generator seems to return an invalid hash
+  addr <- fromRight undefined . toCardanoAddressInEra testingNetwork <$> arbitrary `suchThat` noStakingCred
   value <- fromRight undefined . toCardanoValue <$> randomValue sampleSize assetClasses
   datumHash <- fromRight undefined . toCardanoScriptDataHash <$> arbitrary
 
@@ -71,6 +73,9 @@ randomTxOut sampleSize assetClasses = do
           (CApi.TxOutDatumHash CApi.ScriptDataInBabbageEra datumHash)
           ReferenceScriptNone
     )
+  where
+    noStakingCred (Address _ Nothing) = True
+    noStakingCred _ = False
 
 randomTxOuts :: Int -> Int -> Set AssetClass -> Gen [TxOut]
 randomTxOuts numTxOuts sampleSize =

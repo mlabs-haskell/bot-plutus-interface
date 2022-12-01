@@ -166,13 +166,13 @@ handlePABEffect contractEnv@ContractEnvironment {cePABConfig} =
     ( \case
         CallCommand shellArgs -> do
           print (cmdName shellArgs, cmdArgs shellArgs)
-          case (pcCliLocation cePABConfig) of
+          case pcCliLocation cePABConfig of
             Local -> callLocalCommand shellArgs
             Remote ipAddr -> callRemoteCommand ipAddr shellArgs
         CreateDirectoryIfMissing createParents filePath ->
           Directory.createDirectoryIfMissing createParents filePath
         CreateDirectoryIfMissingCLI createParents filePath ->
-          case (pcCliLocation cePABConfig) of
+          case pcCliLocation cePABConfig of
             Local -> Directory.createDirectoryIfMissing createParents filePath
             Remote ipAddr -> createDirectoryIfMissingRemote ipAddr createParents filePath
         PrintLog logCtx logLevel msg -> do
@@ -199,7 +199,7 @@ handlePABEffect contractEnv@ContractEnvironment {cePABConfig} =
           CApi.writeFileTextEnvelope filepath envelopeDescr contents
         ListDirectory filepath -> Directory.listDirectory filepath
         UploadDir dir ->
-          case (pcCliLocation cePABConfig) of
+          case pcCliLocation cePABConfig of
             Local -> pure ()
             Remote ipAddr ->
               void $ readProcess "scp" ["-r", Text.unpack dir, Text.unpack $ ipAddr <> ":$HOME"] ""

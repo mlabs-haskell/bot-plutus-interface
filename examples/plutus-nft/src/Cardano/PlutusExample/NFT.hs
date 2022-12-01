@@ -26,6 +26,7 @@ import Ledger (
   TxOutRef,
   ownCurrencySymbol,
   pubKeyHashAddress,
+  stakePubKeyHashCredential,
  )
 import Ledger.Address (StakePubKeyHash)
 import Ledger.Constraints as Constraints
@@ -111,7 +112,7 @@ mintNft MintParams {..} = do
             Hask.mconcat
               [ Constraints.mustMintValue val
               , Constraints.mustSpendPubKeyOutput oref
-              , Constraints.mustPayToPubKeyAddress mpPubKeyHash mpStakeHash val
+              , Constraints.mustPayToPubKeyAddress mpPubKeyHash (stakePubKeyHashCredential mpStakeHash) val
               ]
           tokenMetadata = NftMetadataToken mpName mpImage (Just "image/jpeg") mpDescription Hask.mempty Hask.mempty
           txMetadata = TxMetadata (Just $ NftMetadata $ Map.singleton cs $ Map.singleton mpTokenName tokenMetadata) Hask.mempty
