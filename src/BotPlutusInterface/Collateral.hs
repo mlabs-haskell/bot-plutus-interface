@@ -28,7 +28,7 @@ import Plutus.ChainIndex.Api (
   UtxosResponse (page),
  )
 import Plutus.Contract.Effects (
-  ChainIndexQuery (..),
+  ChainIndexQuery (TxOutFromRef, UnspentTxOutFromRef, UtxoSetMembership),
   ChainIndexResponse (
     TxOutRefResponse,
     TxoSetAtResponse,

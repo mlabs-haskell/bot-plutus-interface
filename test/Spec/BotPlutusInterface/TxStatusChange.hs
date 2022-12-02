@@ -16,7 +16,7 @@ import Ledger.Tx (DecoratedTxOut (PublicKeyDecoratedTxOut), TxOutRef (TxOutRef))
 import Plutus.ChainIndex (RollbackState (Unknown), Tip (TipAtGenesis), TxStatus)
 import Plutus.ChainIndex.Types (Tip (Tip))
 import Plutus.Contract (
-  Contract (..),
+  Contract,
   Endpoint,
   awaitTxStatusChange,
   getTip,

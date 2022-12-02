@@ -10,7 +10,7 @@ module PlutusConfig.Cardano.Api.Shelley (
   writeProtocolParametersJSON,
 ) where
 
-import Cardano.Api.Shelley (ProtocolParameters (..))
+import Cardano.Api.Shelley (ProtocolParameters)
 
 -- import Config (Section (Section), Value (List, Sections))
 -- import Config.Schema (

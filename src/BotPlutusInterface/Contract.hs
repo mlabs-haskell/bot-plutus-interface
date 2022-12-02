@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -12,7 +11,7 @@ import BotPlutusInterface.CardanoNode.Effects (NodeQuery (UtxosAt))
 import BotPlutusInterface.Collateral qualified as Collateral
 import BotPlutusInterface.Effects (
   PABEffect,
-  ShellArgs (..),
+  ShellArgs (ShellArgs, cmdArgs, cmdName, cmdOutParser),
   callCommand,
   createDirectoryIfMissing,
   getInMemCollateral,
@@ -37,20 +36,31 @@ import BotPlutusInterface.Files (DummyPrivKey (FromSKey, FromVKey))
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Types (
   CollateralUtxo (CollateralUtxo),
-  ContractEnvironment (..),
+  ContractEnvironment (ContractEnvironment, ceContractInstanceId, cePABConfig),
   LogLevel (Debug, Notice, Warn),
   LogType (CollateralLog, PABLog),
-  PABConfig (..),
+  PABConfig (
+    pcCollectStats,
+    pcDryRun,
+    pcNetwork,
+    pcOwnPubKeyHash,
+    pcOwnStakePubKeyHash,
+    pcProtocolParams,
+    pcScriptFileDir,
+    pcSigningKeyFileDir,
+    pcTipPollingInterval,
+    pcTxStatusPolling
+  ),
   Tip (block, slot),
-  TxStatusPolling (..),
+  TxStatusPolling (spBlocksTimeOut, spInterval),
   collateralValue,
   ownAddress,
   pcCollateralSize,
   pcOwnPubKeyHash,
  )
 import Cardano.Api (
-  AsType (..),
-  EraInMode (..),
+  AsType (AsBabbageEra, AsTxBody),
+  EraInMode (BabbageEraInCardanoMode),
   Tx (Tx),
   TxOut (TxOut),
   txOutValueToValue,
@@ -86,30 +96,65 @@ import Data.Vector qualified as V
 import Ledger (POSIXTime, Params (Params), getCardanoTxId)
 import Ledger qualified
 import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
-import Ledger.Constraints.OffChain (UnbalancedTx (..), tx)
+import Ledger.Constraints.OffChain (UnbalancedTx (UnbalancedCardanoTx, UnbalancedEmulatorTx), tx)
 import Ledger.Slot (Slot (Slot))
 import Ledger.TimeSlot (nominalDiffTimeToPOSIXTime)
 import Ledger.Tx (CardanoTx (CardanoApiTx, EmulatorTx), outputs)
 import Ledger.Tx qualified as Tx
 import Ledger.Tx.CardanoAPI.Internal (fromCardanoValue)
 import Plutus.ChainIndex.TxIdState (fromTx, transactionStatus)
-import Plutus.ChainIndex.Types (RollbackState (..), TxIdState, TxStatus)
-import Plutus.Contract.Checkpoint (Checkpoint (..))
+import Plutus.ChainIndex.Types (RollbackState (Unknown), TxIdState, TxStatus)
+import Plutus.Contract.Checkpoint (Checkpoint (AllocateKey, DoCheckpoint, Retrieve, Store))
 import Plutus.Contract.Effects (
-  BalanceTxResponse (..),
-  ChainIndexQuery (..),
-  PABReq (..),
-  PABResp (..),
-  WriteBalancedTxResponse (..),
+  BalanceTxResponse (BalanceTxFailed, BalanceTxSuccess),
+  ChainIndexQuery (TxFromTxId),
+  PABReq (
+    AdjustUnbalancedTxReq,
+    AwaitSlotReq,
+    AwaitTimeReq,
+    AwaitTxOutStatusChangeReq,
+    AwaitTxStatusChangeReq,
+    AwaitUtxoProducedReq,
+    AwaitUtxoSpentReq,
+    BalanceTxReq,
+    ChainIndexQueryReq,
+    CurrentChainIndexSlotReq,
+    CurrentNodeClientSlotReq,
+    CurrentNodeClientTimeRangeReq,
+    CurrentTimeReq,
+    ExposeEndpointReq,
+    GetParamsReq,
+    OwnAddressesReq,
+    OwnContractInstanceIdReq,
+    PosixTimeRangeToContainedSlotRangeReq,
+    WriteBalancedTxReq,
+    YieldUnbalancedTxReq
+  ),
+  PABResp (
+    AdjustUnbalancedTxResp,
+    AwaitSlotResp,
+    AwaitTimeResp,
+    AwaitTxStatusChangeResp,
+    BalanceTxResp,
+    ChainIndexQueryResp,
+    CurrentNodeClientSlotResp,
+    CurrentNodeClientTimeRangeResp,
+    CurrentTimeResp,
+    GetParamsResp,
+    OwnAddressesResp,
+    OwnContractInstanceIdResp,
+    PosixTimeRangeToContainedSlotRangeResp,
+    WriteBalancedTxResp
+  ),
+  WriteBalancedTxResponse (WriteBalancedTxFailed, WriteBalancedTxSuccess),
   _TxIdResponse,
  )
-import Plutus.Contract.Resumable (Resumable (..))
-import Plutus.Contract.Types (Contract (..), ContractEffs)
+import Plutus.Contract.Resumable (Resumable (RRequest, RSelect, RZero))
+import Plutus.Contract.Types (Contract (Contract), ContractEffs)
 import PlutusTx.Builtins (fromBuiltin)
 import Prettyprinter (Pretty (pretty), viaShow, (<+>))
 import Prettyprinter qualified as PP
 import Wallet.API qualified as WAPI
-import Wallet.Emulator.Error (WalletAPIError (..))
 import Prelude
 
 runContract ::
@@ -366,7 +411,7 @@ balanceTx ::
   ContractEnvironment w ->
   UnbalancedTx ->
   Eff effs BalanceTxResponse
-balanceTx _ UnbalancedCardanoTx {} = pure $ BalanceTxFailed $ OtherError "CardanoBuildTx is not supported"
+balanceTx _ UnbalancedCardanoTx {} = pure $ BalanceTxFailed $ WAPI.OtherError "CardanoBuildTx is not supported"
 balanceTx contractEnv unbalancedTx@UnbalancedEmulatorTx {} = do
   let pabConf = cePABConfig contractEnv
 
@@ -399,7 +444,7 @@ writeBalancedTx contractEnv cardanoTx = do
   uploadDir @w (pcSigningKeyFileDir pabConf)
   createDirectoryIfMissing @w False (Text.unpack (pcScriptFileDir pabConf))
 
-  eitherT (pure . WriteBalancedTxFailed . OtherError) (pure . WriteBalancedTxSuccess . CardanoApiTx) $ do
+  eitherT (pure . WriteBalancedTxFailed . WAPI.OtherError) (pure . WriteBalancedTxSuccess . CardanoApiTx) $ do
     void $ firstEitherT (Text.pack . show) $ newEitherT $ Files.writeAll @w pabConf tx'
     lift $ uploadDir @w (pcScriptFileDir pabConf)
 

@@ -5,14 +5,14 @@ module BotPlutusInterface.ExBudget (
 
 import BotPlutusInterface.Helpers (traverseKeys)
 import BotPlutusInterface.Types (
-  BudgetEstimationError (..),
-  EstimationContext (..),
+  BudgetEstimationError (BudgetEstimationError, BudgetNotFound, ScriptFailure),
+  EstimationContext (EstimationContext, ecSystemContext),
   MintBudgets,
   PABConfig (pcBudgetMultiplier),
   SpendBudgets,
-  SystemContext (..),
+  SystemContext (SystemContext, scParams),
   TxBudget (TxBudget),
-  TxFile (..),
+  TxFile (Raw, Signed),
  )
 import Cardano.Api qualified as CApi
 import Cardano.Api.Shelley (ProtocolParameters (protocolParamMaxTxExUnits))

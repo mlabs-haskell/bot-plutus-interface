@@ -13,7 +13,7 @@ import Ledger (
   DecoratedTxOut (PublicKeyDecoratedTxOut),
   Params (Params),
   PaymentPubKeyHash (unPaymentPubKeyHash),
-  TxOut (..),
+  TxOut,
   Value,
   outputs,
   pubKeyHashAddress,
@@ -24,7 +24,7 @@ import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Tx (TxOutRef (TxOutRef))
 import Plutus.Contract (
-  Contract (..),
+  Contract,
   Endpoint,
   adjustUnbalancedTx,
   throwError,

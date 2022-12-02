@@ -8,7 +8,7 @@ import Config (Value (Text))
 import Config.Schema (HasSpec (anySpec), ValueSpec, stringSpec)
 import Data.String (fromString)
 import Data.Text (Text)
-import Ledger (POSIXTime (..), PubKeyHash, StakePubKeyHash (..))
+import Ledger (POSIXTime (getPOSIXTime), PubKeyHash, StakePubKeyHash (StakePubKeyHash, unStakePubKeyHash))
 import PlutusConfig.Base ()
 import PlutusConfig.Types (ToValue (toValue), withNamePrefixSpec)
 import Prelude

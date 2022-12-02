@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Files (
   policyScriptFilePath,
@@ -36,7 +35,7 @@ import BotPlutusInterface.Effects (
   writeFileRaw,
   writeFileTextEnvelope,
  )
-import BotPlutusInterface.Types (PABConfig (..))
+import BotPlutusInterface.Types (PABConfig (PABConfig, pcMetadataDir, pcScriptFileDir, pcSigningKeyFileDir, pcTxFileDir))
 import Cardano.Api (
   AsType (AsPaymentKey, AsSigningKey, AsVerificationKey),
   BabbageEra,
@@ -90,14 +89,14 @@ import Plutus.Script.Utils.Scripts qualified as ScriptUtils
 import Plutus.V1.Ledger.Api (
   CurrencySymbol,
   Datum (getDatum),
-  DatumHash (..),
+  DatumHash (DatumHash),
   LedgerBytes (LedgerBytes),
   MintingPolicy,
   Redeemer (getRedeemer),
-  RedeemerHash (..),
+  RedeemerHash (RedeemerHash),
   Script,
   Validator,
-  ValidatorHash (..),
+  ValidatorHash (ValidatorHash),
   toBuiltin,
  )
 import PlutusTx (ToData, dataToBuiltinData, toData)

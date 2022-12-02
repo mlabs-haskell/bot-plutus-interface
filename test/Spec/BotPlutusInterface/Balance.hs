@@ -34,12 +34,12 @@ import Ledger.Crypto (PubKeyHash)
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   DatumFromQuery (DatumInline),
-  DecoratedTxOut (..),
-  Tx (..),
-  TxInput (..),
-  TxInputType (..),
-  TxOut (..),
-  TxOutRef (..),
+  DecoratedTxOut (PublicKeyDecoratedTxOut, ScriptDecoratedTxOut),
+  Tx (txFee, txInputs, txOutputs),
+  TxInput (TxInput),
+  TxInputType (TxConsumePublicKeyAddress),
+  TxOut,
+  TxOutRef (TxOutRef),
   decoratedTxOutValue,
  )
 import Ledger.Value qualified as Value
@@ -393,8 +393,8 @@ liftAssertFailure (Right rslt) _ = return rslt
 toHashAndDatum :: ScriptUtils.Datum -> (ScriptUtils.DatumHash, DatumFromQuery)
 toHashAndDatum d = (ScriptUtils.datumHash d, DatumInline d)
 
-toHashAndValidator :: Api.Validator -> (Maybe (ScriptUtils.Versioned Api.Validator))
-toHashAndValidator (toV1 -> v) = Just v
+toHashAndValidator :: Api.Validator -> Maybe (ScriptUtils.Versioned Api.Validator)
+toHashAndValidator = Just . toV1
 
 toV1 :: Api.Validator -> ScriptUtils.Versioned Api.Validator
 toV1 = flip ScriptUtils.Versioned ScriptUtils.PlutusV1

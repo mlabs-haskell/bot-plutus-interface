@@ -41,7 +41,7 @@ import Data.Text qualified as Text
 import Network.Wai.Handler.Warp (Port)
 import Numeric.Natural (Natural)
 import PlutusConfig.Types (ToValue (toValue), withNamePrefixSpec)
-import Servant.Client.Core (BaseUrl (..), parseBaseUrl, showBaseUrl)
+import Servant.Client.Core (BaseUrl, parseBaseUrl, showBaseUrl)
 import Text.Regex (matchRegex, mkRegex)
 import Prelude
 

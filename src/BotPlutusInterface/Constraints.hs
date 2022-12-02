@@ -1,5 +1,5 @@
 module BotPlutusInterface.Constraints (
-  BpiConstraint (..),
+  BpiConstraint (MustValidateInFixed, MustIncludeMetadata),
   mustIncludeMetadata,
   mustValidateInFixed,
   submitBpiTxConstraintsWith,

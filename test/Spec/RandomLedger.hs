@@ -19,7 +19,7 @@ import Data.List.Extra (mconcatMap)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import GHC.Natural (Natural)
-import Ledger.Tx (TxOut (..), TxOutRef (..))
+import Ledger.Tx (TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Tx.CardanoAPI.Internal (toCardanoAddressInEra, toCardanoScriptDataHash, toCardanoValue)
 import Ledger.Value (AssetClass (AssetClass), CurrencySymbol, TokenName, Value)
 import Ledger.Value qualified as Value

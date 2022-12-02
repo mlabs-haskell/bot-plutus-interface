@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 
 module BotPlutusInterface.Effects (
@@ -47,18 +46,18 @@ import BotPlutusInterface.ExBudget qualified as ExBudget
 import BotPlutusInterface.TimeSlot qualified as TimeSlot
 import BotPlutusInterface.Types (
   BudgetEstimationError,
-  CLILocation (..),
+  CLILocation (Local, Remote),
   CollateralUtxo,
   ContractEnvironment (ContractEnvironment, ceContractLogs, ceContractState, ceContractStats, cePABConfig),
   ContractState (ContractState),
-  EstimationContext (..),
+  EstimationContext (EstimationContext),
   LogContext (BpiLog, ContractLog),
-  LogLevel (..),
-  LogLine (..),
-  LogType (..),
+  LogLevel (Debug, Error, Info, Notice, Warn),
+  LogLine (LogLine, logLineLevel),
+  LogType (AnyLog),
   LogsList (LogsList),
-  PABConfig (..),
-  SystemContext (..),
+  PABConfig (pcCliLocation, pcCollectLogs, pcLogLevel, pcProtocolParams),
+  SystemContext (SystemContext),
   TxBudget,
   TxFile,
   addBudget,
@@ -318,7 +317,7 @@ adaToCApiValue = CApi.lovelaceToValue . CApi.Lovelace . Ada.getLovelace
 
 addValue :: CApi.Value -> Ledger.TxOut -> Ledger.TxOut
 addValue v' (Ledger.TxOut (CApi.TxOut addr (CApi.TxOutValue era v) datum rScript)) = Ledger.TxOut $ CApi.TxOut addr (CApi.TxOutValue era $ v <> v') datum rScript
-addValue _ (Ledger.TxOut (CApi.TxOut _ (CApi.TxOutAdaOnly eraProof _) _ _)) = case eraProof of {} -- Formatter removes {}?
+addValue _ (Ledger.TxOut (CApi.TxOut _ (CApi.TxOutAdaOnly eraProof _) _ _)) = case eraProof of {}
 
 -- Couldn't use the template haskell makeEffect here, because it caused an OverlappingInstances problem.
 -- For some reason, we need to manually propagate the @w@ type variable to @send@

@@ -1,4 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -59,7 +58,36 @@ import BotPlutusInterface.CardanoNode.Effects (NodeQuery (PParams, QueryEraHisto
 import BotPlutusInterface.CardanoNode.Query (toQueryError)
 import BotPlutusInterface.Collateral (withCollateralHandling)
 import BotPlutusInterface.Contract (handleContract)
-import BotPlutusInterface.Effects (PABEffect (..), ShellArgs (..), calcMinUtxo)
+import BotPlutusInterface.Effects (
+  PABEffect (
+    CallCommand,
+    CreateDirectoryIfMissing,
+    CreateDirectoryIfMissingCLI,
+    EstimateBudget,
+    GetInMemCollateral,
+    ListDirectory,
+    LogToContract,
+    MinUtxo,
+    POSIXTimeRangeToSlotRange,
+    POSIXTimeToSlot,
+    POSIXTimeToSlotLength,
+    PrintLog,
+    QueryChainIndex,
+    QueryNode,
+    ReadFileTextEnvelope,
+    SaveBudget,
+    SetInMemCollateral,
+    SlotToPOSIXTime,
+    ThreadDelay,
+    UpdateInstanceState,
+    UploadDir,
+    WriteFileJSON,
+    WriteFileRaw,
+    WriteFileTextEnvelope
+  ),
+  ShellArgs (ShellArgs, cmdArgs, cmdName, cmdOutParser),
+  calcMinUtxo,
+ )
 import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Helpers (unsafeSerialiseAddress)
 import BotPlutusInterface.TimeSlot (TimeSlotConversionError)
@@ -67,12 +95,20 @@ import BotPlutusInterface.Types (
   BudgetEstimationError,
   CollateralUtxo (CollateralUtxo, collateralTxOutRef),
   CollateralVar (CollateralVar),
-  ContractEnvironment (..),
+  ContractEnvironment (
+    ContractEnvironment,
+    ceCollateral,
+    ceContractInstanceId,
+    ceContractLogs,
+    ceContractState,
+    ceContractStats,
+    cePABConfig
+  ),
   ContractState (ContractState, csActivity, csObservableState),
   EstimationContext,
   LogContext,
-  LogLevel (..),
-  PABConfig (..),
+  LogLevel,
+  PABConfig (pcCollateralSize, pcNetwork, pcOwnPubKeyHash, pcProtocolParams),
   TxBudget (TxBudget),
   TxFile,
  )
@@ -98,7 +134,7 @@ import Cardano.Api (
  )
 import Cardano.Crypto.DSIGN (genKeyDSIGN)
 import Cardano.Crypto.Seed (mkSeedFromBytes)
-import Cardano.Slotting.Time (SystemStart (..))
+import Cardano.Slotting.Time (SystemStart (SystemStart))
 import Control.Applicative (liftA2)
 import Control.Concurrent.STM (newTVarIO)
 import Control.Lens (at, set, view, (%~), (&), (<|), (?~), (^.), (^..), (^?), _1)
@@ -150,7 +186,7 @@ import Ledger.Scripts (DatumHash (DatumHash))
 import Ledger.Slot (Slot (getSlot))
 import Ledger.TimeSlot (posixTimeToUTCTime)
 import Ledger.Tx (
-  DecoratedTxOut (..),
+  DecoratedTxOut (PublicKeyDecoratedTxOut, ScriptDecoratedTxOut),
   TxId (TxId),
   TxOutRef (TxOutRef),
   decoratedTxOutAddress,
@@ -161,13 +197,23 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), QueryResponse (QueryResponse), UtxosResponse (..))
+import Plutus.ChainIndex.Api (IsUtxoResponse (IsUtxoResponse), QueryResponse (QueryResponse), UtxosResponse (UtxosResponse))
 import Plutus.ChainIndex.Tx (
-  ChainIndexTx (..),
+  ChainIndexTx (
+    ChainIndexTx,
+    _citxCardanoTx,
+    _citxData,
+    _citxInputs,
+    _citxOutputs,
+    _citxRedeemers,
+    _citxScripts,
+    _citxTxId,
+    _citxValidRange
+  ),
   ChainIndexTxOutputs (ValidTx),
   OutputDatum (NoOutputDatum, OutputDatum, OutputDatumHash),
  )
-import Plutus.ChainIndex.Types (BlockId (..), BlockNumber (unBlockNumber), ChainIndexTxOut (..), ReferenceScript (..), Tip (..))
+import Plutus.ChainIndex.Types (BlockId (BlockId, getBlockId), BlockNumber (unBlockNumber), ChainIndexTxOut (ChainIndexTxOut), ReferenceScript (ReferenceScriptNone), Tip (Tip, TipAtGenesis, tipBlockId, tipBlockNo, tipSlot))
 import Plutus.Contract (Contract (Contract))
 import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
 import Plutus.PAB.Core.ContractInstance.STM (Activity (Active))

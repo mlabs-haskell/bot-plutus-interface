@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.Balance (
@@ -30,10 +29,10 @@ import BotPlutusInterface.Files qualified as Files
 import BotPlutusInterface.Helpers (addressTxOut, isZero, lovelaceValueOf)
 import BotPlutusInterface.Types (
   CollateralUtxo (collateralTxOutRef),
-  EstimationContext (..),
+  EstimationContext (EstimationContext),
   LogLevel (Debug),
   LogType (TxBalancingLog),
-  PABConfig (..),
+  PABConfig (PABConfig, pcProtocolParams),
   collateralTxOutRef,
   ownAddress,
   toExBudget,
@@ -62,7 +61,7 @@ import Data.Text qualified as Text
 import GHC.Real (Ratio ((:%)))
 import Ledger qualified
 import Ledger.Ada qualified as Ada
-import Ledger.Constraints.OffChain (UnbalancedTx (..))
+import Ledger.Constraints.OffChain (UnbalancedTx (unBalancedEmulatorTx, unBalancedTxRequiredSignatories, unBalancedTxUtxoIndex))
 import Ledger.Crypto (PubKeyHash)
 import Ledger.Interval (
   Extended (Finite, NegInf, PosInf),
@@ -71,9 +70,9 @@ import Ledger.Interval (
   UpperBound (UpperBound),
  )
 import Ledger.Tx (
-  Tx (..),
-  TxOut (..),
-  TxOutRef (..),
+  Tx (Tx, txCollateralInputs, txFee, txInputs, txMint, txOutputs, txValidRange),
+  TxOut (TxOut),
+  TxOutRef,
   signatures,
   txId,
  )

@@ -3,7 +3,7 @@
 module BotPlutusInterface (runPAB) where
 
 import BotPlutusInterface.Server qualified as Server
-import BotPlutusInterface.Types (PABConfig (..))
+import BotPlutusInterface.Types (PABConfig (pcPort))
 import Data.Aeson (FromJSON)
 import Data.Kind (Type)
 import Network.Wai.Handler.Warp (run)

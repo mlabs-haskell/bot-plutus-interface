@@ -1,6 +1,6 @@
 -- | Several query functions to query local node
 module BotPlutusInterface.CardanoNode.Query (
-  NodeQueryError (..),
+  NodeQueryError (NodeQueryError),
   NodeConn,
   QueryConstraint,
   queryInCardanoMode,
@@ -9,7 +9,7 @@ module BotPlutusInterface.CardanoNode.Query (
   connectionInfo,
 ) where
 
-import BotPlutusInterface.Types (PABConfig (..))
+import BotPlutusInterface.Types (PABConfig (pcNetwork))
 import Cardano.Api qualified as CApi
 import Control.Monad.Freer (Eff, LastMember, Member, send)
 import Control.Monad.Freer.Reader (Reader, ask)

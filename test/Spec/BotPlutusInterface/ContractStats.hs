@@ -12,7 +12,7 @@ import Ledger.Ada qualified as Ada
 import Ledger.Constraints qualified as Constraints
 import Ledger.Tx (CardanoTx, TxOutRef (TxOutRef))
 import Plutus.Contract (
-  Contract (..),
+  Contract,
   Endpoint,
   submitTx,
  )

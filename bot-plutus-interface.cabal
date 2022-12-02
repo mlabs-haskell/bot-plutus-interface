@@ -55,6 +55,7 @@ common common-lang
     KindSignatures
     LambdaCase
     MultiParamTypeClasses
+    NamedFieldPuns
     NumericUnderscores
     OverloadedStrings
     ScopedTypeVariables

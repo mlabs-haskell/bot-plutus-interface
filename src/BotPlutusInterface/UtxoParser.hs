@@ -21,7 +21,7 @@ import Data.Attoparsec.Text (
 import Data.Text (Text)
 import Plutus.V1.Ledger.Api (
   BuiltinByteString,
-  TokenName (..),
+  TokenName (TokenName),
  )
 import PlutusTx.Builtins (toBuiltin)
 import Prelude hiding (takeWhile)

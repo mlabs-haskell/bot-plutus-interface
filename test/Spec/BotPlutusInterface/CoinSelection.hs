@@ -25,7 +25,7 @@ import Ledger.Address (PaymentPubKeyHash (PaymentPubKeyHash))
 import Ledger.Address qualified as Address
 import Ledger.CardanoWallet qualified as Wallet
 import Ledger.Crypto (PubKeyHash)
-import Ledger.Tx (TxInput (..), TxInputType (..), TxOut (..), TxOutRef (..))
+import Ledger.Tx (TxInput (TxInput, txInputRef), TxInputType (TxConsumePublicKeyAddress), TxOut (TxOut), TxOutRef (TxOutRef))
 import Ledger.Value (AssetClass, Value, leq)
 import Ledger.Value qualified as Value
 import Spec.MockContract (runPABEffectPure, testingNetwork)

@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
 
 module BotPlutusInterface.Server (
   app,
@@ -16,9 +15,17 @@ import BotPlutusInterface.Files (txFileName, txIdToText)
 import BotPlutusInterface.Types (
   AppState (AppState),
   CollateralVar (CollateralVar),
-  ContractEnvironment (..),
+  ContractEnvironment (
+    ContractEnvironment,
+    ceCollateral,
+    ceContractInstanceId,
+    ceContractLogs,
+    ceContractState,
+    ceContractStats,
+    cePABConfig
+  ),
   ContractState (ContractState, csActivity, csObservableState),
-  PABConfig (..),
+  PABConfig (PABConfig, pcEnableTxEndpoint, pcTxFileDir),
   RawTx,
   SomeContractState (SomeContractState),
  )
@@ -56,13 +63,13 @@ import Plutus.PAB.Core.ContractInstance.STM (Activity (Active, Done))
 import Plutus.PAB.Effects.Contract.Builtin (
   ContractConstraints,
   HasDefinitions,
-  SomeBuiltin (..),
+  SomeBuiltin (SomeBuiltin),
   getContract,
  )
 import Plutus.PAB.Webserver.Types (
   CombinedWSStreamToClient (InstanceUpdate),
   CombinedWSStreamToServer (Subscribe),
-  ContractActivationArgs (..),
+  ContractActivationArgs (ContractActivationArgs),
   InstanceStatusToClient (ContractFinished, NewObservableState),
  )
 import Plutus.V1.Ledger.Bytes (LedgerBytes (LedgerBytes), fromHex)
@@ -83,7 +90,7 @@ import Servant.Server (Application, Handler, Server, err404, serve)
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath ((</>))
 import Test.QuickCheck (Arbitrary (arbitrary), elements, vectorOf)
-import Wallet.Types (ContractInstanceId (..))
+import Wallet.Types (ContractInstanceId (ContractInstanceId))
 import Prelude
 
 initState :: IO AppState

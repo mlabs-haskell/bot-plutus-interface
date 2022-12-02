@@ -4,7 +4,7 @@
 
 module Cardano.PlutusExample.Game where
 
-import Cardano.Api.Shelley (PlutusScript (..), PlutusScriptV1)
+import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised), PlutusScriptV1)
 import Codec.Serialise (serialise)
 import Control.Monad hiding (fmap)
 import Data.Aeson.TH (defaultOptions, deriveJSON)
@@ -88,7 +88,8 @@ lock LockParams {lockGameId = gameId, lockAmount = amount, lockSecret = secret} 
       validator = gameValidator gameId
       valHash = validatorHash validator
       datum = Datum $ PlutusTx.toBuiltinData $ sha2_256 $ toBuiltin $ ByteString.pack secret
-      tx = Constraints.mustPayToOtherScript valHash datum val
+      tx = Constraints.mustPayToOtherScriptWithDatumHash valHash datum val
+
   void $ submitTxConstraints @Game validator tx
 
 guess :: GuessParams -> Contract () GameSchema Text ()

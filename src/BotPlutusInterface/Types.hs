@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -46,7 +45,7 @@ import Cardano.Slotting.Time (SystemStart)
 import Control.Concurrent.STM (TVar, readTVarIO)
 import Data.Aeson (ToJSON)
 import Data.Aeson qualified as JSON
-import Data.Aeson.TH (Options (..), defaultOptions, deriveJSON)
+import Data.Aeson.TH (Options (fieldLabelModifier), defaultOptions, deriveJSON)
 import Data.Data (Data (toConstr), constrIndex, dataTypeOf, eqT, fromConstrB, indexConstr, type (:~:) (Refl))
 import Data.Default (Default (def))
 import Data.Kind (Type)

@@ -1,5 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
-
 module BotPlutusInterface.ChainIndex (
   handleChainIndexReq,
 ) where
@@ -25,7 +23,43 @@ import Plutus.ChainIndex.Api (
   UtxosResponse,
  )
 import Plutus.ChainIndex.Client qualified as ChainIndexClient
-import Plutus.Contract.Effects (ChainIndexQuery (..), ChainIndexResponse (..))
+import Plutus.Contract.Effects (
+  ChainIndexQuery (
+    DatumFromHash,
+    DatumsAtAddress,
+    GetTip,
+    MintingPolicyFromHash,
+    RedeemerFromHash,
+    StakeValidatorFromHash,
+    TxFromTxId,
+    TxOutFromRef,
+    TxoSetAtAddress,
+    TxsFromTxIds,
+    UnspentTxOutFromRef,
+    UnspentTxOutSetAtAddress,
+    UtxoSetAtAddress,
+    UtxoSetMembership,
+    UtxoSetWithCurrency,
+    ValidatorFromHash
+  ),
+  ChainIndexResponse (
+    DatumHashResponse,
+    GetTipResponse,
+    MintingPolicyHashResponse,
+    RedeemerHashResponse,
+    StakeValidatorHashResponse,
+    TxIdResponse,
+    TxIdsResponse,
+    TxOutRefResponse,
+    TxoSetAtResponse,
+    UnspentTxOutResponse,
+    UnspentTxOutsAtResponse,
+    UtxoSetAtResponse,
+    UtxoSetMembershipResponse,
+    UtxoSetWithCurrencyResponse,
+    ValidatorHashResponse
+  ),
+ )
 import Servant.Client (
   ClientError (FailureResponse),
   ClientM,

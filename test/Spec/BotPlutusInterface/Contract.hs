@@ -37,9 +37,9 @@ import Ledger.Tx (
 import Ledger.Tx qualified as Tx
 import Ledger.Value qualified as Value
 import NeatInterpolation (text)
-import Plutus.ChainIndex.Types (BlockId (..), Tip (..))
+import Plutus.ChainIndex.Types (BlockId (BlockId), Tip (Tip))
 import Plutus.Contract (
-  Contract (..),
+  Contract,
   Endpoint,
   submitTx,
   submitTxConstraintsWith,
@@ -56,7 +56,7 @@ import Pretty.Diff (
  )
 import Pretty.Diff qualified as Diff
 import Spec.MockContract (
-  MockContractState (..),
+  MockContractState,
   addr1,
   addr2,
   commandHistory,

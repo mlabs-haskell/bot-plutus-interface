@@ -5,8 +5,8 @@ module Main (main) where
 import BotPlutusInterface qualified
 import BotPlutusInterface.Config qualified as BotPlutusInterface
 import BotPlutusInterface.Types (
-  HasDefinitions (..),
-  SomeBuiltin (..),
+  HasDefinitions (getContract, getDefinitions, getSchema),
+  SomeBuiltin (SomeBuiltin),
   endpointsToSchemas,
  )
 import Cardano.PlutusExample.Game (

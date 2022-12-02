@@ -3,10 +3,10 @@ module Spec.BotPlutusInterface.Server (tests) where
 import BotPlutusInterface.Files (txFileName)
 import BotPlutusInterface.Server (RawTxEndpoint, TxIdCapture (TxIdCapture), app, initState)
 import BotPlutusInterface.Types (
-  HasDefinitions (..),
-  PABConfig (..),
-  RawTx (..),
-  SomeBuiltin (..),
+  HasDefinitions (getContract, getDefinitions, getSchema),
+  PABConfig (pcEnableTxEndpoint, pcTxFileDir),
+  RawTx (RawTx, _cborHex, _description, _type),
+  SomeBuiltin,
  )
 
 import Ledger.Tx (TxId)
@@ -24,13 +24,13 @@ import Servant.API (
   FromHttpApiData (parseUrlPiece),
   ToHttpApiData (toUrlPiece),
  )
-import Servant.Client (ClientEnv, ClientError (..), client, mkClientEnv, responseStatusCode, runClientM)
-import Servant.Client.Core.BaseUrl (BaseUrl (..), parseBaseUrl)
+import Servant.Client (ClientEnv, ClientError (FailureResponse), client, mkClientEnv, responseStatusCode, runClientM)
+import Servant.Client.Core.BaseUrl (BaseUrl (baseUrlPort), parseBaseUrl)
 
 import Data.Aeson (FromJSON, ToJSON, encode)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Default (def)
-import Data.Proxy (Proxy (..))
+import Data.Proxy (Proxy (Proxy))
 import Data.Text (pack, unpack)
 import Data.Void (Void, absurd)
 import System.FilePath ((</>))

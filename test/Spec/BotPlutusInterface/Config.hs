@@ -1,34 +1,85 @@
-{-# LANGUAGE NamedFieldPuns #-}
-
 module Spec.BotPlutusInterface.Config (tests) where
 
 import BotPlutusInterface.Config (loadPABConfig, savePABConfig)
 import BotPlutusInterface.Types (
-  CLILocation (..),
-  LogLevel (..),
+  CLILocation (Remote),
+  LogLevel (Debug),
   LogType (AnyLog),
-  PABConfig (..),
+  PABConfig (
+    PABConfig,
+    pcBudgetMultiplier,
+    pcChainIndexUrl,
+    pcCliLocation,
+    pcCollateralSize,
+    pcCollectLogs,
+    pcCollectStats,
+    pcDryRun,
+    pcEnableTxEndpoint,
+    pcLogLevel,
+    pcMetadataDir,
+    pcNetwork,
+    pcOwnPubKeyHash,
+    pcOwnStakePubKeyHash,
+    pcPort,
+    pcProtocolParams,
+    pcProtocolParamsFile,
+    pcScriptFileDir,
+    pcSigningKeyFileDir,
+    pcTipPollingInterval,
+    pcTxFileDir,
+    pcTxStatusPolling
+  ),
   TxStatusPolling (TxStatusPolling),
  )
 import Cardano.Api (
-  AnyPlutusScriptVersion (..),
-  CostModel (..),
+  AnyPlutusScriptVersion (AnyPlutusScriptVersion),
+  CostModel (CostModel),
   EpochNo (EpochNo),
-  ExecutionUnitPrices (..),
-  ExecutionUnits (..),
-  Lovelace (..),
+  ExecutionUnitPrices (ExecutionUnitPrices, priceExecutionMemory, priceExecutionSteps),
+  ExecutionUnits (ExecutionUnits, executionMemory, executionSteps),
+  Lovelace (Lovelace),
   NetworkId (Mainnet),
   PlutusScriptVersion (PlutusScriptV2),
   makePraosNonce,
  )
-import Cardano.Api.Shelley (ProtocolParameters (..))
+import Cardano.Api.Shelley (
+  ProtocolParameters (
+    ProtocolParameters,
+    protocolParamCollateralPercent,
+    protocolParamCostModels,
+    protocolParamDecentralization,
+    protocolParamExtraPraosEntropy,
+    protocolParamMaxBlockBodySize,
+    protocolParamMaxBlockExUnits,
+    protocolParamMaxBlockHeaderSize,
+    protocolParamMaxCollateralInputs,
+    protocolParamMaxTxExUnits,
+    protocolParamMaxTxSize,
+    protocolParamMaxValueSize,
+    protocolParamMinPoolCost,
+    protocolParamMinUTxOValue,
+    protocolParamMonetaryExpansion,
+    protocolParamPoolPledgeInfluence,
+    protocolParamPoolRetireMaxEpoch,
+    protocolParamPrices,
+    protocolParamProtocolVersion,
+    protocolParamStakeAddressDeposit,
+    protocolParamStakePoolDeposit,
+    protocolParamStakePoolTargetNum,
+    protocolParamTreasuryCut,
+    protocolParamTxFeeFixed,
+    protocolParamTxFeePerByte,
+    protocolParamUTxOCostPerByte,
+    protocolParamUTxOCostPerWord
+  ),
+ )
 import Data.Default (def)
 import Data.Map qualified as Map
 import Data.Ratio ((%))
 import Data.Text qualified as Text
 import Ledger (StakePubKeyHash (StakePubKeyHash))
 import PlutusConfig.Misc (serializeDeserialize)
-import Servant.Client.Core (BaseUrl (..), Scheme (Https))
+import Servant.Client.Core (BaseUrl (BaseUrl), Scheme (Https))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, testGroup)

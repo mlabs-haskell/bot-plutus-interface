@@ -43,8 +43,8 @@ import Data.Vector qualified as Vec
 import Ledger qualified
 import Ledger.Tx (
   TxInput (txInputRef),
-  TxOut (..),
-  TxOutRef (..),
+  TxOut,
+  TxOutRef,
  )
 import Ledger.Value (AssetClass, Value)
 import Ledger.Value qualified as Value

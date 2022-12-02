@@ -1,5 +1,4 @@
 {-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS -fno-warn-orphans  #-}
@@ -11,14 +10,37 @@ module BotPlutusInterface.Config (
 ) where
 
 import BotPlutusInterface.Effects (
-  ShellArgs (..),
+  ShellArgs (ShellArgs, cmdArgs, cmdName, cmdOutParser),
   callLocalCommand,
  )
 import BotPlutusInterface.Types (
-  CLILocation (..),
-  LogLevel (..),
+  CLILocation (Local, Remote),
+  LogLevel (Debug, Error, Info, Notice, Warn),
   LogType (AnyLog),
-  PABConfig (..),
+  PABConfig (
+    PABConfig,
+    pcBudgetMultiplier,
+    pcChainIndexUrl,
+    pcCliLocation,
+    pcCollateralSize,
+    pcCollectLogs,
+    pcCollectStats,
+    pcDryRun,
+    pcEnableTxEndpoint,
+    pcLogLevel,
+    pcMetadataDir,
+    pcNetwork,
+    pcOwnPubKeyHash,
+    pcOwnStakePubKeyHash,
+    pcPort,
+    pcProtocolParams,
+    pcProtocolParamsFile,
+    pcScriptFileDir,
+    pcSigningKeyFileDir,
+    pcTipPollingInterval,
+    pcTxFileDir,
+    pcTxStatusPolling
+  ),
   TxStatusPolling (TxStatusPolling, spBlocksTimeOut, spInterval),
  )
 

@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module BotPlutusInterface.CardanoCLI (
@@ -12,7 +11,7 @@ module BotPlutusInterface.CardanoCLI (
   queryTip,
 ) where
 
-import BotPlutusInterface.Effects (PABEffect, ShellArgs (..), callCommand)
+import BotPlutusInterface.Effects (PABEffect, ShellArgs (ShellArgs, cmdArgs, cmdName, cmdOutParser), callCommand)
 import BotPlutusInterface.Files (
   datumJsonFilePath,
   metadataFilePath,
@@ -27,7 +26,7 @@ import BotPlutusInterface.Helpers (isZero)
 import BotPlutusInterface.Types (
   EstimationContext (ecUtxos),
   MintBudgets,
-  PABConfig (..),
+  PABConfig (PABConfig, pcNetwork, pcProtocolParamsFile),
   SpendBudgets,
   Tip,
   TxBudget,
@@ -70,7 +69,7 @@ import Ledger.Interval (
   LowerBound (LowerBound),
   UpperBound (UpperBound),
  )
-import Ledger.Scripts (Datum, DatumHash (..))
+import Ledger.Scripts (Datum, DatumHash (DatumHash))
 import Ledger.Scripts qualified as Scripts
 import Ledger.Tx (
   Tx (
