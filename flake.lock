@@ -442,17 +442,17 @@
     "hw-aeson": {
       "flake": false,
       "locked": {
-        "lastModified": 1660113261,
-        "narHash": "sha256-v0SyVxeVBTtW1tuej4P+Kf4roO/rr2tBI7RthTlInbc=",
+        "lastModified": 1660218478,
+        "narHash": "sha256-t4QLmGf5ytzjS0ynn6xON61J+fvBF8vf/+zsBzmw/rM=",
         "owner": "haskell-works",
         "repo": "hw-aeson",
-        "rev": "b5ef03a7d7443fcd6217ed88c335f0c411a05408",
+        "rev": "ba7c1e41c6e54d6bf9fd1cd013489ac713fc3153",
         "type": "github"
       },
       "original": {
         "owner": "haskell-works",
         "repo": "hw-aeson",
-        "rev": "b5ef03a7d7443fcd6217ed88c335f0c411a05408",
+        "rev": "ba7c1e41c6e54d6bf9fd1cd013489ac713fc3153",
         "type": "github"
       }
     },

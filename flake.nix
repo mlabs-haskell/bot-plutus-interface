@@ -78,7 +78,7 @@
       flake = false;
     };
     hw-aeson = {
-      url = "github:haskell-works/hw-aeson/b5ef03a7d7443fcd6217ed88c335f0c411a05408";
+      url = "github:haskell-works/hw-aeson/ba7c1e41c6e54d6bf9fd1cd013489ac713fc3153";
       flake = false;
     };
     iohk-monitoring-framework = {
@@ -476,10 +476,7 @@
         formatCheck = formatCheckFor system;
       });
 
-      hydraJobs = {
-        checks = { inherit (self.checks) x86_64-linux; };
-        packages = { inherit (self.packages) x86_64-linux; };
-        devShells = { inherit (self.devShells) x86_64-linux; };
-      };
+      # Instruction for the Hercules CI to build on x86_64-linux only, to avoid errors about systems without agents.
+      herculesCI.ciSystems = [ "x86_64-linux" ];
     };
 }
