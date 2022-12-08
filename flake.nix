@@ -147,10 +147,7 @@
         formatCheck = formatCheckFor system;
       });
 
-      hydraJobs = {
-        checks = { inherit (self.checks) x86_64-linux; };
-        packages = { inherit (self.packages) x86_64-linux; };
-        devShells = { inherit (self.devShells) x86_64-linux; };
-      };
+      # Instruction for the Hercules CI to build on x86_64-linux only, to avoid errors about systems without agents.
+      herculesCI.ciSystems = [ "x86_64-linux" ];
     };
 }

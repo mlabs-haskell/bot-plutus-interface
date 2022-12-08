@@ -164,7 +164,6 @@ handlePABEffect contractEnv@ContractEnvironment {cePABConfig} =
   interpretM
     ( \case
         CallCommand shellArgs -> do
-          print (cmdName shellArgs, cmdArgs shellArgs)
           case pcCliLocation cePABConfig of
             Local -> callLocalCommand shellArgs
             Remote ipAddr -> callRemoteCommand ipAddr shellArgs
