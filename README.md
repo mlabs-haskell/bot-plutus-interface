@@ -1,4 +1,5 @@
-# Bot Plutus Interface (formerly MLabsPAB or Plutus Fake PAB)
+# Bot Plutus Interface
+**NOTE: This library has been deprecated and is no longer being actively developed by MLabs.**
 
 This is a custom implementation of the PAB as the official one is not ready yet.
 This PAB is not feature complete, and not fully tested with all use cases, so please use it with care!
